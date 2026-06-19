@@ -169,11 +169,19 @@ def _world_bbox_corners(bpy: Any, obj: Any) -> list[tuple[float, float, float]]:
 
 
 def _Vector(bpy: Any, seq) -> Any:
-    """mathutils.Vector if available, else a plain tuple (matrix_world @ handles both)."""
-    mathutils = getattr(bpy, "mathutils", None)
-    if mathutils is not None and hasattr(mathutils, "Vector"):
+    """mathutils.Vector for real matrix math; plain tuple under fake-bpy tests.
+
+    mathutils is a TOP-LEVEL module in Blender (``import mathutils``), NOT an attribute
+    of bpy. Using a Vector matters because ``matrix_world @ tuple`` is illegal in Blender
+    (only ``Matrix @ Vector`` works); the tuple fallback is only ever hit in unit tests
+    that don't perform real matrix multiplication.
+    """
+    try:
+        import mathutils  # noqa: PLC0415 - real Blender only
+
         return mathutils.Vector(seq)
-    return tuple(seq)
+    except Exception:  # noqa: BLE001
+        return tuple(seq)
 
 
 def scene_bbox(bpy: Any, obj_name: str | None) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
@@ -260,8 +268,10 @@ def _render_to_b64(bpy: Any, cam_obj: Any, shading: str, res: int) -> str:
         render.image_settings.file_format = "PNG"
         render.filepath = path
         _configure_engine(bpy, scene, shading)
-        # OpenGL viewport render: fast and faithful; uses the chosen engine/shading.
-        bpy.ops.render.opengl(write_still=True)
+        # view_context=False renders from the SCENE CAMERA (our positioned capture cam),
+        # not the active viewport. Without it, render.opengl ignores the camera framing
+        # and every "angle" comes out as the same viewport shot (caught in live GUI).
+        bpy.ops.render.opengl(write_still=True, view_context=False)
         with open(path, "rb") as handle:
             return base64.b64encode(handle.read()).decode("ascii")
     finally:

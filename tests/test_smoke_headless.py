@@ -147,6 +147,20 @@ def test_feedback_capture_returns_a_verdict(bridge: BlenderBridge) -> None:
     assert "available" in result
 
 
+def test_feedback_named_view_framing_is_not_a_code_bug(bridge: BlenderBridge) -> None:
+    # Framing math (world bbox -> camera placement, via mathutils) runs even headless,
+    # BEFORE the GPU render. A named view may degrade to available:false (no GPU), but
+    # the reason must be a render/context degrade, NOT a framing code bug such as the
+    # 'Matrix multiplication not supported between Matrix and tuple' regression (which
+    # came from reading mathutils off bpy instead of importing it). This catches that
+    # class headless, where fake-bpy unit tests cannot (no real mathutils matrices).
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "Framed"})
+    res = bridge.call("feedback.capture", {"object": "Framed", "view": "front"})
+    if not res.get("available"):
+        reason = res.get("reason", "")
+        assert "Matrix" not in reason and "tuple" not in reason, f"framing code bug: {reason}"
+
+
 def test_feedback_capture_views_returns_envelope(bridge: BlenderBridge) -> None:
     # The anti-blob multi-angle. Headless has no GPU, so rendering may be unavailable;
     # what we assert is the ENVELOPE CONTRACT, not pixels: it must not crash, must carry
