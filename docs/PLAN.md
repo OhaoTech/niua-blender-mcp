@@ -106,5 +106,39 @@ gizmo/UI-driven ops) cannot be poll-verified headless and need a later GUI pass.
       **The actual rendered multi-angle/turntable PNGs are verified in a GUI session, not
       headless** (pure `--background` with no GL context returns the graceful degrade).
 - [ ] UV/topology/diagnostic captures; `GPUOffScreen` non-intrusive.
-- [ ] `io` import/export (the niua asset seam; Godot-ready glTF).
-- [ ] Async heavy ops (modal operators), headless worker pool, the critique loop.
+- [x] `io` import/export (the niua asset seam; Godot-ready glTF). Four tools, all
+      auto-discovered, parity holds, verified end to end against real Blender 5.1.1
+      headless (243 tests green): `io.import` (AUTO format inference by extension; new
+      objects via scene before/after diff), `io.export_gltf` (GLB/separate, selection,
+      apply-modifiers, +Y up), `io.export` (generic GLB/FBX/OBJ router), `io.prepare_godot`
+      (apply transforms then export one object to Godot-ready GLB). Headless smoke proves
+      the full seam: export writes a non-empty GLB (verified `glTF` magic), a round-trip
+      re-imports at least one mesh object, and prepare_godot applies transforms
+      (location→0, scale→1) before exporting. Exports stay `mutates=False` (selection set
+      only for the call, restored on exit). Operator ids confirmed on 5.1.1 below.
+      **Decoupling held:** the domain only moves files; it knows nothing about niua or Godot.
+- [ ] Async heavy ops (modal operators), the critique loop (Phase 6).
+
+**Headless worker mode vs worker pool.** A single headless worker
+(`serve_blocking` / the `scripts/blender_serve.py` launcher driving the socket bridge on
+the headless main-thread loop) already exists from Phase 0 and is what every real-Blender
+smoke test runs against — `blender --background` serving the bridge over TCP. A worker
+**pool** (multiple concurrent headless Blender instances behind one MCP server for
+parallel/async heavy ops) is **deferred to a later pass** alongside modal operators in
+Phase 6; it is not required for the io seam, which is synchronous file in/out.
+
+**Operator ids verified on Blender 5.1.1 (this build).**
+- Import: `import_scene.gltf` (GLTF+GLB share one importer), `wm.obj_import`,
+  `import_scene.fbx`, `wm.stl_import`, `wm.usd_import`, `wm.ply_import`, `wm.alembic_import`.
+- Export: `export_scene.gltf` (kwargs `filepath`, `export_format`, `use_selection`,
+  `export_apply`, `export_yup` all present), `export_scene.fbx` (`filepath`,
+  `use_selection`), `wm.obj_export` (`filepath`, `export_selected_objects`).
+- `object.transform_apply(location=, rotation=, scale=)` for `io.prepare_godot`.
+- **Collada (DAE) is NOT available in this build:** `bpy.app.build_options` has no
+  `collada` flag (OpenCollada was dropped), so `wm.collada_import`/`wm.collada_export`
+  do not resolve. The `getattr` on `bpy.ops` returns a lazy callable (does not raise), so
+  a DAE import reaches the operator call and raises `AttributeError("...could not be
+  found")`, which the add-on dispatch normalizes to a clean structured `handler_error`
+  (Blender does not crash). DAE remains advertised in `IMPORT_FORMATS`; on a Collada-less
+  build it degrades to that structured error rather than a precondition. Harden later if
+  DAE matters (probe `build_options.collada` and raise `precondition_failed` up front).
