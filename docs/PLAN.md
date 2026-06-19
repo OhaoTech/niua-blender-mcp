@@ -61,10 +61,35 @@ across all server SPECS ↔ add-on COMMANDS.
       EDIT→OBJECT round-trip), parent_with_auto_weights (heat skinning works headless),
       list_bones.
 
-## Phase 3 — RNA generation + context hardening
+## Phase 3 — Live RNA discovery + generic execution  ✅ DONE
 
-- [ ] Generation pass over allowlisted operator categories → curated-quality ToolSpecs.
-- [ ] `rna.call_operator` / `rna.set_property` generic execution.
+Uncapped coverage without flooding `tools/list`: instead of mass-generating hundreds of
+static ToolSpecs (which rot on every Blender version bump), the agent *discovers* the
+live API and *executes* anything it finds through the existing validate → `ctx.ensure`
+→ undo pipeline. Verified end to end against real Blender 5.1.1 headless (193 tests green,
+incl. Phase-3 smoke for search, generic create, generic EDIT-mode mesh edit, generic
+OBJECT-mode resize, and a set/get property round-trip drift guard). Parity holds; no
+kernel-contract change.
+
+- [x] `rna.search` — mines live `bpy.ops` + `bpy.types` for operators/types matching a
+      query, relevance-ranked (idname > label > description; exact > prefix > substring),
+      filtered by `category`/`kind`, skips UI/system categories, requires real help text.
+- [x] `rna.call_operator` — runs any `bpy.ops.<cat>.<name>`; args validated/coerced against
+      the operator's own RNA (unknown keys dropped, numbers/enums coerced, POINTER/
+      COLLECTION ignored with a note); eager `get_rna_type()` probe → clean `not_found`
+      for bogus ids; `ctx.ensure(active/mode/select)` + `ctx.check_poll` for context.
+- [x] `rna.set_property` / `rna.get_property` — read/write any dotted path under `bpy.data`
+      (attribute access + collection-by-name fallback), value coerced toward the live type.
+- [x] Args/value/select cross the bridge as JSON-encoded strings (no new param kind, no
+      kernel-contract change — all contract/parity tests stay green).
+
+**Context hardening (honest about headless vs GUI):** generic EDIT-mode operators work
+headless — `rna.call_operator('mesh.subdivide', mode='EDIT', ...)` takes a factory cube
+8v/6f → 26v/24f with no VIEW_3D area (the resolver skips `temp_override` and `mode_set`
+drives the switch). OBJECT-mode ops (`transform.resize`) mutate as expected. Callers must
+pass `mode` for edit-mode operators (not inferred); documented in the ToolSpec summaries.
+Operators that *require* a real VIEW_3D area/region (e.g. view-dependent selection, some
+gizmo/UI-driven ops) cannot be poll-verified headless and need a later GUI pass.
 
 ## Phase 4 — Feedback depth + io + headless workers
 

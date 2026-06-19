@@ -7,6 +7,7 @@ available or NIUA_SKIP_BLENDER is set.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import socket
@@ -225,3 +226,115 @@ def test_rig_armature_bone_and_list(bridge: BlenderBridge) -> None:
     bones = bridge.call("rig.list_bones", {"armature": "RigHero"})
     names = {b["name"] for b in bones["bones"]}
     assert "Spine" in names  # the authored edit-bone is now a rest-pose Bone
+
+
+# --- Phase 3 smoke: live RNA discovery + generic execution, end to end -----------------
+# Everything flows through the same validate -> ctx.ensure -> undo pipeline as curated
+# tools. These prove the long-tail escape hatch works against a real Blender, including
+# the headless EDIT-mode context path that has no VIEW_3D area to override.
+#
+# args / value / select cross the bridge as JSON-encoded *strings* (the kernel has no
+# free-form object param kind); json.dumps here mirrors what the MCP server emits.
+
+
+def test_rna_search_finds_operator_by_query(bridge: BlenderBridge) -> None:
+    # rna.search mines live bpy.ops; 'bevel' must surface the mesh.bevel operator.
+    result = bridge.call("rna.search", {"query": "bevel"})
+    op_idnames = {m["idname"] for m in result["matches"] if m.get("kind") == "operator"}
+    assert "mesh.bevel" in op_idnames
+    assert result["count"] == len(result["matches"]) >= 1
+
+
+def test_rna_call_operator_creates_object(bridge: BlenderBridge) -> None:
+    # Generic operator execution: add a UV sphere, confirm it lands in the scene.
+    before = {o["name"] for o in bridge.call("scene.info", {})["objects"]}
+    bridge.call(
+        "rna.call_operator",
+        {"idname": "mesh.primitive_uv_sphere_add", "args": json.dumps({"radius": 2.0})},
+    )
+    after = {o["name"] for o in bridge.call("scene.info", {})["objects"]}
+    created = after - before
+    assert created, "rna.call_operator did not create any object"
+    # Blender names a fresh UV sphere 'Sphere' (or 'Sphere.NNN' if one already exists).
+    assert any(name.startswith("Sphere") for name in created)
+
+
+def test_rna_call_operator_edits_mesh_with_mode_hint(bridge: BlenderBridge) -> None:
+    # The hard one: drive an EDIT-mode mesh operator generically, headless. The kernel
+    # must honor the mode/object/select hints, set up EDIT mode with no VIEW_3D area,
+    # run mesh.subdivide, push one undo step, and the geometry must actually change.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "RnaMeshHero"})
+
+    before = bridge.call("mesh.report", {"object": "RnaMeshHero"})
+    assert before["vertices"] == 8 and before["faces"] == 6
+
+    bridge.call(
+        "rna.call_operator",
+        {
+            "idname": "mesh.subdivide",
+            "args": json.dumps({"number_cuts": 1}),
+            "object": "RnaMeshHero",
+            "mode": "EDIT",
+            "select": json.dumps(["RnaMeshHero"]),
+        },
+    )
+
+    after = bridge.call("mesh.report", {"object": "RnaMeshHero"})
+    # One subdivide cut on a cube: 8v/12e/6f -> 26v/48e/24f.
+    assert after["vertices"] == 26 and after["faces"] == 24
+    assert after["vertices"] > before["vertices"] and after["faces"] > before["faces"]
+    assert after["ngons"] == 0  # subdivide produces quads, not n-gons
+
+
+def test_rna_call_operator_object_mode_resize_mutates(bridge: BlenderBridge) -> None:
+    # OBJECT-mode generic op with a vector arg: transform.resize must change scale.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "RnaResizeHero"})
+    assert bridge.call("rna.get_property", {"path": "objects.RnaResizeHero.scale"})["value"] == [
+        1.0,
+        1.0,
+        1.0,
+    ]
+
+    bridge.call(
+        "rna.call_operator",
+        {
+            "idname": "transform.resize",
+            "args": json.dumps({"value": [2.0, 2.0, 2.0]}),
+            "object": "RnaResizeHero",
+            "mode": "OBJECT",
+            "select": json.dumps(["RnaResizeHero"]),
+        },
+    )
+
+    assert bridge.call("rna.get_property", {"path": "objects.RnaResizeHero.scale"})["value"] == [
+        2.0,
+        2.0,
+        2.0,
+    ]
+
+
+def test_rna_set_then_get_property_round_trips(bridge: BlenderBridge) -> None:
+    # Drift guard: set_property writes location via a dotted bpy.data path, get_property
+    # reads it back. The readback MUST be the exact non-empty value -- a getattr-with-
+    # default path would mask RNA drift as a clean-but-wrong empty/None result.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "RnaPropHero"})
+
+    written = bridge.call(
+        "rna.set_property",
+        {"path": "objects.RnaPropHero.location", "value": json.dumps([1, 2, 3])},
+    )
+    assert written["value"] == [1.0, 2.0, 3.0]
+
+    read = bridge.call("rna.get_property", {"path": "objects.RnaPropHero.location"})
+    assert read["value"] == [1.0, 2.0, 3.0]  # non-empty, correct: RNA path resolved live
+
+
+def test_rna_call_operator_unknown_is_clean_error(bridge: BlenderBridge) -> None:
+    # A bogus operator id must come back as a structured not_found, not crash Blender.
+    from niua_blender_mcp.bridge import BridgeError
+
+    with pytest.raises(BridgeError) as exc:
+        bridge.call("rna.call_operator", {"idname": "mesh.no_such_operator_xyz"})
+    assert exc.value.code == "not_found"
+    # Bridge still alive afterward.
+    assert "objects" in bridge.call("scene.info", {})
