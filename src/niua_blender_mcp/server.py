@@ -110,9 +110,17 @@ class NiuaBlenderMCP:
 
     def _tool_result(self, result: JSON) -> JSON:
         content = [json_text_content(result)]
+        # Single-image path: the result itself, or an attached opt-in capture (_feedback).
         image = result if (result.get("available") and result.get("data")) else result.get("_feedback")
         if isinstance(image, dict) and image.get("available") and image.get("data"):
             content.append(image_content(image["data"], image.get("mimeType", "image/png")))
+        # Multi-image path: an 'images' list (multi-angle / turntable). Append one image
+        # content per available image so a multimodal agent sees every angle at once.
+        images = result.get("images")
+        if isinstance(images, list):
+            for img in images:
+                if isinstance(img, dict) and img.get("data"):
+                    content.append(image_content(img["data"], img.get("mimeType", "image/png")))
         return {"content": content, "structuredContent": result, "isError": False}
 
     def _tool_error(self, code: str, message: str, detail: Any | None = None) -> JSON:

@@ -93,6 +93,18 @@ gizmo/UI-driven ops) cannot be poll-verified headless and need a later GUI pass.
 
 ## Phase 4 — Feedback depth + io + headless workers
 
-- [ ] Multi-angle/turntable, UV/topology/diagnostic captures; `GPUOffScreen` non-intrusive.
+- [x] Multi-angle/turntable captures (the anti-blob): `feedback.capture` (one named view
+      or the live scene camera), `feedback.capture_views` (presets ortho4/ortho6/orbit4),
+      `feedback.turntable` (orbit). A dedicated hidden capture camera (`__niua_capture_cam`)
+      is created once and reused; the user's viewport camera/view is never touched, and every
+      per-render scene mutation (camera/engine/resolution/filepath/format) is snapshotted and
+      restored. Framing math (bbox → view/orbit camera placement, ortho-scale) is pure-Python
+      and unit-tested under fake-bpy; the server emits one MCP image content per available
+      image. All read-only (`mutates=False`), parity holds. Degrades to `available:false`
+      headless (no GPU) — the envelope/contract is asserted in headless smoke
+      (`test_feedback_capture_views_returns_envelope`, `test_feedback_turntable_returns_envelope`).
+      **The actual rendered multi-angle/turntable PNGs are verified in a GUI session, not
+      headless** (pure `--background` with no GL context returns the graceful degrade).
+- [ ] UV/topology/diagnostic captures; `GPUOffScreen` non-intrusive.
 - [ ] `io` import/export (the niua asset seam; Godot-ready glTF).
 - [ ] Async heavy ops (modal operators), headless worker pool, the critique loop.

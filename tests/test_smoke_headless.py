@@ -147,6 +147,45 @@ def test_feedback_capture_returns_a_verdict(bridge: BlenderBridge) -> None:
     assert "available" in result
 
 
+def test_feedback_capture_views_returns_envelope(bridge: BlenderBridge) -> None:
+    # The anti-blob multi-angle. Headless has no GPU, so rendering may be unavailable;
+    # what we assert is the ENVELOPE CONTRACT, not pixels: it must not crash, must carry
+    # an 'available' bool and an 'images' list, and every item must be a structured dict
+    # (either a rendered image {view,mimeType,encoding,data} or a per-view degrade
+    # {view,available:false,reason}).
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "ViewsHero"})
+    result = bridge.call("feedback.capture_views", {"object": "ViewsHero", "preset": "ortho4"})
+    assert isinstance(result.get("available"), bool)
+    assert isinstance(result.get("images"), list)
+    for img in result["images"]:
+        assert isinstance(img, dict)
+        assert "view" in img
+        # Each item is either a real image (has data) or a clean degrade (available:false).
+        assert "data" in img or img.get("available") is False
+
+
+def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:
+    # Orbit. Same contract: envelope shape holds even when rendering is unavailable
+    # headless, and 'count' is honored / clamped into 2..24.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "SpinHero"})
+    result = bridge.call("feedback.turntable", {"object": "SpinHero", "count": 4})
+    assert isinstance(result.get("available"), bool)
+    assert isinstance(result.get("images"), list)
+    # When rendering is available the orbit honors 'count'; when it degrades early
+    # (no GL context headless) the envelope is an empty images list + a reason. Both
+    # are valid envelopes -- we never assert pixels exist headless.
+    if result["available"]:
+        assert len(result["images"]) == 4  # count honored once rendering works
+    else:
+        assert "reason" in result or result["images"] == [] or all(
+            img.get("available") is False for img in result["images"]
+        )
+    for img in result["images"]:
+        assert isinstance(img, dict)
+        assert "view" in img
+        assert "data" in img or img.get("available") is False
+
+
 # --- Phase 2 domain smoke: one safe op per pack, end to end in real Blender ----------
 # Each verifies the pack's command actually dispatches, mutates (where applicable), and
 # the analytic read reflects the change. All headless-safe (no GPU/area context needed).

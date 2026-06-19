@@ -76,6 +76,25 @@ def test_feedback_capture_returns_image_content() -> None:
     assert images and images[0]["data"] == "QkFTRTY0"
 
 
+def test_capture_views_returns_one_image_content_per_image() -> None:
+    bridge = RecordingBridge(
+        result={
+            "available": True,
+            "images": [
+                {"view": "front", "mimeType": "image/png", "data": "Rk9OVA=="},
+                {"view": "right", "mimeType": "image/png", "data": "UklHSFQ="},
+                {"view": "broken", "available": False, "reason": "no gpu"},  # no data -> skipped
+            ],
+        }
+    )
+    server = create_server(bridge=bridge)
+    resp = server.handle(rpc("tools/call", {"name": "feedback.capture_views", "arguments": {}}))
+    content = resp["result"]["content"]
+    images = [c for c in content if c["type"] == "image"]
+    assert [i["data"] for i in images] == ["Rk9OVA==", "UklHSFQ="]
+    assert resp["result"]["isError"] is False
+
+
 def test_bridge_error_surfaces_as_tool_error() -> None:
     bridge = RecordingBridge(raises=BridgeError(NOT_FOUND, "object not found: Ghost"))
     server = create_server(bridge=bridge)
