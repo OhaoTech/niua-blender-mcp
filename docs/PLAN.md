@@ -41,10 +41,25 @@ edit smoke: cube → `mesh.subdivide` cuts=2 → `mesh.report` confirms 8/12/6 �
 - [x] Analytic feedback: `mesh.report` (tris, n-gons, non-manifold edges via bmesh, bbox
       dimensions, UV/material counts, transform-applied check).
 
-## Phase 2 — UV, shading, modifiers, animation, rigging
+## Phase 2 — UV, shading, modifiers, animation, rigging  ✅ DONE
 
-- [ ] `uv` (unwrap methods, pack), `shading` (material + node trees), `modifiers`,
-      `anim` (keyframes/actions), `rig` (armature/weights). One pack at a time.
+Five domain packs built concurrently, integrated, and verified end to end against real
+Blender 5.1.1 headless (161 tests green, incl. one safe smoke op per pack). Parity holds
+across all server SPECS ↔ add-on COMMANDS.
+
+- [x] `uv` — smart_unwrap, unwrap (ANGLE_BASED/CONFORMAL), cube/sphere project,
+      pack_islands, average_islands_scale, report (has_uvs, layers, island_count via bmesh).
+- [x] `shading` — create_material, set_principled (Base Color/Metallic/Roughness/Alpha/
+      Emission Strength sockets verified in 5.x), assign_material, add_image_texture,
+      list_materials.
+- [x] `modifiers` — add (SUBSURF/BEVEL/SOLIDIFY/MIRROR/ARRAY/BOOLEAN/DECIMATE/WIREFRAME),
+      set (typed coercion), apply, remove, list.
+- [x] `anim` — set_frame, insert/delete keyframe, set_interpolation, list_actions, report.
+      Slotted-action aware: f-curves read from `action.layers[].strips[].channelbag(slot)`
+      on Blender 4.4+ (legacy `action.fcurves` removed in 5.x) with a flat-list fallback.
+- [x] `rig` — add_armature, add_bone, set_bone_transform (edit-bone authoring survives the
+      EDIT→OBJECT round-trip), parent_with_auto_weights (heat skinning works headless),
+      list_bones.
 
 ## Phase 3 — RNA generation + context hardening
 

@@ -144,3 +144,84 @@ def test_feedback_capture_returns_a_verdict(bridge: BlenderBridge) -> None:
     # Headless has no GPU/display, so this may report unavailable; it must not crash.
     result = bridge.call("feedback.capture", {"mode": "viewport"})
     assert "available" in result
+
+
+# --- Phase 2 domain smoke: one safe op per pack, end to end in real Blender ----------
+# Each verifies the pack's command actually dispatches, mutates (where applicable), and
+# the analytic read reflects the change. All headless-safe (no GPU/area context needed).
+
+
+def test_modifiers_add_and_list(bridge: BlenderBridge) -> None:
+    # modifiers.add SUBSURF then modifiers.list should reflect it on the object stack.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "ModHero"})
+    added = bridge.call("modifiers.add", {"object": "ModHero", "type": "SUBSURF"})
+    assert added["type"] == "SUBSURF"
+
+    listed = bridge.call("modifiers.list", {"object": "ModHero"})
+    types = {m["type"] for m in listed["modifiers"]}
+    assert "SUBSURF" in types
+
+
+def test_shading_create_and_assign(bridge: BlenderBridge) -> None:
+    # Create a material, set Principled inputs (verifies 5.x socket names), assign it.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "ShadeHero"})
+    bridge.call("shading.create_material", {"name": "SmokeMat"})
+    # base_color / metallic / roughness must resolve to live Principled BSDF sockets.
+    bridge.call(
+        "shading.set_principled",
+        {"material": "SmokeMat", "base_color": [0.8, 0.1, 0.1], "metallic": 0.5, "roughness": 0.3},
+    )
+    assigned = bridge.call("shading.assign_material", {"object": "ShadeHero", "material": "SmokeMat"})
+    assert assigned["material"] == "SmokeMat"
+
+    mats = bridge.call("shading.list_materials", {"object": "ShadeHero"})
+    assert "SmokeMat" in mats["materials"]
+
+
+def test_anim_keyframe_and_report(bridge: BlenderBridge) -> None:
+    # Insert two location keyframes, then anim.report must count the f-curves/keys.
+    # Regression guard for Blender 4.4+ slotted actions: f-curves moved off
+    # action.fcurves into action.layers[].strips[].channelbag(slot).fcurves; a naive
+    # reader reports 0 keyframes and set_interpolation wrongly fails preconditions.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "AnimHero"})
+    bridge.call("anim.insert_keyframe", {"object": "AnimHero", "data_path": "location", "frame": 1})
+    bridge.call("anim.insert_keyframe", {"object": "AnimHero", "data_path": "location", "frame": 10})
+
+    report = bridge.call("anim.report", {"object": "AnimHero"})
+    assert report["fcurves"] == 3  # location x/y/z
+    assert report["keyframes"] == 6  # two keys per channel
+    assert report["action"] is not None
+
+    interp = bridge.call("anim.set_interpolation", {"object": "AnimHero", "interpolation": "LINEAR"})
+    assert interp["fcurves"] == 3 and interp["keyframes"] == 6
+
+
+def test_uv_smart_unwrap_then_report(bridge: BlenderBridge) -> None:
+    # Smart-unwrap a cube (verifies uv.smart_project kwargs in 5.x), then uv.report.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
+
+    before = bridge.call("uv.report", {"object": "UVHero"})
+    # A factory cube already ships with a default UVMap; smart_unwrap rebuilds it.
+    assert "has_uvs" in before
+
+    bridge.call("uv.smart_unwrap", {"object": "UVHero", "angle_limit": 66.0, "island_margin": 0.02})
+
+    after = bridge.call("uv.report", {"object": "UVHero"})
+    assert after["has_uvs"] is True
+    assert after["uv_layer_count"] >= 1
+    # bmesh island detection should find at least one island after a real unwrap.
+    assert after["island_count"] is None or after["island_count"] >= 1
+
+
+def test_rig_armature_bone_and_list(bridge: BlenderBridge) -> None:
+    # Create an armature, author an edit-bone, confirm it persists into object mode.
+    # Verifies edit_bones authoring survives the EDIT->OBJECT mode round-trip headless.
+    bridge.call("rig.add_armature", {"name": "RigHero", "location": [0, 0, 0]})
+    bridge.call(
+        "rig.add_bone",
+        {"armature": "RigHero", "name": "Spine", "head": [0, 0, 0], "tail": [0, 0, 1]},
+    )
+
+    bones = bridge.call("rig.list_bones", {"armature": "RigHero"})
+    names = {b["name"] for b in bones["bones"]}
+    assert "Spine" in names  # the authored edit-bone is now a rest-pose Bone

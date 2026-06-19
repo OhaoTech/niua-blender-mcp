@@ -1,0 +1,120 @@
+"""UV domain manifest: unwrapping and island layout.
+
+All projection/unwrap operators run in EDIT mode on the active mesh object's
+selection; the kernel context resolver guarantees EDIT mode + a mesh active object
++ a selection before they run, and these handlers select-all-faces so the projection
+covers the whole mesh. ``uv.report`` is read-only analytic feedback ("the eyes"):
+UV layer names, whether the mesh has UVs, and a cheap island count.
+"""
+
+from __future__ import annotations
+
+from ..kernel import Enum, Float, Str, ToolSpec
+
+SPECS = [
+    ToolSpec(
+        name="uv.smart_unwrap",
+        category="uv",
+        summary="Smart UV project the selected faces (angle-based auto seams)",
+        command="uv.smart_unwrap",
+        params={
+            "object": Str(summary="Mesh object to unwrap (defaults to active)"),
+            "angle_limit": Float(
+                default=66.0,
+                minimum=0.0,
+                maximum=89.0,
+                summary="Angle limit in degrees for splitting islands",
+            ),
+            "island_margin": Float(
+                default=0.0,
+                minimum=0.0,
+                maximum=1.0,
+                summary="Margin between islands in UV space",
+            ),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.unwrap",
+        category="uv",
+        summary="Unwrap the selected faces along existing seams",
+        command="uv.unwrap",
+        params={
+            "object": Str(summary="Mesh object to unwrap (defaults to active)"),
+            "method": Enum(
+                ["ANGLE_BASED", "CONFORMAL"],
+                default="ANGLE_BASED",
+                summary="Unwrapping algorithm",
+            ),
+            "island_margin": Float(
+                default=0.0,
+                minimum=0.0,
+                maximum=1.0,
+                summary="Margin between islands in UV space",
+            ),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.cube_project",
+        category="uv",
+        summary="Cube-project the selected faces onto the UV map",
+        command="uv.cube_project",
+        params={
+            "object": Str(summary="Mesh object to project (defaults to active)"),
+            "cube_size": Float(default=1.0, minimum=0.0, summary="Size of the projection cube"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.sphere_project",
+        category="uv",
+        summary="Sphere-project the selected faces onto the UV map",
+        command="uv.sphere_project",
+        params={
+            "object": Str(summary="Mesh object to project (defaults to active)"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.pack_islands",
+        category="uv",
+        summary="Pack the UV islands to fit the [0,1] UV space",
+        command="uv.pack_islands",
+        params={
+            "object": Str(summary="Mesh object whose islands to pack (defaults to active)"),
+            "margin": Float(
+                default=0.001,
+                minimum=0.0,
+                maximum=1.0,
+                summary="Space between packed islands in UV space",
+            ),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.average_islands_scale",
+        category="uv",
+        summary="Average the texel density / scale of all UV islands",
+        command="uv.average_islands_scale",
+        params={
+            "object": Str(summary="Mesh object whose islands to scale (defaults to active)"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.report",
+        category="uv",
+        summary="Analytic UV report for a mesh: layers, has_uvs, island count (read-only)",
+        command="uv.report",
+        params={
+            "object": Str(summary="Mesh object to inspect (defaults to active)"),
+        },
+    ),
+]
