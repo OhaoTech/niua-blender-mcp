@@ -69,4 +69,13 @@ SPECS = [
             "res": Int(default=640, minimum=64, maximum=2048, summary="Square render resolution (px)"),
         },
     ),
+    ToolSpec(
+        name="feedback.quality",
+        category="feedback",
+        summary="Objective quality metrics for a mesh: topology, symmetry, proportion, scale (read-only)",
+        command="feedback.quality",
+        params={
+            "object": Str(summary="Mesh object to measure (defaults to active)"),
+        },
+    ),
 ]

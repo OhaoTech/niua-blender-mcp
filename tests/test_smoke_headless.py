@@ -538,6 +538,126 @@ def test_feedback_critique_returns_bundle_envelope(bridge: BlenderBridge) -> Non
         assert "data" in img or img.get("available") is False
 
 
+# --- Critique loop — objective metrics smoke (Phase 6 follow-up) -----------------------
+# feedback.quality is pure geometry (bmesh + vertex coords), so every field is fully
+# headless-verifiable in real Blender — no GPU/area context needed. These pin the metric
+# semantics against two known meshes: a perfect cube and Suzanne (left-right symmetric).
+
+
+def test_feedback_quality_on_default_cube(bridge: BlenderBridge) -> None:
+    # A factory cube is the cleanest possible mesh: all quads, no n-gons, fully manifold,
+    # perfectly symmetric on every axis, and no loose geometry. Real bmesh populates the
+    # three fields that return null under fake-bpy.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "QualCube"})
+
+    q = bridge.call("feedback.quality", {"object": "QualCube"})
+    assert q["object"] == "QualCube"
+
+    topo = q["topology"]
+    assert topo["faces"] == 6
+    assert topo["quads"] == 6
+    assert topo["ngons"] == 0
+    assert topo["quad_ratio"] == 1.0  # every face is a quad
+    assert topo["ngon_ratio"] == 0.0
+    assert topo["non_manifold_edges"] == 0  # a closed cube is fully manifold
+    assert topo["loose_verts"] == 0
+    # A cube's 8 corner verts are each valence-3 AND all cube edges are manifold (2 faces
+    # each), so none are excluded as boundary — every corner is an interior valence!=4 pole.
+    # pole_count == 8 is the geometrically correct answer (NOT 0): the cube has no valence-4
+    # interior verts at all. (The task's predicted "0" was wrong; the implementation is right.)
+    assert topo["pole_count"] == 8
+
+    sym = q["symmetry"]
+    assert sym["symmetry_x"] == 1.0
+    assert sym["symmetry_y"] == 1.0
+    assert sym["symmetry_z"] == 1.0  # a cube mirrors perfectly across all three planes
+
+    prop = q["proportion"]
+    assert prop["aspect_ratio"] == 1.0  # 2x2x2 — uniform
+    assert prop["boxiness"] == 1.0  # bbox fully fills its longest-edge cube
+
+    scale = q["scale"]
+    assert scale["transform_applied"] is True  # freshly created at identity
+
+
+def test_feedback_quality_on_suzanne(bridge: BlenderBridge) -> None:
+    # Suzanne is the realistic case: a dense, left-right (X) symmetric mesh with genuine
+    # poles and a few non-manifold border edges (the eyes). We assert the fields exist and
+    # carry plausible real numbers, not exact counts that would brittle on a mesh revision.
+    bridge.call("rna.call_operator", {"idname": "mesh.primitive_monkey_add", "args": json.dumps({})})
+    info = bridge.call("scene.info", {})
+    names = [o["name"] for o in info["objects"] if o["name"].startswith("Suzanne")]
+    assert names, "monkey_add did not create a Suzanne"
+    suz = names[0]
+
+    q = bridge.call("feedback.quality", {"object": suz})
+
+    topo = q["topology"]
+    assert topo["faces"] > 400  # Suzanne ships with ~500 faces
+    # All the bmesh-derived fields populate in real Blender (would be null under fake-bpy).
+    assert isinstance(topo["pole_count"], int) and topo["pole_count"] > 0  # poles present
+    assert isinstance(topo["non_manifold_edges"], int)
+    assert isinstance(topo["loose_verts"], int)
+    assert 0.0 <= topo["quad_ratio"] <= 1.0
+
+    sym = q["symmetry"]
+    # Suzanne is mirror-symmetric across the local YZ plane (the X axis), so symmetry_x is
+    # high (~1.0), while she is NOT symmetric front-to-back (Y), so symmetry_x dominates.
+    assert sym["symmetry_x"] > 0.9
+    assert sym["symmetry_x"] > sym["symmetry_y"]  # X is the real symmetry axis, Y is not
+
+    # proportion / scale blocks are present and sane.
+    assert q["proportion"]["aspect_ratio"] is not None and q["proportion"]["aspect_ratio"] > 1.0
+    assert q["scale"]["transform_applied"] is True
+
+
+def test_feedback_critique_bundle_includes_quality_subdict(bridge: BlenderBridge) -> None:
+    # The folded objective channel: one observe call returns images + counts + a compact
+    # quality sub-dict, with REAL numbers headless (the analytic half needs no GPU).
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "CritQualCube"})
+
+    result = bridge.call("feedback.critique", {"object": "CritQualCube", "preset": "ortho4"})
+    report = result["report"]
+    assert isinstance(report, dict)
+
+    quality = report.get("quality")
+    assert isinstance(quality, dict), "critique report is missing the folded quality sub-dict"
+    # Compact block contract, with the cube's real values.
+    assert quality["quad_ratio"] == 1.0
+    assert quality["ngon_ratio"] == 0.0
+    assert quality["pole_count"] == 8
+    assert quality["non_manifold_edges"] == 0
+    assert quality["loose_verts"] == 0
+    assert quality["symmetry"] == {"symmetry_x": 1.0, "symmetry_y": 1.0, "symmetry_z": 1.0}
+    assert quality["aspect_ratio"] == 1.0
+    assert quality["transform_applied"] is True
+
+
+# --- MCP prompts smoke (server-side; no Blender needed, runs in the real-Blender pass) --
+
+
+def test_prompts_list_is_non_empty() -> None:
+    from niua_blender_mcp.prompts import list_prompts
+
+    prompts = list_prompts()
+    assert isinstance(prompts, list) and prompts, "prompts/list is empty"
+    names = {p["name"] for p in prompts}
+    assert {"refine_mesh", "inspect"} <= names
+
+
+def test_prompts_get_refine_mesh_scaffolds_the_loop() -> None:
+    from niua_blender_mcp.prompts import get_prompt
+
+    rendered = get_prompt("refine_mesh", None)
+    messages = rendered["messages"]
+    assert messages and messages[0]["role"] == "user"
+    text = messages[0]["content"]["text"]
+    # The loop scaffold must name its three load-bearing primitives.
+    assert "checkpoint" in text
+    assert "critique" in text
+    assert "revert" in text
+
+
 def test_io_prepare_godot_applies_transforms_and_exports(bridge: BlenderBridge) -> None:
     # prepare_godot on a translated + rotated cube: applies transforms, exports one object
     # to GLB (+Y up), reports applied:true. After apply, the object's transform is identity.

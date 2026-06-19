@@ -15,8 +15,10 @@ from .bridge import BlenderBridge, BridgeError
 from .domains import build_router
 from .kernel import McpError, Router, validate
 from .kernel.errors import PYTHON_DISABLED, UNKNOWN_TOOL
+from .prompts import get_prompt, list_prompts
 from .protocol import (
     INTERNAL_ERROR,
+    INVALID_PARAMS,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
     JsonRpcError,
@@ -65,14 +67,25 @@ class NiuaBlenderMCP:
             "tools/list": lambda params: {"tools": self._tool_defs()},
             "tools/call": self._tools_call,
             "resources/list": lambda params: {"resources": []},
-            "prompts/list": lambda params: {"prompts": []},
+            "prompts/list": lambda params: {"prompts": list_prompts()},
+            "prompts/get": self._prompts_get,
             "logging/setLevel": lambda params: {},
         }
+
+    def _prompts_get(self, params: JSON) -> JSON:
+        name = params.get("name")
+        arguments = params.get("arguments") or {}
+        if not isinstance(name, str):
+            raise JsonRpcError(INVALID_PARAMS, "prompts/get requires a 'name'")
+        try:
+            return get_prompt(name, arguments)
+        except KeyError:
+            raise JsonRpcError(INVALID_PARAMS, f"unknown prompt: {name}") from None
 
     def _initialize(self, params: JSON) -> JSON:
         return {
             "protocolVersion": SUPPORTED_PROTOCOL_VERSION,
-            "capabilities": {"tools": {"listChanged": True}, "logging": {}},
+            "capabilities": {"tools": {"listChanged": True}, "prompts": {}, "logging": {}},
             "serverInfo": {"name": SERVER_NAME, "title": "Niua Blender MCP", "version": SERVER_VERSION},
             "instructions": "Drive a live Blender: scene.*, rna.describe, feedback.capture.",
         }

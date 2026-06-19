@@ -103,54 +103,92 @@ def shade_smooth(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "smooth": smooth}
 
 
-def _non_manifold_edges(obj: Any) -> int | None:
-    """Count non-manifold edges via bmesh if importable; else None."""
+def _bmesh_for(obj: Any) -> Any | None:
+    """Build a fresh bmesh from an object's mesh data, or None when bmesh is unavailable.
+
+    Caller owns the returned bmesh and MUST ``free()`` it. ``None`` lets callers degrade
+    metric fields gracefully (fake-bpy / partial envs have no ``bmesh``).
+    """
     try:
         import bmesh  # noqa: PLC0415 - optional; only present inside Blender
     except Exception:  # noqa: BLE001 - fake-bpy / partial envs lack bmesh
         return None
-    mesh = obj.data
     bm = bmesh.new()
     try:
-        bm.from_mesh(mesh)
+        bm.from_mesh(obj.data)
+    except Exception:  # noqa: BLE001 - degrade rather than crash dispatch
+        bm.free()
+        return None
+    return bm
+
+
+def _non_manifold_edges(obj: Any) -> int | None:
+    """Count non-manifold edges via bmesh if importable; else None."""
+    bm = _bmesh_for(obj)
+    if bm is None:
+        return None
+    try:
         return sum(1 for e in bm.edges if not e.is_manifold)
     finally:
         bm.free()
 
 
-def report(ctx: Ctx, payload: dict) -> dict:
-    obj = _resolve_mesh(ctx, payload)
-    mesh = obj.data
+def topology_counts(mesh: Any) -> dict:
+    """Pure face-count topology from mesh ``polygons`` (no bmesh): the shared core of
+    ``mesh.report`` and ``feedback.quality``. Counts faces, triangulated tris, quads and
+    n-gons plus the quad/n-gon ratios.
+    """
     polygons = list(getattr(mesh, "polygons", []) or [])
-    vertices = list(getattr(mesh, "vertices", []) or [])
-    edges = list(getattr(mesh, "edges", []) or [])
-
+    faces = len(polygons)
     triangles = 0
+    quads = 0
     ngons = 0
     for poly in polygons:
         count = len(getattr(poly, "vertices", []) or [])
         triangles += max(count - 2, 0)
-        if count > 4:
+        if count == 4:
+            quads += 1
+        elif count > 4:
             ngons += 1
+    return {
+        "faces": faces,
+        "tris": triangles,
+        "quads": quads,
+        "ngons": ngons,
+        "quad_ratio": (quads / faces) if faces else 0.0,
+        "ngon_ratio": (ngons / faces) if faces else 0.0,
+    }
 
+
+def bbox_dimensions(obj: Any) -> list[float] | None:
     dims = getattr(obj, "dimensions", None)
-    bbox_dimensions = [float(v) for v in dims] if dims is not None else None
+    return [float(v) for v in dims] if dims is not None else None
 
+
+def transform_applied(obj: Any) -> bool:
     matrix = getattr(obj, "matrix_world", None)
-    transform_applied = _is_identity(matrix) if matrix is not None else False
+    return _is_identity(matrix) if matrix is not None else False
+
+
+def report(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    mesh = obj.data
+    counts = topology_counts(mesh)
+    vertices = list(getattr(mesh, "vertices", []) or [])
+    edges = list(getattr(mesh, "edges", []) or [])
 
     return {
         "object": obj.name,
         "vertices": len(vertices),
         "edges": len(edges),
-        "faces": len(polygons),
-        "triangles": triangles,
-        "ngons": ngons,
+        "faces": counts["faces"],
+        "triangles": counts["tris"],
+        "ngons": counts["ngons"],
         "non_manifold_edges": _non_manifold_edges(obj),
-        "bbox_dimensions": bbox_dimensions,
+        "bbox_dimensions": bbox_dimensions(obj),
         "uv_layers": len(getattr(mesh, "uv_layers", []) or []),
         "materials": len(getattr(mesh, "materials", []) or []),
-        "transform_applied": transform_applied,
+        "transform_applied": transform_applied(obj),
     }
 
 
