@@ -1,0 +1,97 @@
+"""Mesh domain manifest: the first real modeling capability.
+
+Edit-mode operators (extrude/bevel/inset/subdivide/recalc_normals) act on the active
+mesh object's selection; the kernel context resolver guarantees EDIT mode + a mesh
+active object + a selection before they run. ``mesh.shade_smooth`` is an object-mode
+shading toggle. ``mesh.report`` is read-only analytic feedback ("the eyes"): topology
+counts, n-gons, non-manifold edges, bbox dimensions, UV/material counts.
+"""
+
+from __future__ import annotations
+
+from ..kernel import Bool, Float, Int, Str, ToolSpec, Vec3
+
+SPECS = [
+    ToolSpec(
+        name="mesh.extrude",
+        category="mesh",
+        summary="Extrude the selected region and translate it",
+        command="mesh.extrude",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "translate": Vec3(summary="Translation applied to the extruded region [x, y, z]"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.bevel",
+        category="mesh",
+        summary="Bevel the selected edges/vertices",
+        command="mesh.bevel",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "offset": Float(default=0.1, minimum=0.0, summary="Bevel width"),
+            "segments": Int(default=1, minimum=1, maximum=100, summary="Number of bevel segments"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.inset",
+        category="mesh",
+        summary="Inset the selected faces",
+        command="mesh.inset",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "thickness": Float(default=0.1, minimum=0.0, summary="Inset thickness"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.subdivide",
+        category="mesh",
+        summary="Subdivide the selected edges/faces",
+        command="mesh.subdivide",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "cuts": Int(default=1, minimum=1, maximum=100, summary="Number of cuts"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.recalc_normals",
+        category="mesh",
+        summary="Recalculate the mesh normals consistently",
+        command="mesh.recalc_normals",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "inside": Bool(default=False, summary="Point normals inside instead of outside"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.shade_smooth",
+        category="mesh",
+        summary="Toggle smooth/flat shading on the object",
+        command="mesh.shade_smooth",
+        params={
+            "object": Str(summary="Mesh object to shade (defaults to active)"),
+            "smooth": Bool(default=True, summary="Smooth shading when true, flat when false"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.report",
+        category="mesh",
+        summary="Analytic topology report for a mesh (read-only)",
+        command="mesh.report",
+        params={
+            "object": Str(summary="Mesh object to inspect (defaults to active)"),
+        },
+    ),
+]

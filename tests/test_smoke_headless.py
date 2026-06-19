@@ -118,6 +118,28 @@ def test_failed_call_does_not_undo_prior_work(bridge: BlenderBridge) -> None:
     assert {"KeepA", "KeepB"} <= names  # neither was clobbered by the failed call
 
 
+def test_mesh_edit_changes_geometry_end_to_end(bridge: BlenderBridge) -> None:
+    # Full mesh pipeline in real Blender: create -> edit-mode op -> analytic report.
+    # The kernel must guarantee EDIT mode + active mesh + selection (headless, no
+    # VIEW_3D area), run one undoable mutation, and the geometry counts must change.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "MeshHero"})
+
+    before = bridge.call("mesh.report", {"object": "MeshHero"})
+    assert before["vertices"] == 8 and before["edges"] == 12 and before["faces"] == 6
+
+    bridge.call("mesh.subdivide", {"object": "MeshHero", "cuts": 2})
+
+    after = bridge.call("mesh.report", {"object": "MeshHero"})
+    # A 2-cut subdivide turns each of the 6 cube faces into a 3x3 grid: 56v/108e/54f.
+    assert after["vertices"] == 56
+    assert after["edges"] == 108
+    assert after["faces"] == 54
+    # Strictly more geometry than before, and the edit was actually applied.
+    assert after["vertices"] > before["vertices"]
+    assert after["faces"] > before["faces"]
+    assert after["ngons"] == 0
+
+
 def test_feedback_capture_returns_a_verdict(bridge: BlenderBridge) -> None:
     # Headless has no GPU/display, so this may report unavailable; it must not crash.
     result = bridge.call("feedback.capture", {"mode": "viewport"})

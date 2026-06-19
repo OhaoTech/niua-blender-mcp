@@ -27,12 +27,19 @@ object, introspects the live API, and a bad call returns a structured `not_found
 without crashing. In a GUI session the same runs with a visible window and per-action
 Ctrl+Z. The spine holds; everything below is "add a domain pack."
 
-## Phase 1 — Mesh editing
+## Phase 1 — Mesh editing  ✅ DONE
 
-- [ ] Edit-mode context manager in the kernel (`ctx.ensure(mode='EDIT', ...)`) + `poll()`
-      precondition checks (the context resolver from DESIGN §7.5).
-- [ ] `mesh` domain: select, extrude, bevel, inset, subdivide, loop cut, merge, normals.
-- [ ] Analytic feedback: `mesh.report` (tris, n-gons, non-manifold, bbox, UV/material audit).
+Verified end to end against real Blender 5.1 headless (73 tests green, incl. a mesh
+edit smoke: cube → `mesh.subdivide` cuts=2 → `mesh.report` confirms 8/12/6 → 56/108/54).
+
+- [x] Edit-mode context manager in the kernel (`ctx.ensure(mode='EDIT', ...)`) + `poll()`
+      precondition checks (the context resolver from DESIGN §7.5). Headless-safe: skips
+      the `temp_override` when no VIEW_3D area exists; one undo step pushed only after a
+      successful mutation, never on a precondition failure.
+- [x] `mesh` domain: extrude, bevel, inset, subdivide, recalc_normals, shade_smooth
+      (select/loop-cut/merge deferred to Phase 2 alongside the wider edit toolkit).
+- [x] Analytic feedback: `mesh.report` (tris, n-gons, non-manifold edges via bmesh, bbox
+      dimensions, UV/material counts, transform-applied check).
 
 ## Phase 2 — UV, shading, modifiers, animation, rigging
 

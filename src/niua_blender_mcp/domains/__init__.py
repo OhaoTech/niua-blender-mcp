@@ -1,87 +1,40 @@
-"""Server-side tool manifest: the ToolSpecs exposed to the agent.
+"""Domain packs (server side): the ToolSpec manifests exposed to the agent.
 
-Command names must mirror the add-on's command registry (a parity test guards this).
-The server validates arguments against these specs before dispatching over the bridge.
+Auto-discovery: every sibling module in this package that exposes a module-level
+``SPECS: list[ToolSpec]`` is a domain. ``build_router`` imports them all and registers
+their specs. Adding a domain is dropping a new ``<name>.py`` here that defines ``SPECS``
+-- no edit to this file is required.
+
+Command names must mirror the add-on's command registry, whose mirror convention is a
+``COMMANDS: list[Command]`` attribute (a parity test guards this). The server validates
+arguments against these specs before dispatching over the bridge. The router keeps
+curated-over-rna precedence on name collisions, independent of discovery order.
 """
 
 from __future__ import annotations
 
-from ..kernel import Enum, Router, Str, ToolSpec, Vec3
+import importlib
+import pkgutil
 
-PRIMITIVE_TYPES = ["CUBE", "SPHERE", "PLANE", "CYLINDER", "CONE", "EMPTY"]
+from ..kernel import Router, ToolSpec
 
-SCENE = [
-    ToolSpec(
-        name="scene.info",
-        category="scene",
-        summary="Summarize the current scene (objects, materials)",
-        command="scene.info",
-    ),
-    ToolSpec(
-        name="scene.create_object",
-        category="scene",
-        summary="Create a primitive object in the scene",
-        command="scene.create_object",
-        params={
-            "type": Enum(PRIMITIVE_TYPES, required=True, summary="Primitive type"),
-            "name": Str(summary="Optional object name"),
-            "location": Vec3(summary="World location [x, y, z]"),
-        },
-        mutates=True,
-        feedback="viewport",
-    ),
-    ToolSpec(
-        name="scene.set_transform",
-        category="scene",
-        summary="Set an object's location/rotation/scale",
-        command="scene.set_transform",
-        params={
-            "object": Str(required=True, summary="Object name"),
-            "location": Vec3(summary="World location [x, y, z]"),
-            "rotation": Vec3(summary="Euler rotation in radians [x, y, z]"),
-            "scale": Vec3(summary="Scale [x, y, z]"),
-        },
-        mutates=True,
-        feedback="viewport",
-    ),
-]
+#: The module-level attribute each domain module must expose.
+DOMAIN_ATTR = "SPECS"
 
-INTROSPECTION = [
-    ToolSpec(
-        name="rna.describe",
-        category="introspection",
-        summary="Describe a Blender operator or type via RNA (e.g. 'op:mesh.bevel', 'type:Object')",
-        command="rna.describe",
-        params={"path": Str(required=True, summary="'op:<cat>.<name>' or 'type:<TypeName>'")},
-    ),
-]
 
-FEEDBACK = [
-    ToolSpec(
-        name="feedback.capture",
-        category="feedback",
-        summary="Render the current view to a PNG the agent can see",
-        command="feedback.capture",
-        params={"mode": Enum(["viewport"], default="viewport", summary="Capture mode")},
-    ),
-]
-
-SYSTEM = [
-    ToolSpec(
-        name="system.execute_python",
-        category="system",
-        summary="Run Python inside Blender (disabled unless explicitly enabled)",
-        command="system.execute_python",
-        params={"code": Str(required=True, summary="Python source to exec")},
-        mutates=True,
-    ),
-]
+def _discover_specs() -> list[ToolSpec]:
+    specs: list[ToolSpec] = []
+    for info in pkgutil.iter_modules(__path__):
+        if info.ispkg:
+            continue
+        module = importlib.import_module(f"{__name__}.{info.name}")
+        domain = getattr(module, DOMAIN_ATTR, None)
+        if domain:
+            specs.extend(domain)
+    return specs
 
 
 def build_router() -> Router:
     router = Router()
-    router.add(SCENE)
-    router.add(INTROSPECTION)
-    router.add(FEEDBACK)
-    router.add(SYSTEM)
+    router.add(_discover_specs())  # curated-over-rna precedence lives in Router.register
     return router
