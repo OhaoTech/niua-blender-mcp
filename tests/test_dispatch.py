@@ -133,19 +133,32 @@ def test_scene_info_is_read_only_no_undo() -> None:
     assert bpy.undo_pushes == []  # reads never push undo
 
 
-def test_failing_mutation_rolls_back() -> None:
+def test_failing_mutation_pushes_no_undo_step() -> None:
+    # A failed mutation must NOT push an undo step (pushing-then-undoing wrongly
+    # reverts the *previous* operation in real Blender). Precondition failures
+    # happen before any mutation, so there is nothing to push or roll back.
     c, bpy = ctx()
     reg = build_default_registry()
 
     def boom(ctx_, payload):
-        ctx_.bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))  # partial mutation
         raise ValueError("kaboom")
 
     reg.register(Command("test.boom", boom, mutates=True))
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "test.boom", {}, c)
     assert exc.value.code == HANDLER_ERROR
-    assert bpy.undo_calls == 1  # rolled back
+    assert bpy.undo_pushes == []  # no checkpoint pushed on failure
+    assert bpy.undo_calls == 0
+
+
+def test_missing_object_pushes_no_undo_step() -> None:
+    c, bpy = ctx()
+    reg = build_default_registry()
+    dispatch_on_main(reg, "scene.create_object", {"type": "CUBE", "name": "Keep"}, c)
+    bpy.undo_pushes.clear()
+    with pytest.raises(BridgeError):
+        dispatch_on_main(reg, "scene.set_transform", {"object": "Ghost", "location": [1, 1, 1]}, c)
+    assert bpy.undo_pushes == []  # the prior "Keep" undo step is untouched
 
 
 def test_unknown_command_raises() -> None:

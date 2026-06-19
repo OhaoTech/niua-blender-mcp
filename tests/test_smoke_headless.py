@@ -105,6 +105,19 @@ def test_set_transform_missing_object_is_clean_error(bridge: BlenderBridge) -> N
     assert exc.value.code == "not_found"  # Blender survived; clean structured error
 
 
+def test_failed_call_does_not_undo_prior_work(bridge: BlenderBridge) -> None:
+    # Regression: a failed mutation must not revert the previous legitimate operation.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "KeepA"})
+    from niua_blender_mcp.bridge import BridgeError
+
+    with pytest.raises(BridgeError):
+        bridge.call("scene.set_transform", {"object": "Ghost", "location": [0, 0, 0]})
+    bridge.call("scene.create_object", {"type": "SPHERE", "name": "KeepB"})
+
+    names = {o["name"] for o in bridge.call("scene.info", {})["objects"]}
+    assert {"KeepA", "KeepB"} <= names  # neither was clobbered by the failed call
+
+
 def test_feedback_capture_returns_a_verdict(bridge: BlenderBridge) -> None:
     # Headless has no GPU/display, so this may report unavailable; it must not crash.
     result = bridge.call("feedback.capture", {"mode": "viewport"})

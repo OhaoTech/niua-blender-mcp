@@ -1,8 +1,16 @@
 """Command registry + main-thread dispatch with per-op undo.
 
-``dispatch_on_main`` is what the timer callback runs on Blender's main thread. Every
-mutating command is wrapped in a single Blender undo step so a failure rolls back and
-a success leaves exactly one undo step (the human can Ctrl+Z any agent action).
+``dispatch_on_main`` is what the timer callback runs on Blender's main thread. A
+successful mutation pushes exactly one named Blender undo step, so the human can
+Ctrl+Z any agent action.
+
+Undo is pushed AFTER success, not before. Pushing before and calling undo() on failure
+is wrong in real Blender: when a handler fails *before* mutating (e.g. object not
+found), undo() steps back past the empty checkpoint and reverts the *previous*
+legitimate operation (this was caught in live GUI testing). Phase-0 handlers
+validate-then-act on a single op, so a failure means nothing mutated and there is
+nothing to roll back. Multi-step rollback is a per-domain transaction concern in
+Phase 1 (bmesh edits are naturally transactional).
 """
 
 from __future__ import annotations
@@ -57,15 +65,10 @@ def dispatch_on_main(registry: Registry, command_name: str, payload: dict | None
         raise BridgeError(UNKNOWN_TOOL, f"unknown command: {command_name}")
     payload = payload or {}
 
-    if not command.mutates:
-        return _run(command, ctx, payload)
+    # Precondition failures raise here, before any mutation and before any undo push.
+    result = _run(command, ctx, payload)
 
-    ctx.bpy.ops.ed.undo_push(message=f"niua:{command_name}")
-    try:
-        return _run(command, ctx, payload)
-    except BaseException:
-        try:
-            ctx.bpy.ops.ed.undo()  # roll back the partial mutation
-        except Exception:
-            pass
-        raise
+    if command.mutates:
+        # One named undo step per successful agent action (clean Ctrl+Z).
+        ctx.bpy.ops.ed.undo_push(message=f"niua:{command_name}")
+    return result
