@@ -9,6 +9,7 @@ from niua_blender_mcp.kernel.contract import (
     Int,
     Str,
     ToolSpec,
+    Vec3,
     validate,
 )
 from niua_blender_mcp.kernel.errors import ValidationError
@@ -81,3 +82,37 @@ def test_validate_integer_rejects_non_integral_float() -> None:
 def test_validate_ignores_unknown_params_for_forward_compat() -> None:
     out = validate(spec(), {"type": "CUBE", "future_flag": True})
     assert "future_flag" not in out
+
+
+def _vec_spec() -> ToolSpec:
+    return ToolSpec(
+        name="scene.set_transform",
+        category="scene",
+        summary="Set transform",
+        command="scene.set_transform",
+        params={"object": Str(required=True), "location": Vec3()},
+        mutates=True,
+    )
+
+
+def test_vec3_schema() -> None:
+    schema = _vec_spec().input_schema()
+    loc = schema["properties"]["location"]
+    assert loc["type"] == "array"
+    assert loc["items"] == {"type": "number"}
+    assert loc["minItems"] == 3 and loc["maxItems"] == 3
+
+
+def test_vec3_validate_coerces_numbers() -> None:
+    out = validate(_vec_spec(), {"object": "Cube", "location": [1, 2, 3]})
+    assert out["location"] == [1.0, 2.0, 3.0]
+
+
+def test_vec3_wrong_length_rejected() -> None:
+    with pytest.raises(ValidationError):
+        validate(_vec_spec(), {"object": "Cube", "location": [1, 2]})
+
+
+def test_vec3_non_number_item_rejected() -> None:
+    with pytest.raises(ValidationError):
+        validate(_vec_spec(), {"object": "Cube", "location": [1, "x", 3]})

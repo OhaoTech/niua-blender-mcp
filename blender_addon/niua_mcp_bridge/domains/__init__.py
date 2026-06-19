@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from ..dispatch import Registry
-from . import scene, system
+from . import feedback, introspection, scene, system
 
 
 def build_default_registry() -> Registry:
     registry = Registry()
     registry.add(scene.COMMANDS)
     registry.add(system.COMMANDS)
+    registry.add(introspection.COMMANDS)
+    registry.add(feedback.COMMANDS)
     return registry

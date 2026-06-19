@@ -1,0 +1,144 @@
+"""Socket server + main-thread drain.
+
+Background socket threads enqueue requests; the queue is drained on Blender's main
+thread. Two drivers:
+  * GUI:      bpy.app.timers drives _drain every frame (Blender's event loop keeps it alive).
+  * headless: serve_blocking() runs a main-thread drain loop (no GUI event loop exists).
+
+bpy is imported lazily so this module stays importable for tests without Blender.
+"""
+
+from __future__ import annotations
+
+import json
+import queue
+import socketserver
+import threading
+import time
+import traceback
+
+from .dispatch import dispatch_on_main
+from .errors import BridgeError
+
+_REQUESTS: "queue.Queue" = queue.Queue()
+_SERVER: socketserver.ThreadingTCPServer | None = None
+_THREAD: threading.Thread | None = None
+_REGISTRY = None
+_ALLOW_PYTHON = False
+_LAST_ACTIVITY = 0.0
+
+
+class _Box:
+    __slots__ = ("event", "value", "error")
+
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.value = None
+        self.error = None
+
+
+def _enqueue(command: str, payload: dict, timeout: float) -> dict:
+    global _LAST_ACTIVITY
+    _LAST_ACTIVITY = time.time()
+    box = _Box()
+    _REQUESTS.put((command, payload, box))
+    if not box.event.wait(timeout):
+        return {"ok": False, "error": {"code": "timeout", "message": f"{command} exceeded {timeout}s"}}
+    if box.error is not None:
+        return {"ok": False, "error": box.error}
+    return {"ok": True, "result": box.value}
+
+
+class _Handler(socketserver.StreamRequestHandler):
+    def handle(self) -> None:
+        line = self.rfile.readline()
+        if not line:
+            return
+        try:
+            request = json.loads(line.decode("utf-8"))
+            response = _enqueue(str(request.get("command", "")), request.get("payload") or {}, 60.0)
+        except Exception as exc:  # noqa: BLE001
+            response = {"ok": False, "error": {"code": "internal_error", "message": str(exc)}}
+        self.wfile.write((json.dumps(response) + "\n").encode("utf-8"))
+
+
+def _drain() -> float:
+    """Run on the MAIN thread. Execute every queued request, then reschedule."""
+    import bpy  # noqa: PLC0415 - runtime only
+
+    from .context import Ctx
+
+    while True:
+        try:
+            command, payload, box = _REQUESTS.get_nowait()
+        except queue.Empty:
+            break
+        try:
+            ctx = Ctx(bpy, allow_python=_ALLOW_PYTHON)
+            box.value = dispatch_on_main(_REGISTRY, command, payload, ctx)
+        except BridgeError as exc:
+            box.error = exc.to_dict()
+        except Exception as exc:  # noqa: BLE001
+            box.error = {"code": "handler_error", "message": str(exc), "traceback": traceback.format_exc()}
+        finally:
+            box.event.set()
+    return 0.02  # reschedule interval for the GUI timer
+
+
+def _start_socket(port: int, allow_python: bool) -> None:
+    global _SERVER, _THREAD, _REGISTRY, _ALLOW_PYTHON, _LAST_ACTIVITY
+    from .domains import build_default_registry
+
+    if _SERVER is not None:
+        return
+    _REGISTRY = build_default_registry()
+    _ALLOW_PYTHON = allow_python
+    _LAST_ACTIVITY = time.time()
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", port), _Handler)
+    server.daemon_threads = True
+    _SERVER = server
+    _THREAD = threading.Thread(target=server.serve_forever, daemon=True)
+    _THREAD.start()
+
+
+def start(port: int = 8765, allow_python: bool = False) -> None:
+    """GUI start: socket server + bpy.app.timers drain."""
+    import bpy  # noqa: PLC0415
+
+    _start_socket(port, allow_python)
+    if not bpy.app.timers.is_registered(_drain):
+        bpy.app.timers.register(_drain, persistent=True)
+
+
+def stop() -> None:
+    global _SERVER, _THREAD
+    try:
+        import bpy  # noqa: PLC0415
+
+        if bpy.app.timers.is_registered(_drain):
+            bpy.app.timers.unregister(_drain)
+    except Exception:  # noqa: BLE001
+        pass
+    if _SERVER is not None:
+        _SERVER.shutdown()
+        _SERVER.server_close()
+    if _THREAD is not None:
+        _THREAD.join(timeout=2)
+    _SERVER = None
+    _THREAD = None
+
+
+def is_running() -> bool:
+    return _SERVER is not None
+
+
+def serve_blocking(port: int = 8765, allow_python: bool = False, idle_timeout: float = 30.0) -> None:
+    """Headless driver: drain on the main thread until idle_timeout of no requests."""
+    _start_socket(port, allow_python)
+    try:
+        while time.time() - _LAST_ACTIVITY < idle_timeout:
+            _drain()
+            time.sleep(0.01)
+    finally:
+        stop()

@@ -24,9 +24,13 @@ from .domains import build_default_registry  # noqa: E402
 __all__ = ["build_default_registry", "bl_info"]
 
 
-def register() -> None:  # pragma: no cover - wired in a later chunk
-    raise NotImplementedError("socket server + N-panel are wired in the next Phase 0 chunk")
+def register() -> None:  # pragma: no cover - exercised by the headless smoke test / live Blender
+    from . import ui
+
+    ui.register()
 
 
 def unregister() -> None:  # pragma: no cover
-    pass
+    from . import ui
+
+    ui.unregister()

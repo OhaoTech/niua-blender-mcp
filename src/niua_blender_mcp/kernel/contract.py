@@ -13,7 +13,7 @@ from typing import Any
 from .errors import ValidationError
 
 # JSON-schema primitive kinds we support.
-_KINDS = {"string", "number", "integer", "boolean", "enum"}
+_KINDS = {"string", "number", "integer", "boolean", "enum", "array"}
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,8 @@ class Param:
     minimum: float | None = None
     maximum: float | None = None
     choices: tuple[Any, ...] | None = None
+    length: int | None = None  # fixed array length (e.g. 3 for a vector)
+    item: str = "number"  # element kind for arrays
     summary: str = ""
     description: str = ""
 
@@ -72,6 +74,11 @@ def Enum(
     return Param("enum", required, default, choices=tuple(choices), summary=summary, description=description)
 
 
+def Vec3(required: bool = False, default: Any = None, summary: str = "", description: str = "") -> Param:
+    """A fixed-length 3-array of numbers (location / rotation / scale)."""
+    return Param("array", required, default, length=3, item="number", summary=summary, description=description)
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
@@ -91,6 +98,12 @@ class ToolSpec:
             entry: dict[str, Any] = {}
             if p.kind == "enum":
                 entry["enum"] = list(p.choices or ())
+            elif p.kind == "array":
+                entry["type"] = "array"
+                entry["items"] = {"type": p.item}
+                if p.length is not None:
+                    entry["minItems"] = p.length
+                    entry["maxItems"] = p.length
             else:
                 entry["type"] = p.kind
             if p.summary:
@@ -144,6 +157,13 @@ def _coerce(name: str, p: Param, value: Any) -> Any:
                 f"{name} must be one of {list(p.choices or ())}", {"got": repr(value)}
             )
         return value
+    if p.kind == "array":
+        if not isinstance(value, (list, tuple)):
+            raise ValidationError(f"{name} must be an array", {"got": repr(value)})
+        if p.length is not None and len(value) != p.length:
+            raise ValidationError(f"{name} must have exactly {p.length} items", {"got": value})
+        item = Param(p.item)
+        return [_coerce(f"{name}[{i}]", item, v) for i, v in enumerate(value)]
     raise ValidationError(f"{name} has unsupported kind {p.kind}")
 
 
