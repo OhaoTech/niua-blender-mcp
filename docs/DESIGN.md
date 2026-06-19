@@ -298,3 +298,45 @@ niua-blender-mcp/
 - **Phase 3 — feedback depth:** multi-angle/turntable, UV/topology/diagnostic captures.
 - **Phase N — niua/Godot seams (`io`) + headless mode + the critique loop.**
 ```
+
+## Phase 6 — the critique loop
+
+The original problem was blind one-shot text-to-model producing blobs: a single
+generation step with no perceptual feedback. The answer is deliberate ops + faithful
+multi-angle eyes + an **iterating agent**. This phase ships the two *primitives* that make
+that iteration tight. **The critic is the agent itself** — it is multimodal, so it looks
+at the renders and reads the numbers and decides. The MCP does **not** run an autonomous
+loop in Python; it supplies a cheap, faithful **observe** and a robust **safe-iterate**.
+
+**The two primitives.**
+
+- `feedback.critique` — the one OBSERVE call. Returns a single bundle:
+  `{ available, images:[…multi-angle…], report:{…mesh.report…}, uv:{…uv.report|null} }`.
+  Images give *taste* signal (silhouette, proportion, the anti-blob multi-angle view);
+  the report gives *checkable facts* (tris, n-gons, non-manifold edges, bbox dims,
+  UV/material counts). One round-trip, both channels. Read-only; degrades to
+  `available:false` images on a headless box while the analytic report still returns.
+- `session.checkpoint` / `session.revert` / `session.list_checkpoints` — SAFE-ITERATE
+  beyond Blender's single-op undo. `checkpoint` snapshots the object's data + transform
+  into a dedicated store (a non-destructive `obj.data.copy()`, so it does not mutate the
+  visible scene); `revert` swaps a fresh copy of that snapshot back (one undo step);
+  it is independent of Blender's fragile, human-shared undo stack, so a multi-step edit
+  that turned out worse can be rolled back cleanly.
+
+**The agent-side recipe (the loop the agent drives, not the server):**
+
+```
+session.checkpoint(object)            # save a known-good state
+  → make an edit (mesh.* / sculpt.* / modifiers.* / rna.call_operator / …)
+  → feedback.critique(object)         # observe: multi-angle images + report + uv
+  → the agent JUDGES: silhouette & proportion from the images, topology &
+     n-gons & non-manifold & bbox from the report, layout from uv
+  → keep it (and checkpoint again as the new baseline)
+     OR session.revert(object)        # undo the regression, try a different edit
+  → repeat until the form is right
+```
+
+This is the moat from §10 made operational: seeing is cheap and faithful, rolling back is
+safe, and the iterating multimodal agent closes the gap that one-shot generation can't.
+An optional dedicated critic model and a fully autonomous (no-human-in-loop) variant are
+still deferred (§12) and need no architecture change — they reuse these same primitives.

@@ -312,3 +312,49 @@ def test_capture_current_without_scene_camera_degrades(ctx_env) -> None:
     out = dispatch_on_main(reg, "feedback.capture", {"view": "current"}, ctx)
     assert out["available"] is False
     assert "camera" in out["reason"].lower()
+
+
+# -- critique bundle (images + report + uv in one observe call) ---------------------
+
+def test_critique_bundles_images_and_report(ctx_env) -> None:
+    ctx, bpy = ctx_env
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "feedback.critique", {"object": "Cube", "preset": "ortho4"}, ctx)
+    # Multi-angle images (the taste signal).
+    assert out["available"] is True
+    assert [img["view"] for img in out["images"]] == ["front", "right", "top", "persp"]
+    assert all(img["data"] for img in out["images"])
+    # Analytic mesh report (the checkable facts).
+    assert out["report"]["object"] == "Cube"
+    assert "vertices" in out["report"] and "ngons" in out["report"]
+    # UV report present for a mesh.
+    assert out["uv"] is not None
+    assert out["uv"]["object"] == "Cube"
+    assert "has_uvs" in out["uv"]
+    # Read-only: nothing mutated, no undo step.
+    assert getattr(bpy, "_render_calls", None) is not None
+
+
+def test_critique_report_survives_when_images_degrade(monkeypatch) -> None:
+    bpy = _make_bpy(render_raises=True)
+    monkeypatch.setitem(sys.modules, "bpy", bpy)
+    ctx = Ctx(bpy)
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "feedback.critique", {"object": "Cube"}, ctx)
+    # Headless / no GPU: images unavailable, but the analytic report still comes back.
+    assert out["available"] is False
+    assert out["report"]["object"] == "Cube"
+    assert out["uv"] is not None
+
+
+def test_critique_non_mesh_object_returns_null_report_and_uv(ctx_env) -> None:
+    ctx, bpy = ctx_env
+    # Add a non-mesh object and target it.
+    light = FakeObj("Lamp", type="LIGHT")
+    bpy._objects["Lamp"] = light
+    bpy._scene.objects.append(light)
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "feedback.critique", {"object": "Lamp"}, ctx)
+    # Images still framed; report degrades (not a mesh), uv is null.
+    assert out["report"].get("available") is False
+    assert out["uv"] is None

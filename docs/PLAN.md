@@ -91,7 +91,7 @@ pass `mode` for edit-mode operators (not inferred); documented in the ToolSpec s
 Operators that *require* a real VIEW_3D area/region (e.g. view-dependent selection, some
 gizmo/UI-driven ops) cannot be poll-verified headless and need a later GUI pass.
 
-## Phase 4 — Feedback depth + io + headless workers
+## Phase 4 — Feedback depth + io + headless workers  ✅ DONE (depth carried into Phase 6)
 
 - [x] Multi-angle/turntable captures (the anti-blob): `feedback.capture` (one named view
       or the live scene camera), `feedback.capture_views` (presets ortho4/ortho6/orbit4),
@@ -142,3 +142,48 @@ Phase 6; it is not required for the io seam, which is synchronous file in/out.
   (Blender does not crash). DAE remains advertised in `IMPORT_FORMATS`; on a Collada-less
   build it degrades to that structured error rather than a precondition. Harden later if
   DAE matters (probe `build_options.collada` and raise `precondition_failed` up front).
+
+## Phase 6 — the critique loop  ✅ DONE
+
+The project's ORIGIN problem: blind one-shot text→model produces blobs because a single
+generation step has no perceptual feedback. The answer (DESIGN §10, §12, §"Phase 6") is
+deliberate ops + faithful multi-angle eyes + an **iterating multimodal agent**. The critic
+is the agent itself; the MCP ships the two *primitives* that make the loop tight, never an
+autonomous Python loop. Verified end to end against real Blender 5.1.1 headless (262 tests
+green, incl. the server↔addon parity test).
+
+- [x] `session` domain (SAFE-ITERATE beyond Blender's single-op undo) —
+      `session.checkpoint` (snapshots `obj.data.copy()` + transform into a dedicated store;
+      non-destructive, so `mutates=False`), `session.revert` (swaps a *fresh* copy of the
+      snapshot back + restores transform; one undo step, `mutates=True`; clean `not_found`
+      when no such checkpoint), `session.list_checkpoints` (read-only, oldest-first). The
+      store (`core/session.py`) is independent of Blender's fragile, human-shared undo
+      stack, so a multi-step edit gone worse rolls back cleanly. No `getattr`-on-`bpy.ops`
+      probing introduced (prior-phase lesson). **Headless-proven backbone:** cube →
+      `session.checkpoint` → `mesh.subdivide` cuts=2 (8/12/6 → 56/108/54) → `session.revert`
+      → `mesh.report` back to 8/12/6 (`test_session_checkpoint_revert_round_trip`).
+- [x] `feedback.critique` (the one OBSERVE call) — bundles `feedback.capture_views`
+      (multi-angle taste signal, the anti-blob) with `mesh.report` (checkable facts) and,
+      for a mesh, `uv.report`, in one round-trip:
+      `{ available, images:[…multi-angle…], report:{…mesh.report…}, uv:{…uv.report|null} }`.
+      Reuses the existing handlers (imported, not duplicated — both still work standalone),
+      `mutates=False`. The analytic half returns real geometry headless; the rendered-pixel
+      half degrades to `available:false` with no GL context. **Headless-proven envelope:**
+      `feedback.critique` on a cube returns the bundle shape with a `report` of 8v/12e/6f
+      (`test_feedback_critique_returns_bundle_envelope`).
+
+## Project status — 7-phase plan COMPLETE  ✅
+
+All seven phases (0–6) are shipped and verified end to end against **real Blender 5.1.1
+headless**, not just fake-bpy: 262 tests green including the server↔add-on command-parity
+test, with **55 curated tools across 13 domains** (scene, mesh, uv, shading, modifiers,
+anim, rig, io, feedback, session, plus the `rna` discovery/exec, introspection, and gated
+`system` escape hatches). Every phase added a domain pack without touching the kernel
+contract, kept handlers tiny, pushed exactly one undo step per successful mutation, and
+held parity. The full agentic spine is exercised headlessly: read → create/move →
+introspect live RNA → edit mesh/uv/shading/modifiers/anim/rig → export Godot-ready glTF →
+checkpoint/edit/revert (safe iterate) → critique bundle (analytic facts). The **only** part
+that remains a GUI/GPU demonstration is the *rendered pixels* of the eyes — the actual
+multi-angle/turntable/critique PNGs — which require a live GL context and so come back
+`available:false` in pure `--background`; their final visual proof is a GUI session, by
+design. The critique *loop* is agent behavior driving these primitives, not a Python loop.

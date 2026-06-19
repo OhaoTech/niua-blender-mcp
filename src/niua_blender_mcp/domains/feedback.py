@@ -53,4 +53,20 @@ SPECS = [
             "res": Int(default=768, minimum=64, maximum=2048, summary="Square render resolution (px)"),
         },
     ),
+    ToolSpec(
+        name="feedback.critique",
+        category="feedback",
+        summary="One observe call to judge a model: multi-angle images + mesh/UV report bundled",
+        command="feedback.critique",
+        params={
+            "object": Str(summary="Object to judge; whole scene if omitted"),
+            "preset": Enum(
+                ["ortho4", "ortho6", "orbit4"],
+                default="ortho4",
+                summary="Multi-angle preset for the images (the anti-blob)",
+            ),
+            "shading": Enum(_SHADING, default="SOLID", summary="Workbench (SOLID/WIREFRAME) or EEVEE (MATERIAL/RENDERED)"),
+            "res": Int(default=640, minimum=64, maximum=2048, summary="Square render resolution (px)"),
+        },
+    ),
 ]

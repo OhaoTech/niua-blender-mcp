@@ -450,6 +450,94 @@ def test_io_export_then_import_round_trips(bridge: BlenderBridge) -> None:
             os.unlink(path)
 
 
+# --- Phase 6 smoke: safe-iterate (session) + the critique bundle, end to end -----------
+# The checkpoint/revert round-trip is the loop's backbone and is FULLY headless-verifiable
+# (a datablock copy + transform restore, no GPU). feedback.critique's analytic half
+# (the mesh report) is headless-verifiable too; the rendered-pixel half degrades to
+# available:false with no GL context, so we assert the BUNDLE ENVELOPE, not pixels.
+
+
+def test_session_checkpoint_revert_round_trip(bridge: BlenderBridge) -> None:
+    # THE LOOP'S BACKBONE: the agent can try an edit and cleanly undo it, beyond Blender's
+    # single-op undo stack. Checkpoint a cube, subdivide it (geometry changes), then revert
+    # and prove the geometry is back to the exact factory-cube counts.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "IterHero"})
+
+    before = bridge.call("mesh.report", {"object": "IterHero"})
+    assert before["vertices"] == 8 and before["edges"] == 12 and before["faces"] == 6
+
+    # Snapshot is non-destructive: checkpoint must not mutate the live object.
+    cp = bridge.call("session.checkpoint", {"object": "IterHero", "label": "pristine"})
+    assert cp["object"] == "IterHero" and cp["label"] == "pristine"
+    unchanged = bridge.call("mesh.report", {"object": "IterHero"})
+    assert unchanged["vertices"] == 8 and unchanged["faces"] == 6
+
+    # Try an edit: a 2-cut subdivide turns the cube into 56v/108e/54f.
+    bridge.call("mesh.subdivide", {"object": "IterHero", "cuts": 2})
+    edited = bridge.call("mesh.report", {"object": "IterHero"})
+    assert edited["vertices"] == 56 and edited["edges"] == 108 and edited["faces"] == 54
+
+    # Revert (most-recent checkpoint) must restore the exact pristine cube.
+    reverted = bridge.call("session.revert", {"object": "IterHero"})
+    assert reverted["object"] == "IterHero" and reverted["label"] == "pristine"
+    assert reverted["vertices"] == 8 and reverted["faces"] == 6
+
+    after = bridge.call("mesh.report", {"object": "IterHero"})
+    assert after["vertices"] == 8 and after["edges"] == 12 and after["faces"] == 6
+
+
+def test_session_list_checkpoints_reflects_store(bridge: BlenderBridge) -> None:
+    # list_checkpoints is read-only and reports stored snapshots oldest-first per object.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "ListHero"})
+    bridge.call("session.checkpoint", {"object": "ListHero", "label": "a"})
+    bridge.call("session.checkpoint", {"object": "ListHero", "label": "b"})
+
+    listed = bridge.call("session.list_checkpoints", {"object": "ListHero"})
+    labels = [c["label"] for c in listed["checkpoints"] if c["object"] == "ListHero"]
+    assert labels == ["a", "b"]  # insertion order = chronology, oldest first
+
+
+def test_session_revert_missing_is_clean_error(bridge: BlenderBridge) -> None:
+    # Reverting an object with no checkpoint must come back as a structured not_found,
+    # never crash Blender.
+    from niua_blender_mcp.bridge import BridgeError
+
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "NoCpHero"})
+    with pytest.raises(BridgeError) as exc:
+        bridge.call("session.revert", {"object": "NoCpHero"})
+    assert exc.value.code == "not_found"
+    assert "objects" in bridge.call("scene.info", {})  # bridge still alive
+
+
+def test_feedback_critique_returns_bundle_envelope(bridge: BlenderBridge) -> None:
+    # The one OBSERVE call: a single bundle carrying the multi-angle images AND the
+    # analytic report. Headless has no GL context, so the images half may degrade to
+    # available:false -- we assert the ENVELOPE, not pixels. The 'report' half is fully
+    # headless-verifiable: real geometry counts for the cube.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "CritiqueHero"})
+
+    result = bridge.call("feedback.critique", {"object": "CritiqueHero", "preset": "ortho4"})
+
+    # Envelope shape: available bool, images list, report dict, uv key present.
+    assert isinstance(result.get("available"), bool)
+    assert isinstance(result.get("images"), list)
+    assert "report" in result
+    assert "uv" in result
+
+    # Analytic half (no GPU needed): the report carries the cube's real geometry.
+    report = result["report"]
+    assert isinstance(report, dict)
+    assert report.get("vertices") == 8
+    assert report.get("edges") == 12
+    assert report.get("faces") == 6
+
+    # Image half: each item is either a real image (has data) or a clean per-view degrade.
+    for img in result["images"]:
+        assert isinstance(img, dict)
+        assert "view" in img
+        assert "data" in img or img.get("available") is False
+
+
 def test_io_prepare_godot_applies_transforms_and_exports(bridge: BlenderBridge) -> None:
     # prepare_godot on a translated + rotated cube: applies transforms, exports one object
     # to GLB (+Y up), reports applied:true. After apply, the object's transform is identity.
