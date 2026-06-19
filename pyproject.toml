@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "niua-blender-mcp"
+version = "0.1.0"
+description = "Agentic Blender MCP server and Blender add-on bridge"
+requires-python = ">=3.11"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+authors = [{ name = "FrankYin" }]
+dependencies = []
+
+[project.scripts]
+niua-blender-mcp = "niua_blender_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "blender_addon"]
+testpaths = ["tests"]
+addopts = "-q"
