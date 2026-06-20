@@ -125,8 +125,59 @@ class FakePose:
         self.bones = FakePoseBones(edit_bones)
 
 
+class FakeVertexAssignment:
+    def __init__(self, group: int, weight: float) -> None:
+        self.group = group
+        self.weight = weight
+
+
+class FakeVertex:
+    def __init__(self, index: int) -> None:
+        self.index = index
+        self.groups: list[FakeVertexAssignment] = []
+
+
 class FakeMesh:
-    pass
+    def __init__(self, vertex_count: int = 4) -> None:
+        self.vertices = [FakeVertex(index) for index in range(vertex_count)]
+
+
+class FakeVertexGroup:
+    def __init__(self, obj, name: str, index: int) -> None:
+        self._obj = obj
+        self.name = name
+        self.index = index
+        self.lock_weight = False
+        self.add_calls: list = []
+
+    def add(self, vertices, weight: float, mode: str) -> None:
+        self.add_calls.append((list(vertices), weight, mode))
+        for vertex_index in vertices:
+            vertex = self._obj.data.vertices[vertex_index]
+            assignment = next((item for item in vertex.groups if item.group == self.index), None)
+            if assignment is None:
+                assignment = FakeVertexAssignment(self.index, 0.0)
+                vertex.groups.append(assignment)
+            if mode == "ADD":
+                assignment.weight += weight
+            elif mode == "SUBTRACT":
+                assignment.weight -= weight
+            else:
+                assignment.weight = weight
+
+
+class FakeVertexGroups(list):
+    def __init__(self, obj) -> None:
+        super().__init__()
+        self._obj = obj
+
+    def new(self, name: str):
+        group = FakeVertexGroup(self._obj, name, len(self))
+        self.append(group)
+        return group
+
+    def get(self, name: str):
+        return next((group for group in self if group.name == name), None)
 
 
 class FakeObj:
@@ -140,6 +191,7 @@ class FakeObj:
         else:
             self.data = FakeMesh()
         self.pose = FakePose(self.data.edit_bones) if type == "ARMATURE" else None
+        self.vertex_groups = FakeVertexGroups(self) if type == "MESH" else []
         self._selected = False
         self.mode = "OBJECT"
         self.parent = None
@@ -690,5 +742,90 @@ def test_constraint_add_unsupported_type_raises_invalid_params(env) -> None:
 
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "rig.constraint_add", {"armature": "Rig", "bone": "Tip", "type": "NOPE"}, ctx)
+    assert exc.value.code == INVALID_PARAMS
+    assert bpy.undo_pushes == []
+
+
+# -- vertex groups / skinning weights ---------------------------------------------
+
+
+def test_router_contains_rig_vertex_group_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"rig.vertex_groups", "rig.vertex_group_create", "rig.assign_weights"} <= names
+
+
+def test_vertex_groups_reports_groups_and_weights(env) -> None:
+    ctx, bpy = env
+    body = FakeObj("Body", type="MESH", data=FakeMesh(vertex_count=4))
+    group = body.vertex_groups.new(name="Spine")
+    group.add([0, 2], 0.5, "REPLACE")
+    bpy.add(body)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "rig.vertex_groups", {"mesh": "Body"}, ctx)
+
+    assert result == {
+        "mesh": "Body",
+        "vertex_count": 4,
+        "group_count": 1,
+        "groups": [
+            {
+                "name": "Spine",
+                "index": 0,
+                "lock_weight": False,
+                "vertices": [{"index": 0, "weight": 0.5}, {"index": 2, "weight": 0.5}],
+            }
+        ],
+    }
+    assert bpy.undo_pushes == []
+
+
+def test_vertex_group_create_returns_report(env) -> None:
+    ctx, bpy = env
+    body = FakeObj("Body", type="MESH", data=FakeMesh(vertex_count=3))
+    bpy.add(body)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "rig.vertex_group_create", {"mesh": "Body", "name": "Arm"}, ctx)
+
+    assert [group.name for group in body.vertex_groups] == ["Arm"]
+    assert result["groups"][0]["name"] == "Arm"
+    assert bpy.undo_pushes == ["niua:rig.vertex_group_create"]
+
+
+def test_assign_weights_parses_vertices_and_calls_group_add(env) -> None:
+    ctx, bpy = env
+    body = FakeObj("Body", type="MESH", data=FakeMesh(vertex_count=5))
+    group = body.vertex_groups.new(name="Spine")
+    bpy.add(body)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(
+        reg,
+        "rig.assign_weights",
+        {"mesh": "Body", "group": "Spine", "vertices": "1, 3,4", "weight": 0.75, "mode": "REPLACE"},
+        ctx,
+    )
+
+    assert group.add_calls == [([1, 3, 4], 0.75, "REPLACE")]
+    assigned = result["groups"][0]["vertices"]
+    assert assigned == [{"index": 1, "weight": 0.75}, {"index": 3, "weight": 0.75}, {"index": 4, "weight": 0.75}]
+    assert bpy.undo_pushes == ["niua:rig.assign_weights"]
+
+
+def test_assign_weights_invalid_vertex_index(env) -> None:
+    ctx, bpy = env
+    body = FakeObj("Body", type="MESH", data=FakeMesh(vertex_count=2))
+    body.vertex_groups.new(name="Spine")
+    bpy.add(body)
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "rig.assign_weights",
+            {"mesh": "Body", "group": "Spine", "vertices": "8", "weight": 1.0},
+            ctx,
+        )
     assert exc.value.code == INVALID_PARAMS
     assert bpy.undo_pushes == []

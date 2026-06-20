@@ -163,4 +163,44 @@ SPECS = [
         mutates=True,
         feedback="viewport",
     ),
+    ToolSpec(
+        name="rig.vertex_groups",
+        category="rigging",
+        summary="List mesh vertex groups and assigned vertex weights",
+        command="rig.vertex_groups",
+        params={
+            "mesh": Str(required=True, summary="Mesh object to inspect"),
+        },
+    ),
+    ToolSpec(
+        name="rig.vertex_group_create",
+        category="rigging",
+        summary="Create a mesh vertex group",
+        command="rig.vertex_group_create",
+        params={
+            "mesh": Str(required=True, summary="Mesh object to edit"),
+            "name": Str(required=True, summary="Vertex group name"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="rig.assign_weights",
+        category="rigging",
+        summary="Assign vertex weights to a named vertex group by vertex index",
+        command="rig.assign_weights",
+        params={
+            "mesh": Str(required=True, summary="Mesh object to edit"),
+            "group": Str(required=True, summary="Vertex group name"),
+            "vertices": Str(required=True, summary="Comma-separated vertex indices"),
+            "weight": Float(default=1.0, minimum=0.0, maximum=1.0, summary="Weight to assign"),
+            "mode": Enum(
+                ["REPLACE", "ADD", "SUBTRACT"],
+                default="REPLACE",
+                summary="Blender vertex group assignment mode",
+            ),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
 ]

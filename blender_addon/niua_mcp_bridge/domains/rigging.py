@@ -335,6 +335,88 @@ def constraint_remove(ctx: Ctx, payload: dict) -> dict:
     return _constraint_report(armature, pose_bone.name)
 
 
+def _vertex_group_report(mesh: Any) -> dict:
+    groups = list(getattr(mesh, "vertex_groups", []) or [])
+    vertices = list(getattr(getattr(mesh, "data", None), "vertices", []) or [])
+    out = []
+    for group in groups:
+        assigned = []
+        group_index = int(getattr(group, "index", -1))
+        for fallback_index, vertex in enumerate(vertices):
+            vertex_index = int(getattr(vertex, "index", fallback_index))
+            for item in list(getattr(vertex, "groups", []) or []):
+                if int(getattr(item, "group", -1)) == group_index:
+                    assigned.append({"index": vertex_index, "weight": float(getattr(item, "weight", 0.0) or 0.0)})
+        out.append(
+            {
+                "name": getattr(group, "name", "?"),
+                "index": group_index,
+                "lock_weight": bool(getattr(group, "lock_weight", False)),
+                "vertices": assigned,
+            }
+        )
+    return {"mesh": mesh.name, "vertex_count": len(vertices), "group_count": len(out), "groups": out}
+
+
+def vertex_groups(ctx: Ctx, payload: dict) -> dict:
+    return _vertex_group_report(_resolve_mesh(ctx, payload.get("mesh")))
+
+
+def _get_vertex_group(mesh: Any, name: Any) -> Any:
+    if not isinstance(name, str) or not name:
+        raise BridgeError(PRECONDITION, "vertex group is required")
+    groups = getattr(mesh, "vertex_groups", None)
+    getter = getattr(groups, "get", None)
+    group = getter(name) if callable(getter) else None
+    if group is None:
+        group = next((candidate for candidate in list(groups or []) if getattr(candidate, "name", None) == name), None)
+    if group is None:
+        raise BridgeError(NOT_FOUND, f"vertex group not found: {name}", {"mesh": getattr(mesh, "name", "?")})
+    return group
+
+
+def _parse_vertex_indices(mesh: Any, raw: Any) -> list[int]:
+    vertices = list(getattr(getattr(mesh, "data", None), "vertices", []) or [])
+    if not isinstance(raw, str) or not raw.strip():
+        raise BridgeError(INVALID_PARAMS, "vertices must be a comma-separated string")
+    out: list[int] = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            index = int(item)
+        except ValueError as exc:
+            raise BridgeError(INVALID_PARAMS, f"invalid vertex index: {item}") from exc
+        if index < 0 or index >= len(vertices):
+            raise BridgeError(INVALID_PARAMS, f"vertex index out of range: {index}", {"vertex_count": len(vertices)})
+        out.append(index)
+    return out
+
+
+def vertex_group_create(ctx: Ctx, payload: dict) -> dict:
+    mesh = _resolve_mesh(ctx, payload.get("mesh"))
+    name = payload.get("name")
+    if not isinstance(name, str) or not name:
+        raise BridgeError(PRECONDITION, "vertex group name is required")
+    with ctx.ensure(active=mesh, mode="OBJECT", select=[mesh]):
+        mesh.vertex_groups.new(name=name)
+    return _vertex_group_report(mesh)
+
+
+def assign_weights(ctx: Ctx, payload: dict) -> dict:
+    mesh = _resolve_mesh(ctx, payload.get("mesh"))
+    group = _get_vertex_group(mesh, payload.get("group"))
+    indices = _parse_vertex_indices(mesh, payload.get("vertices"))
+    mode = str(payload.get("mode", "REPLACE")).upper()
+    if mode not in {"REPLACE", "ADD", "SUBTRACT"}:
+        raise BridgeError(INVALID_PARAMS, f"unsupported vertex group assignment mode: {mode}")
+    weight = float(payload.get("weight", 1.0))
+    with ctx.ensure(active=mesh, mode="OBJECT", select=[mesh]):
+        group.add(indices, weight, mode)
+    return _vertex_group_report(mesh)
+
+
 COMMANDS = [
     Command("rig.add_armature", add_armature, mutates=True, feedback="viewport"),
     Command("rig.add_bone", add_bone, mutates=True, feedback="viewport"),
@@ -348,4 +430,7 @@ COMMANDS = [
     Command("rig.constraints", constraints, mutates=False),
     Command("rig.constraint_add", constraint_add, mutates=True, feedback="viewport"),
     Command("rig.constraint_remove", constraint_remove, mutates=True, feedback="viewport"),
+    Command("rig.vertex_groups", vertex_groups, mutates=False),
+    Command("rig.vertex_group_create", vertex_group_create, mutates=True, feedback="viewport"),
+    Command("rig.assign_weights", assign_weights, mutates=True, feedback="viewport"),
 ]
