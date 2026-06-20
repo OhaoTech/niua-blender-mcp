@@ -187,6 +187,39 @@ def select_by_index(ctx: Ctx, payload: dict) -> dict:
         return _selection_report(obj)
 
 
+def delete(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    delete_type = str(payload.get("type", "VERT"))
+    _edit(ctx, obj, ctx.bpy.ops.mesh.delete, type=delete_type)
+    return {"object": obj.name, "deleted": delete_type}
+
+
+def dissolve(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    dissolve_type = str(payload.get("type", "EDGES"))
+    use_verts = bool(payload.get("use_verts", False))
+    angle_limit = float(payload.get("angle_limit", 0.0872665))
+    use_boundaries = bool(payload.get("use_dissolve_boundaries", False))
+    ops = ctx.bpy.ops.mesh
+    if dissolve_type == "VERTS":
+        _edit(ctx, obj, ops.dissolve_verts, use_face_split=False, use_boundary_tear=False)
+    elif dissolve_type == "EDGES":
+        _edit(ctx, obj, ops.dissolve_edges, use_verts=use_verts, use_face_split=False)
+    elif dissolve_type == "FACES":
+        _edit(ctx, obj, ops.dissolve_faces, use_verts=use_verts)
+    elif dissolve_type == "LIMITED":
+        _edit(
+            ctx,
+            obj,
+            ops.dissolve_limited,
+            angle_limit=angle_limit,
+            use_dissolve_boundaries=use_boundaries,
+        )
+    else:
+        raise BridgeError(INVALID_PARAMS, f"unsupported dissolve type: {dissolve_type}")
+    return {"object": obj.name, "dissolved": dissolve_type}
+
+
 def shade_smooth(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_mesh(ctx, payload)
     smooth = bool(payload.get("smooth", True))
@@ -316,6 +349,8 @@ COMMANDS = [
     Command("mesh.selection_report", selection_report, mutates=False),
     Command("mesh.select_all", select_all, mutates=True, feedback="viewport"),
     Command("mesh.select_by_index", select_by_index, mutates=True, feedback="viewport"),
+    Command("mesh.delete", delete, mutates=True, feedback="viewport"),
+    Command("mesh.dissolve", dissolve, mutates=True, feedback="viewport"),
     Command("mesh.shade_smooth", shade_smooth, mutates=True, feedback="viewport"),
     Command("mesh.report", report, mutates=False),
 ]

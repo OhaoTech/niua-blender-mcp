@@ -14,6 +14,8 @@ from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec, Vec3
 SELECT_ALL_ACTIONS = ["TOGGLE", "SELECT", "DESELECT", "INVERT"]
 MESH_ELEMENT_MODES = ["VERT", "EDGE", "FACE"]
 MESH_SELECTION_ACTIONS = ["REPLACE", "ADD", "REMOVE", "TOGGLE"]
+MESH_DELETE_TYPES = ["VERT", "EDGE", "FACE", "EDGE_FACE", "ONLY_FACE"]
+MESH_DISSOLVE_TYPES = ["VERTS", "EDGES", "FACES", "LIMITED"]
 
 SPECS = [
     ToolSpec(
@@ -108,6 +110,33 @@ SPECS = [
             "mode": Enum(MESH_ELEMENT_MODES, required=True, summary="Element mode"),
             "indices": Str(required=True, summary="Comma-separated element indices"),
             "action": Enum(MESH_SELECTION_ACTIONS, default="REPLACE", summary="Selection action"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.delete",
+        category="mesh",
+        summary="Delete selected mesh elements",
+        command="mesh.delete",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "type": Enum(MESH_DELETE_TYPES, default="VERT", summary="Delete mode"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.dissolve",
+        category="mesh",
+        summary="Dissolve selected mesh elements",
+        command="mesh.dissolve",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "type": Enum(MESH_DISSOLVE_TYPES, default="EDGES", summary="Dissolve mode"),
+            "use_verts": Bool(default=False, summary="Dissolve connected vertices for edges/faces"),
+            "angle_limit": Float(default=0.0872665, minimum=0.0, summary="Limited dissolve angle in radians"),
+            "use_dissolve_boundaries": Bool(default=False, summary="Dissolve boundaries in limited mode"),
         },
         mutates=True,
         feedback="viewport",

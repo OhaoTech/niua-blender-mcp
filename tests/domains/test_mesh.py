@@ -128,6 +128,11 @@ class FakeBpy(types.ModuleType):
             inset = _Op(log, "mesh.inset")
             subdivide = _Op(log, "mesh.subdivide")
             select_all = _Op(log, "mesh.select_all")
+            delete = _Op(log, "mesh.delete")
+            dissolve_verts = _Op(log, "mesh.dissolve_verts")
+            dissolve_edges = _Op(log, "mesh.dissolve_edges")
+            dissolve_faces = _Op(log, "mesh.dissolve_faces")
+            dissolve_limited = _Op(log, "mesh.dissolve_limited")
             normals_make_consistent = _Op(log, "mesh.normals_make_consistent")
 
         class _ObjectOps:
@@ -350,6 +355,57 @@ def test_mesh_select_by_index_is_exposed_in_router() -> None:
 
     names = {s.name for s in build_router().specs()}
     assert "mesh.select_by_index" in names
+
+
+def test_delete_runs_mesh_delete_operator(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube"))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "mesh.delete", {"object": "Cube", "type": "FACE"}, ctx)
+
+    assert out == {"object": "Cube", "deleted": "FACE"}
+    assert ("mesh.delete", {"type": "FACE"}) in bpy.op_calls
+    assert bpy.undo_pushes == ["niua:mesh.delete"]
+
+
+def test_dissolve_dispatches_to_matching_operator(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube"))
+    reg = build_default_registry()
+
+    cases = [
+        ("VERTS", "mesh.dissolve_verts", {"use_face_split": False, "use_boundary_tear": False}),
+        ("EDGES", "mesh.dissolve_edges", {"use_verts": True, "use_face_split": False}),
+        ("FACES", "mesh.dissolve_faces", {"use_verts": True}),
+        (
+            "LIMITED",
+            "mesh.dissolve_limited",
+            {"angle_limit": 0.25, "use_dissolve_boundaries": True},
+        ),
+    ]
+    for dtype, opname, expected in cases:
+        out = dispatch_on_main(
+            reg,
+            "mesh.dissolve",
+            {
+                "object": "Cube",
+                "type": dtype,
+                "use_verts": True,
+                "angle_limit": 0.25,
+                "use_dissolve_boundaries": True,
+            },
+            ctx,
+        )
+        assert out == {"object": "Cube", "dissolved": dtype}
+        assert (opname, expected) in bpy.op_calls
+
+
+def test_mesh_delete_dissolve_tools_are_exposed_in_router() -> None:
+    from niua_blender_mcp.domains import build_router
+
+    names = {s.name for s in build_router().specs()}
+    assert {"mesh.delete", "mesh.dissolve"} <= names
 
 
 # -- shading (object mode) ---------------------------------------------------------
