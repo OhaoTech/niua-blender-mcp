@@ -89,6 +89,7 @@ class ToolSpec:
     mutates: bool = False
     feedback: str | None = None
     source: str = "curated"  # "curated" | "rna"; curated wins on name collision
+    tier: str = "curated"  # "curated" | "generated" | "reflection"; precedence in that order
 
     def input_schema(self) -> dict[str, Any]:
         """Render an MCP/JSON-Schema object for this tool's arguments."""
