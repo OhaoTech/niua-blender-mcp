@@ -46,3 +46,24 @@ def test_curated_overrides_rna_regardless_of_order() -> None:
     r2.add([_spec("mesh.bevel", "mesh", source="curated")])
     r2.add([_spec("mesh.bevel", "mesh", source="rna")])  # must NOT clobber curated
     assert r2.get("mesh.bevel").source == "curated"
+
+
+def test_generated_does_not_clobber_curated() -> None:
+    r = Router()
+    r.register(ToolSpec(name="a.b", category="a", summary="curated", command="a.b", tier="curated"))
+    r.register(ToolSpec(name="a.b", category="a", summary="generated", command="a.b", tier="generated"))
+    assert r.get("a.b").summary == "curated"
+
+
+def test_higher_tier_overrides_lower_regardless_of_order() -> None:
+    r = Router()
+    r.register(ToolSpec(name="a.b", category="a", summary="reflection", command="a.b", tier="reflection"))
+    r.register(ToolSpec(name="a.b", category="a", summary="generated", command="a.b", tier="generated"))
+    assert r.get("a.b").summary == "generated"
+
+
+def test_index_lists_id_summary_category_tier() -> None:
+    r = Router()
+    r.register(ToolSpec(name="a.b", category="a", summary="s", command="a.b", tier="generated"))
+    entry = next(e for e in r.index() if e["id"] == "a.b")
+    assert entry == {"id": "a.b", "summary": "s", "category": "a", "tier": "generated"}

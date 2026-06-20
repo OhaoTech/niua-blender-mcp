@@ -11,6 +11,14 @@ from dataclasses import dataclass, field
 
 from .contract import ToolSpec
 
+_TIER_RANK = {"curated": 3, "generated": 2, "reflection": 1}
+
+
+def _rank(spec: ToolSpec) -> int:
+    if spec.source != "curated" and spec.tier == "curated":
+        return 0
+    return _TIER_RANK.get(spec.tier, 0)
+
 
 @dataclass
 class Router:
@@ -18,8 +26,10 @@ class Router:
 
     def register(self, spec: ToolSpec) -> None:
         existing = self._specs.get(spec.name)
-        if existing is not None and existing.source == "curated" and spec.source != "curated":
-            return  # never let a generated spec clobber a curated one
+        if existing is not None:
+            # Higher-priority tier wins; equal tier => last write wins.
+            if _rank(existing) > _rank(spec):
+                return
         self._specs[spec.name] = spec
 
     def add(self, specs: list[ToolSpec]) -> None:
@@ -34,6 +44,12 @@ class Router:
 
     def categories(self) -> set[str]:
         return {spec.category for spec in self._specs.values()}
+
+    def index(self) -> list[dict]:
+        return [
+            {"id": s.name, "summary": s.summary, "category": s.category, "tier": s.tier}
+            for s in self._specs.values()
+        ]
 
     def select(self, categories: set[str] | None = None) -> list[ToolSpec]:
         if categories is None:
