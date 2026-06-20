@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import types
+from contextlib import contextmanager
 
 import pytest
 
@@ -94,6 +95,14 @@ class FakeObject:
             (1.0, 1.0, -1.0),
             (1.0, 1.0, 1.0),
         ]
+        self.mode = "OBJECT"
+        self._selected = False
+
+    def select_set(self, value: bool) -> None:
+        self._selected = bool(value)
+
+    def select_get(self) -> bool:
+        return self._selected
 
     def copy(self):
         dup = FakeObject(f"{self.name}.copy", self.type, self.data)
@@ -140,6 +149,24 @@ class FakeObjects(_NamedList):
             list.remove(self, obj)
 
 
+@contextmanager
+def _temp_override(**kwargs):
+    yield
+
+
+class _Op:
+    def __init__(self, log: list, name: str, poll_ok: bool = True) -> None:
+        self._log = log
+        self._name = name
+        self._poll_ok = poll_ok
+
+    def poll(self) -> bool:
+        return self._poll_ok
+
+    def __call__(self, **kwargs):
+        self._log.append((self._name, kwargs))
+
+
 class FakeBpy(types.ModuleType):
     def __init__(self) -> None:
         super().__init__("bpy")
@@ -154,8 +181,11 @@ class FakeBpy(types.ModuleType):
             scene=types.SimpleNamespace(name="Scene", objects=objects, collection=root),
             object=cube,
             view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=cube)),
+            window_manager=types.SimpleNamespace(windows=[]),
+            temp_override=_temp_override,
         )
         self.op_calls = []
+        self.mode_calls = []
         self.ops = self._make_ops(root, objects)
 
     def _create(self, name: str, obj_type: str = "MESH", location=None, collection=None):
@@ -201,9 +231,19 @@ class FakeBpy(types.ModuleType):
                 bpy._create("Suzanne", location=kwargs.get("location"), collection=root)
 
         class ObjectOps:
+            transform_apply = _Op(bpy.op_calls, "object.transform_apply")
+            origin_set = _Op(bpy.op_calls, "object.origin_set")
+
             def empty_add(self, **kwargs):
                 bpy.op_calls.append(("object.empty_add", kwargs))
                 bpy._create("Empty", obj_type="EMPTY", location=kwargs.get("location"), collection=root)
+
+            def mode_set(self, mode="OBJECT", **kwargs):
+                bpy.mode_calls.append(mode)
+                active = bpy.context.view_layer.objects.active
+                if active is not None:
+                    active.mode = mode
+                    bpy.context.object = active
 
         class Ed:
             def undo_push(self, message="", **kwargs):
@@ -235,6 +275,11 @@ def test_router_contains_object_create_tool() -> None:
 def test_router_contains_object_lifecycle_tools() -> None:
     names = {spec.name for spec in build_router().specs()}
     assert {"object.duplicate", "object.delete", "object.rename"} <= names
+
+
+def test_router_contains_object_transform_mutation_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"object.transform_set", "object.transform_apply", "object.origin_set"} <= names
 
 
 def test_transform_get_returns_object_state(env) -> None:
@@ -396,3 +441,84 @@ def test_rename_updates_object_lookup(env) -> None:
     assert out["name"] == "RenamedCube"
     assert bpy.data.objects.get("Cube") is None
     assert bpy.data.objects.get("RenamedCube") is not None
+
+
+def test_transform_set_updates_only_provided_fields(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    obj = bpy.data.objects.get("Cube")
+
+    out = dispatch_on_main(
+        reg,
+        "object.transform_set",
+        {
+            "object": "Cube",
+            "location": [9, 8, 7],
+            "scale": [3, 3, 3],
+            "delta_location": [1, 0, 0],
+            "rotation_mode": "ZYX",
+        },
+        ctx,
+    )
+
+    assert obj.location == [9.0, 8.0, 7.0]
+    assert obj.rotation_euler == [0.1, 0.2, 0.3]
+    assert obj.scale == [3.0, 3.0, 3.0]
+    assert obj.delta_location == [1.0, 0.0, 0.0]
+    assert obj.rotation_mode == "ZYX"
+    assert out["location"] == [9.0, 8.0, 7.0]
+    assert out["rotation"] == [0.1, 0.2, 0.3]
+
+
+def test_transform_apply_runs_operator_in_object_context(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    bpy.data.objects.get("Cube").mode = "EDIT"
+
+    out = dispatch_on_main(
+        reg,
+        "object.transform_apply",
+        {
+            "object": "Cube",
+            "location": False,
+            "rotation": True,
+            "scale": False,
+            "properties": False,
+            "isolate_users": True,
+        },
+        ctx,
+    )
+
+    assert out == {
+        "object": "Cube",
+        "applied": {
+            "location": False,
+            "rotation": True,
+            "scale": False,
+            "properties": False,
+            "isolate_users": True,
+        },
+    }
+    assert bpy.mode_calls == ["OBJECT", "EDIT"]
+    assert ("object.transform_apply", {
+        "location": False,
+        "rotation": True,
+        "scale": False,
+        "properties": False,
+        "isolate_users": True,
+    }) in bpy.op_calls
+
+
+def test_origin_set_runs_operator_in_object_context(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "object.origin_set",
+        {"object": "Cube", "type": "ORIGIN_CURSOR", "center": "BOUNDS"},
+        ctx,
+    )
+
+    assert out == {"object": "Cube", "origin": "ORIGIN_CURSOR", "center": "BOUNDS"}
+    assert ("object.origin_set", {"type": "ORIGIN_CURSOR", "center": "BOUNDS"}) in bpy.op_calls

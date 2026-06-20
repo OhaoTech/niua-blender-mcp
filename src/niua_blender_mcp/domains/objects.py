@@ -7,6 +7,15 @@ from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec, Vec3
 OBJECT_TYPES = ["CUBE", "SPHERE", "PLANE", "CYLINDER", "CONE", "TORUS", "MONKEY", "EMPTY"]
 END_FILL_TYPES = ["NGON", "TRIFAN", "NOTHING"]
 EMPTY_DISPLAY_TYPES = ["PLAIN_AXES", "ARROWS", "SINGLE_ARROW", "CIRCLE", "CUBE", "SPHERE", "CONE", "IMAGE"]
+EULER_MODES = ["XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]
+ORIGIN_TYPES = [
+    "GEOMETRY_ORIGIN",
+    "ORIGIN_GEOMETRY",
+    "ORIGIN_CURSOR",
+    "ORIGIN_CENTER_OF_MASS",
+    "ORIGIN_CENTER_OF_VOLUME",
+]
+ORIGIN_CENTERS = ["MEDIAN", "BOUNDS"]
 
 SPECS = [
     ToolSpec(
@@ -72,6 +81,53 @@ SPECS = [
         params={
             "object": Str(required=True, summary="Object name"),
             "name": Str(required=True, summary="New object name"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="object.transform_set",
+        category="object",
+        summary="Set an object's transform fields",
+        command="object.transform_set",
+        params={
+            "object": Str(required=True, summary="Object name"),
+            "location": Vec3(summary="World location [x, y, z]"),
+            "rotation": Vec3(summary="Euler rotation in radians [x, y, z]"),
+            "scale": Vec3(summary="Scale [x, y, z]"),
+            "delta_location": Vec3(summary="Delta location [x, y, z]"),
+            "delta_rotation": Vec3(summary="Delta Euler rotation [x, y, z]"),
+            "delta_scale": Vec3(summary="Delta scale [x, y, z]"),
+            "rotation_mode": Enum(EULER_MODES, summary="Euler rotation mode"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="object.transform_apply",
+        category="object",
+        summary="Apply an object's transform",
+        command="object.transform_apply",
+        params={
+            "object": Str(required=True, summary="Object name"),
+            "location": Bool(default=True, summary="Apply location"),
+            "rotation": Bool(default=True, summary="Apply rotation"),
+            "scale": Bool(default=True, summary="Apply scale"),
+            "properties": Bool(default=True, summary="Apply object data properties"),
+            "isolate_users": Bool(default=False, summary="Make shared data single-user first"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="object.origin_set",
+        category="object",
+        summary="Set an object's origin",
+        command="object.origin_set",
+        params={
+            "object": Str(required=True, summary="Object name"),
+            "type": Enum(ORIGIN_TYPES, default="ORIGIN_GEOMETRY", summary="Origin operation"),
+            "center": Enum(ORIGIN_CENTERS, default="MEDIAN", summary="Origin center mode"),
         },
         mutates=True,
         feedback="viewport",

@@ -261,6 +261,50 @@ def rename(ctx: Ctx, payload: dict) -> dict:
     return _object_state(obj)
 
 
+def transform_set(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    if "rotation_mode" in payload:
+        obj.rotation_mode = str(payload.get("rotation_mode"))
+    if "location" in payload:
+        obj.location = _vec(payload.get("location"), [0.0, 0.0, 0.0])
+    if "rotation" in payload:
+        obj.rotation_euler = _vec(payload.get("rotation"), [0.0, 0.0, 0.0])
+    if "scale" in payload:
+        obj.scale = _vec(payload.get("scale"), [1.0, 1.0, 1.0])
+    if "delta_location" in payload:
+        obj.delta_location = _vec(payload.get("delta_location"), [0.0, 0.0, 0.0])
+    if "delta_rotation" in payload:
+        obj.delta_rotation_euler = _vec(payload.get("delta_rotation"), [0.0, 0.0, 0.0])
+    if "delta_scale" in payload:
+        obj.delta_scale = _vec(payload.get("delta_scale"), [1.0, 1.0, 1.0])
+    return _object_state(obj)
+
+
+def transform_apply(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    applied = {
+        "location": bool(payload.get("location", True)),
+        "rotation": bool(payload.get("rotation", True)),
+        "scale": bool(payload.get("scale", True)),
+        "properties": bool(payload.get("properties", True)),
+        "isolate_users": bool(payload.get("isolate_users", False)),
+    }
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        ctx.check_poll(ctx.bpy.ops.object.transform_apply)
+        ctx.bpy.ops.object.transform_apply(**applied)
+    return {"object": getattr(obj, "name", ""), "applied": applied}
+
+
+def origin_set(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    otype = str(payload.get("type", "ORIGIN_GEOMETRY"))
+    center = str(payload.get("center", "MEDIAN"))
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        ctx.check_poll(ctx.bpy.ops.object.origin_set)
+        ctx.bpy.ops.object.origin_set(type=otype, center=center)
+    return {"object": getattr(obj, "name", ""), "origin": otype, "center": center}
+
+
 def transform_get(ctx: Ctx, payload: dict) -> dict:
     obj = ctx.get_object(payload.get("object"))
     return _object_state(obj)
@@ -276,6 +320,9 @@ COMMANDS = [
     Command("object.duplicate", duplicate, mutates=True, feedback="viewport"),
     Command("object.delete", delete, mutates=True, feedback="viewport"),
     Command("object.rename", rename, mutates=True, feedback="viewport"),
+    Command("object.transform_set", transform_set, mutates=True, feedback="viewport"),
+    Command("object.transform_apply", transform_apply, mutates=True, feedback="viewport"),
+    Command("object.origin_set", origin_set, mutates=True, feedback="viewport"),
     Command("object.transform_get", transform_get, mutates=False),
     Command("object.bounds", bounds, mutates=False),
 ]
