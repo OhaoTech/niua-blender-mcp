@@ -75,6 +75,97 @@ def _resolve_material(ctx: Ctx, payload: dict) -> Any:
     raise BridgeError(INVALID_PARAMS, "pass 'material' or 'object'")
 
 
+def _json_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, str):
+        return value
+    try:
+        return [float(item) for item in value]
+    except Exception:  # noqa: BLE001 - not a simple serializable value
+        return None
+
+
+def _socket_items(sockets: Any) -> list[Any]:
+    values = getattr(sockets, "values", None)
+    if callable(values):
+        return list(values())
+    return list(sockets or [])
+
+
+def _socket_report(socket: Any) -> dict:
+    return {
+        "name": getattr(socket, "name", ""),
+        "identifier": getattr(socket, "identifier", ""),
+        "type": getattr(socket, "type", ""),
+        "enabled": bool(getattr(socket, "enabled", True)),
+        "is_linked": bool(getattr(socket, "is_linked", False)),
+        "default_value": _json_value(getattr(socket, "default_value", None)),
+    }
+
+
+def _node_location(node: Any) -> list[float]:
+    try:
+        return [float(node.location[0]), float(node.location[1])]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _node_report(node: Any) -> dict:
+    return {
+        "name": getattr(node, "name", ""),
+        "label": getattr(node, "label", ""),
+        "type": getattr(node, "type", ""),
+        "bl_idname": getattr(node, "bl_idname", ""),
+        "location": _node_location(node),
+        "inputs": [_socket_report(socket) for socket in _socket_items(getattr(node, "inputs", []))],
+        "outputs": [_socket_report(socket) for socket in _socket_items(getattr(node, "outputs", []))],
+    }
+
+
+def _link_report(link: Any) -> dict:
+    return {
+        "from_node": getattr(getattr(link, "from_node", None), "name", ""),
+        "from_socket": getattr(getattr(link, "from_socket", None), "name", ""),
+        "to_node": getattr(getattr(link, "to_node", None), "name", ""),
+        "to_socket": getattr(getattr(link, "to_socket", None), "name", ""),
+    }
+
+
+def _slot_report(obj: Any) -> list[dict]:
+    data = getattr(obj, "data", None)
+    slots = list(getattr(data, "materials", []) or [])
+    return [{"index": index, "material": getattr(mat, "name", None)} for index, mat in enumerate(slots)]
+
+
+def _material_report(mat: Any, obj: Any | None = None) -> dict:
+    node_tree = getattr(mat, "node_tree", None)
+    out = {
+        "material": getattr(mat, "name", ""),
+        "use_nodes": bool(getattr(mat, "use_nodes", False)),
+        "diffuse_color": _json_value(getattr(mat, "diffuse_color", None)),
+        "blend_method": getattr(mat, "blend_method", None),
+        "use_screen_refraction": bool(getattr(mat, "use_screen_refraction", False)),
+        "show_transparent_back": bool(getattr(mat, "show_transparent_back", True)),
+        "nodes": [],
+        "links": [],
+    }
+    if obj is not None:
+        out["object"] = getattr(obj, "name", "")
+        out["active_material_index"] = int(getattr(obj, "active_material_index", 0))
+        out["slots"] = _slot_report(obj)
+    if node_tree is not None:
+        out["nodes"] = [_node_report(node) for node in list(getattr(node_tree, "nodes", []) or [])]
+        out["links"] = [_link_report(link) for link in list(getattr(node_tree, "links", []) or [])]
+    return out
+
+
 # -- handlers --------------------------------------------------------------------
 
 
@@ -177,6 +268,19 @@ def add_image_texture(ctx: Ctx, payload: dict) -> dict:
     }
 
 
+def report(ctx: Ctx, payload: dict) -> dict:
+    obj = None
+    obj_name = payload.get("object")
+    if isinstance(obj_name, str) and obj_name:
+        obj = ctx.get_object(obj_name)
+        mat = getattr(obj, "active_material", None)
+        if mat is None:
+            raise BridgeError(PRECONDITION, f"object has no active material: {obj_name}")
+    else:
+        mat = _get_material(ctx, str(payload.get("material", "")))
+    return _material_report(mat, obj)
+
+
 def list_materials(ctx: Ctx, payload: dict) -> dict:
     obj_name = payload.get("object")
     if isinstance(obj_name, str) and obj_name:
@@ -195,5 +299,6 @@ COMMANDS = [
     Command("shading.set_principled", set_principled, mutates=True, feedback="viewport"),
     Command("shading.assign_material", assign_material, mutates=True, feedback="viewport"),
     Command("shading.add_image_texture", add_image_texture, mutates=True, feedback="viewport"),
+    Command("shading.report", report, mutates=False),
     Command("shading.list_materials", list_materials, mutates=False),
 ]

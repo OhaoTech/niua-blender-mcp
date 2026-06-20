@@ -17,6 +17,7 @@ import types
 
 import pytest
 
+from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
@@ -24,16 +25,38 @@ from niua_mcp_bridge.errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, Brid
 
 
 class FakeSocket:
-    def __init__(self, value=None) -> None:
+    def __init__(self, name: str = "", value=None) -> None:
+        self.name = name
+        self.identifier = name
+        self.type = "VALUE"
         self.default_value = value
         self.links = []
+        self.enabled = True
+        self.is_linked = False
+        self.node = None
+
+
+class FakeLink:
+    def __init__(self, output_socket: FakeSocket, input_socket: FakeSocket) -> None:
+        self.from_socket = output_socket
+        self.to_socket = input_socket
+        self.from_node = output_socket.node
+        self.to_node = input_socket.node
+        output_socket.is_linked = True
+        input_socket.is_linked = True
 
 
 class FakeNode:
     def __init__(self, ntype: str, input_names, output_names) -> None:
         self.type = ntype
-        self.inputs = {n: FakeSocket() for n in input_names}
-        self.outputs = {n: FakeSocket() for n in output_names}
+        self.name = ntype
+        self.label = ""
+        self.bl_idname = ntype
+        self.location = [0.0, 0.0]
+        self.inputs = {n: FakeSocket(n) for n in input_names}
+        self.outputs = {n: FakeSocket(n) for n in output_names}
+        for socket in [*self.inputs.values(), *self.outputs.values()]:
+            socket.node = self
         self.image = None
 
 
@@ -62,10 +85,16 @@ class FakeNodes(list):
 class FakeLinks:
     def __init__(self) -> None:
         self.created = []
+        self._links = []
 
     def new(self, output_socket, input_socket):
         self.created.append((output_socket, input_socket))
-        return (output_socket, input_socket)
+        link = FakeLink(output_socket, input_socket)
+        self._links.append(link)
+        return link
+
+    def __iter__(self):
+        return iter(self._links)
 
 
 class FakeNodeTree:
@@ -439,3 +468,49 @@ def test_list_materials_for_object(env) -> None:
     result = dispatch_on_main(reg, "shading.list_materials", {"object": "Cube"}, ctx)
     assert result["object"] == "Cube"
     assert result["materials"] == ["Gold"]
+
+
+# -- report ----------------------------------------------------------------------
+
+
+def test_router_contains_shading_report() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert "shading.report" in names
+
+
+def test_report_material_node_tree(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    dispatch_on_main(reg, "shading.create_material", {"name": "M"}, ctx)
+    dispatch_on_main(reg, "shading.set_principled", {"material": "M", "roughness": 0.42}, ctx)
+
+    out = dispatch_on_main(reg, "shading.report", {"material": "M"}, ctx)
+
+    assert out["material"] == "M"
+    assert out["use_nodes"] is True
+    assert {node["type"] for node in out["nodes"]} == {"BSDF_PRINCIPLED", "OUTPUT_MATERIAL"}
+    principled = next(node for node in out["nodes"] if node["type"] == "BSDF_PRINCIPLED")
+    assert any(socket["name"] == "Roughness" and socket["default_value"] == 0.42 for socket in principled["inputs"])
+    assert out["links"] == [
+        {
+            "from_node": "BSDF_PRINCIPLED",
+            "from_socket": "BSDF",
+            "to_node": "OUTPUT_MATERIAL",
+            "to_socket": "Surface",
+        }
+    ]
+
+
+def test_report_object_material_slots(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    obj = FakeObj("Cube")
+    bpy.add(obj)
+    dispatch_on_main(reg, "shading.assign_material", {"object": "Cube", "material": "Gold"}, ctx)
+
+    out = dispatch_on_main(reg, "shading.report", {"object": "Cube"}, ctx)
+
+    assert out["object"] == "Cube"
+    assert out["material"] == "Gold"
+    assert out["active_material_index"] == 0
+    assert out["slots"] == [{"index": 0, "material": "Gold"}]

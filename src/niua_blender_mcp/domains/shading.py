@@ -73,6 +73,16 @@ SPECS = [
         feedback="viewport",
     ),
     ToolSpec(
+        name="shading.report",
+        category="shading",
+        summary="Report a material, object material slots, and shader node tree",
+        command="shading.report",
+        params={
+            "material": Str(default="", summary="Material name"),
+            "object": Str(default="", summary="Object whose active material and slots should be reported"),
+        },
+    ),
+    ToolSpec(
         name="shading.list_materials",
         category="shading",
         summary="List materials in the file (read-only)",
