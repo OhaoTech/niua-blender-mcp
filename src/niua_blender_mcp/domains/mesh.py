@@ -12,6 +12,8 @@ from __future__ import annotations
 from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec, Vec3
 
 SELECT_ALL_ACTIONS = ["TOGGLE", "SELECT", "DESELECT", "INVERT"]
+MESH_ELEMENT_MODES = ["VERT", "EDGE", "FACE"]
+MESH_SELECTION_ACTIONS = ["REPLACE", "ADD", "REMOVE", "TOGGLE"]
 
 SPECS = [
     ToolSpec(
@@ -92,6 +94,20 @@ SPECS = [
         params={
             "object": Str(summary="Mesh object to edit (defaults to active)"),
             "action": Enum(SELECT_ALL_ACTIONS, default="SELECT", summary="Select-all action"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.select_by_index",
+        category="mesh",
+        summary="Select mesh elements by zero-based index",
+        command="mesh.select_by_index",
+        params={
+            "object": Str(required=True, summary="Mesh object to edit"),
+            "mode": Enum(MESH_ELEMENT_MODES, required=True, summary="Element mode"),
+            "indices": Str(required=True, summary="Comma-separated element indices"),
+            "action": Enum(MESH_SELECTION_ACTIONS, default="REPLACE", summary="Selection action"),
         },
         mutates=True,
         feedback="viewport",

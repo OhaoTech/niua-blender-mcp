@@ -18,7 +18,7 @@ import pytest
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import NOT_FOUND, PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
 def _identity() -> list[list[float]]:
@@ -284,6 +284,72 @@ def test_mesh_selection_tools_are_exposed_in_router() -> None:
 
     names = {s.name for s in build_router().specs()}
     assert {"mesh.selection_report", "mesh.select_all"} <= names
+
+
+def test_select_by_index_replace_add_remove_toggle(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(verts=4, edges=3, polys=[[0, 1, 2], [0, 2, 3]])
+    mesh.vertices[3].select = True
+    bpy.add(FakeObj("Cube", data=mesh))
+    reg = build_default_registry()
+
+    replaced = dispatch_on_main(
+        reg,
+        "mesh.select_by_index",
+        {"object": "Cube", "mode": "VERT", "indices": "1,2", "action": "REPLACE"},
+        ctx,
+    )
+    assert replaced["vertices"] == [1, 2]
+    assert bpy.context.tool_settings.mesh_select_mode == (True, False, False)
+
+    added = dispatch_on_main(
+        reg,
+        "mesh.select_by_index",
+        {"object": "Cube", "mode": "EDGE", "indices": "0,2", "action": "ADD"},
+        ctx,
+    )
+    assert added["edges"] == [0, 2]
+    assert bpy.context.tool_settings.mesh_select_mode == (False, True, False)
+
+    removed = dispatch_on_main(
+        reg,
+        "mesh.select_by_index",
+        {"object": "Cube", "mode": "VERT", "indices": "2", "action": "REMOVE"},
+        ctx,
+    )
+    assert removed["vertices"] == [1]
+
+    toggled = dispatch_on_main(
+        reg,
+        "mesh.select_by_index",
+        {"object": "Cube", "mode": "FACE", "indices": "0,1", "action": "TOGGLE"},
+        ctx,
+    )
+    assert toggled["faces"] == [0, 1]
+    assert bpy.context.tool_settings.mesh_select_mode == (False, False, True)
+
+
+def test_select_by_index_rejects_invalid_indices(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=2, edges=0, polys=[])))
+    reg = build_default_registry()
+
+    for indices in ("", " ", "nope", "99"):
+        with pytest.raises(BridgeError) as exc:
+            dispatch_on_main(
+                reg,
+                "mesh.select_by_index",
+                {"object": "Cube", "mode": "VERT", "indices": indices},
+                ctx,
+            )
+        assert exc.value.code == INVALID_PARAMS
+
+
+def test_mesh_select_by_index_is_exposed_in_router() -> None:
+    from niua_blender_mcp.domains import build_router
+
+    names = {s.name for s in build_router().specs()}
+    assert "mesh.select_by_index" in names
 
 
 # -- shading (object mode) ---------------------------------------------------------

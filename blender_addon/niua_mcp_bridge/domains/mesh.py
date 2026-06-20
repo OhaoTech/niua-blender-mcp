@@ -13,7 +13,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import PRECONDITION, BridgeError
+from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
 
 
 def _resolve_mesh(ctx: Ctx, payload: dict) -> Any:
@@ -98,6 +98,44 @@ def _selected_indices(items: Any) -> list[int]:
     return out
 
 
+def _mesh_items(mesh: Any, mode: str) -> list[Any]:
+    if mode == "VERT":
+        return list(getattr(mesh, "vertices", []) or [])
+    if mode == "EDGE":
+        return list(getattr(mesh, "edges", []) or [])
+    if mode == "FACE":
+        return list(getattr(mesh, "polygons", []) or [])
+    raise BridgeError(INVALID_PARAMS, f"unsupported selection mode: {mode}")
+
+
+def _parse_indices(raw: Any, items: list[Any]) -> set[int]:
+    if not isinstance(raw, str):
+        raise BridgeError(INVALID_PARAMS, "indices is required")
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if not parts:
+        raise BridgeError(INVALID_PARAMS, "indices must contain at least one index")
+    try:
+        indices = {int(part) for part in parts}
+    except ValueError as exc:
+        raise BridgeError(INVALID_PARAMS, "indices must be integers") from exc
+    max_index = len(items) - 1
+    bad = sorted(index for index in indices if index < 0 or index > max_index)
+    if bad:
+        raise BridgeError(INVALID_PARAMS, "index out of range", {"indices": bad, "max": max_index})
+    return indices
+
+
+def _set_mesh_select_mode(ctx: Ctx, mode: str) -> None:
+    tool_settings = getattr(ctx.bpy.context, "tool_settings", None)
+    if tool_settings is None:
+        return
+    tool_settings.mesh_select_mode = {
+        "VERT": (True, False, False),
+        "EDGE": (False, True, False),
+        "FACE": (False, False, True),
+    }[mode]
+
+
 def _selection_report(obj: Any) -> dict:
     mesh = getattr(obj, "data", None)
     vertices = _selected_indices(getattr(mesh, "vertices", []))
@@ -123,6 +161,30 @@ def select_all(ctx: Ctx, payload: dict) -> dict:
     action = str(payload.get("action", "SELECT"))
     _edit(ctx, obj, ctx.bpy.ops.mesh.select_all, action=action)
     return {"object": obj.name, "action": action}
+
+
+def select_by_index(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    mode = str(payload.get("mode", ""))
+    action = str(payload.get("action", "REPLACE"))
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        items = _mesh_items(obj.data, mode)
+        indices = _parse_indices(payload.get("indices"), items)
+        if action == "REPLACE":
+            for item in items:
+                item.select = False
+        for fallback, item in enumerate(items):
+            index = int(getattr(item, "index", fallback))
+            if index not in indices:
+                continue
+            if action in {"REPLACE", "ADD"}:
+                item.select = True
+            elif action == "REMOVE":
+                item.select = False
+            elif action == "TOGGLE":
+                item.select = not bool(getattr(item, "select", False))
+        _set_mesh_select_mode(ctx, mode)
+        return _selection_report(obj)
 
 
 def shade_smooth(ctx: Ctx, payload: dict) -> dict:
@@ -253,6 +315,7 @@ COMMANDS = [
     Command("mesh.recalc_normals", recalc_normals, mutates=True, feedback="viewport"),
     Command("mesh.selection_report", selection_report, mutates=False),
     Command("mesh.select_all", select_all, mutates=True, feedback="viewport"),
+    Command("mesh.select_by_index", select_by_index, mutates=True, feedback="viewport"),
     Command("mesh.shade_smooth", shade_smooth, mutates=True, feedback="viewport"),
     Command("mesh.report", report, mutates=False),
 ]
