@@ -17,6 +17,7 @@ from contextlib import contextmanager
 
 import pytest
 
+from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
@@ -67,6 +68,53 @@ class FakeArmatureData:
         return list(self.edit_bones)
 
 
+class FakePoseConstraint:
+    def __init__(self, name: str, type: str = "COPY_LOCATION") -> None:
+        self.name = name
+        self.type = type
+        self.influence = 1.0
+        self.target = None
+        self.subtarget = ""
+        self.mute = False
+
+
+class FakePoseConstraints(list):
+    def get(self, name: str):
+        return next((constraint for constraint in self if constraint.name == name), None)
+
+
+class FakePoseBone:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.location = [0.0, 0.0, 0.0]
+        self.rotation_mode = "XYZ"
+        self.rotation_euler = [0.0, 0.0, 0.0]
+        self.scale = [1.0, 1.0, 1.0]
+        self.constraints = FakePoseConstraints()
+
+
+class FakePoseBones:
+    def __init__(self, edit_bones: FakeEditBones) -> None:
+        self._edit_bones = edit_bones
+        self._pose_bones: dict[str, FakePoseBone] = {}
+
+    def get(self, name: str):
+        if self._edit_bones.get(name) is None:
+            return None
+        if name not in self._pose_bones:
+            self._pose_bones[name] = FakePoseBone(name)
+        return self._pose_bones[name]
+
+    def __iter__(self):
+        for edit_bone in self._edit_bones:
+            yield self.get(edit_bone.name)
+
+
+class FakePose:
+    def __init__(self, edit_bones: FakeEditBones) -> None:
+        self.bones = FakePoseBones(edit_bones)
+
+
 class FakeMesh:
     pass
 
@@ -81,6 +129,7 @@ class FakeObj:
             self.data = FakeArmatureData()
         else:
             self.data = FakeMesh()
+        self.pose = FakePose(self.data.edit_bones) if type == "ARMATURE" else None
         self._selected = False
         self.mode = "OBJECT"
         self.parent = None
@@ -205,6 +254,11 @@ def _names(log):
 
 
 # -- add_armature ------------------------------------------------------------------
+
+
+def test_router_contains_rig_pose_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"rig.report", "rig.pose_report", "rig.set_pose_bone", "rig.clear_pose"} <= names
 
 
 def test_add_armature_creates_and_renames(env) -> None:
@@ -416,3 +470,108 @@ def test_list_bones_on_non_armature_raises_precondition(env) -> None:
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "rig.list_bones", {"armature": "Cube"}, ctx)
     assert exc.value.code == PRECONDITION
+
+
+# -- pose reports / transforms -----------------------------------------------------
+
+
+def test_pose_report_reports_all_and_named_bone(env) -> None:
+    ctx, bpy = env
+    rig = FakeObj("Rig")
+    rig.data.edit_bones.new("Root")
+    rig.data.edit_bones.new("Tip")
+    tip = rig.pose.bones.get("Tip")
+    tip.location = [1.0, 2.0, 3.0]
+    tip.rotation_mode = "XYZ"
+    tip.rotation_euler = [0.1, 0.2, 0.3]
+    tip.scale = [1.0, 1.5, 2.0]
+    tip.constraints.append(FakePoseConstraint("CopyLoc"))
+    bpy.add(rig)
+    reg = build_default_registry()
+
+    all_bones = dispatch_on_main(reg, "rig.pose_report", {"armature": "Rig"}, ctx)
+    one_bone = dispatch_on_main(reg, "rig.pose_report", {"armature": "Rig", "bone": "Tip"}, ctx)
+
+    assert all_bones["pose_bone_count"] == 2
+    assert [bone["name"] for bone in one_bone["pose_bones"]] == ["Tip"]
+    assert one_bone["pose_bones"][0]["location"] == [1.0, 2.0, 3.0]
+    assert one_bone["pose_bones"][0]["rotation_euler"] == [0.1, 0.2, 0.3]
+    assert one_bone["pose_bones"][0]["scale"] == [1.0, 1.5, 2.0]
+    assert one_bone["pose_bones"][0]["constraints"][0]["name"] == "CopyLoc"
+    assert bpy.undo_pushes == []
+
+
+def test_set_pose_bone_updates_transform_in_pose_mode(env) -> None:
+    ctx, bpy = env
+    rig = FakeObj("Rig")
+    rig.data.edit_bones.new("Tip")
+    bpy.add(rig)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(
+        reg,
+        "rig.set_pose_bone",
+        {
+            "armature": "Rig",
+            "bone": "Tip",
+            "location": [1, 2, 3],
+            "rotation": [0.1, 0.2, 0.3],
+            "scale": [1, 1.5, 2],
+            "rotation_mode": "XYZ",
+        },
+        ctx,
+    )
+
+    pose_bone = rig.pose.bones.get("Tip")
+    assert pose_bone.location == [1.0, 2.0, 3.0]
+    assert pose_bone.rotation_euler == [0.1, 0.2, 0.3]
+    assert pose_bone.scale == [1.0, 1.5, 2.0]
+    assert result["pose_bone"]["name"] == "Tip"
+    assert result["pose_bone"]["location"] == [1.0, 2.0, 3.0]
+    assert bpy.mode_calls == ["POSE", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:rig.set_pose_bone"]
+
+
+def test_clear_pose_resets_all_pose_bones(env) -> None:
+    ctx, bpy = env
+    rig = FakeObj("Rig")
+    rig.data.edit_bones.new("Root")
+    rig.data.edit_bones.new("Tip")
+    for pose_bone in rig.pose.bones:
+        pose_bone.location = [1.0, 2.0, 3.0]
+        pose_bone.rotation_euler = [0.1, 0.2, 0.3]
+        pose_bone.scale = [2.0, 2.0, 2.0]
+    bpy.add(rig)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "rig.clear_pose", {"armature": "Rig"}, ctx)
+
+    assert result["pose_bone_count"] == 2
+    for pose_bone in rig.pose.bones:
+        assert pose_bone.location == [0.0, 0.0, 0.0]
+        assert pose_bone.rotation_euler == [0.0, 0.0, 0.0]
+        assert pose_bone.scale == [1.0, 1.0, 1.0]
+    assert bpy.mode_calls == ["POSE", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:rig.clear_pose"]
+
+
+def test_rig_report_includes_rest_pose_and_child_meshes(env) -> None:
+    ctx, bpy = env
+    rig = FakeObj("Rig")
+    root = rig.data.edit_bones.new("Root")
+    tip = rig.data.edit_bones.new("Tip")
+    tip.parent = root
+    rig.pose.bones.get("Tip").constraints.append(FakePoseConstraint("CopyLoc"))
+    body = FakeObj("Body", type="MESH")
+    body.parent = rig
+    bpy.add(rig)
+    bpy.add(body)
+    reg = build_default_registry()
+
+    report = dispatch_on_main(reg, "rig.report", {"armature": "Rig"}, ctx)
+
+    assert report["bone_count"] == 2
+    assert report["pose_bone_count"] == 2
+    assert report["child_meshes"] == ["Body"]
+    tip_pose = next(bone for bone in report["pose_bones"] if bone["name"] == "Tip")
+    assert tip_pose["constraints"][0]["name"] == "CopyLoc"

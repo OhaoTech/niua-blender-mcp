@@ -10,7 +10,7 @@ the armature with automatic weights (object-mode ``parent_set`` type=ARMATURE_AU
 
 from __future__ import annotations
 
-from ..kernel import Str, ToolSpec, Vec3
+from ..kernel import Enum, Str, ToolSpec, Vec3
 
 SPECS = [
     ToolSpec(
@@ -73,5 +73,54 @@ SPECS = [
         params={
             "armature": Str(required=True, summary="Armature object to inspect"),
         },
+    ),
+    ToolSpec(
+        name="rig.report",
+        category="rigging",
+        summary="Report rest bones, pose bones, constraints, and child meshes",
+        command="rig.report",
+        params={
+            "armature": Str(required=True, summary="Armature object to inspect"),
+        },
+    ),
+    ToolSpec(
+        name="rig.pose_report",
+        category="rigging",
+        summary="Report pose bone transforms and constraints",
+        command="rig.pose_report",
+        params={
+            "armature": Str(required=True, summary="Armature object to inspect"),
+            "bone": Str(summary="Optional pose bone name to inspect"),
+        },
+    ),
+    ToolSpec(
+        name="rig.set_pose_bone",
+        category="rigging",
+        summary="Set a pose bone's location, Euler rotation, and/or scale",
+        command="rig.set_pose_bone",
+        params={
+            "armature": Str(required=True, summary="Armature object owning the pose bone"),
+            "bone": Str(required=True, summary="Pose bone to edit"),
+            "location": Vec3(summary="Pose bone location [x, y, z]"),
+            "rotation": Vec3(summary="Euler rotation in radians [x, y, z]"),
+            "scale": Vec3(summary="Pose bone scale [x, y, z]"),
+            "rotation_mode": Enum(
+                ["XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"],
+                summary="Euler rotation mode; defaults to XYZ when rotation is provided",
+            ),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="rig.clear_pose",
+        category="rigging",
+        summary="Clear all pose bone transforms back to rest values",
+        command="rig.clear_pose",
+        params={
+            "armature": Str(required=True, summary="Armature object whose pose to clear"),
+        },
+        mutates=True,
+        feedback="viewport",
     ),
 ]

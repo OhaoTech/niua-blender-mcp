@@ -124,8 +124,7 @@ def parent_with_auto_weights(ctx: Ctx, payload: dict) -> dict:
     return {"mesh": mesh.name, "armature": armature.name, "parented": True}
 
 
-def list_bones(ctx: Ctx, payload: dict) -> dict:
-    armature = _resolve_armature(ctx, payload.get("armature"))
+def _bone_entries(armature: Any) -> list[dict]:
     bones = list(getattr(armature.data, "bones", []) or [])
     out = []
     for bone in bones:
@@ -143,7 +142,128 @@ def list_bones(ctx: Ctx, payload: dict) -> dict:
                 "parent": getattr(getattr(bone, "parent", None), "name", None),
             }
         )
+    return out
+
+
+def list_bones(ctx: Ctx, payload: dict) -> dict:
+    armature = _resolve_armature(ctx, payload.get("armature"))
+    out = _bone_entries(armature)
     return {"armature": armature.name, "bone_count": len(out), "bones": out}
+
+
+def _constraint_entries(pose_bone: Any) -> list[dict]:
+    out = []
+    for constraint in list(getattr(pose_bone, "constraints", []) or []):
+        target = getattr(constraint, "target", None)
+        out.append(
+            {
+                "name": getattr(constraint, "name", "?"),
+                "type": getattr(constraint, "type", None),
+                "influence": float(getattr(constraint, "influence", 0.0) or 0.0),
+                "target": getattr(target, "name", None) if target is not None else None,
+                "subtarget": getattr(constraint, "subtarget", ""),
+                "mute": bool(getattr(constraint, "mute", False)),
+            }
+        )
+    return out
+
+
+def _pose_bones(armature: Any) -> list[Any]:
+    pose = getattr(armature, "pose", None)
+    return list(getattr(pose, "bones", []) or [])
+
+
+def _get_pose_bone(armature: Any, name: Any) -> Any:
+    if not isinstance(name, str) or not name:
+        raise BridgeError(PRECONDITION, "bone is required")
+    bones = getattr(getattr(armature, "pose", None), "bones", None)
+    getter = getattr(bones, "get", None)
+    pose_bone = getter(name) if callable(getter) else None
+    if pose_bone is None:
+        pose_bone = next((candidate for candidate in list(bones or []) if getattr(candidate, "name", None) == name), None)
+    if pose_bone is None:
+        raise BridgeError(NOT_FOUND, f"pose bone not found: {name}", {"armature": getattr(armature, "name", "?")})
+    return pose_bone
+
+
+def _pose_bone_entry(pose_bone: Any) -> dict:
+    return {
+        "name": getattr(pose_bone, "name", "?"),
+        "location": [float(v) for v in getattr(pose_bone, "location", [0.0, 0.0, 0.0])],
+        "rotation_mode": getattr(pose_bone, "rotation_mode", None),
+        "rotation_euler": [float(v) for v in getattr(pose_bone, "rotation_euler", [0.0, 0.0, 0.0])],
+        "scale": [float(v) for v in getattr(pose_bone, "scale", [1.0, 1.0, 1.0])],
+        "constraints": _constraint_entries(pose_bone),
+    }
+
+
+def _pose_report(armature: Any, bone_name: Any = None) -> dict:
+    if isinstance(bone_name, str) and bone_name:
+        entries = [_pose_bone_entry(_get_pose_bone(armature, bone_name))]
+    else:
+        entries = [_pose_bone_entry(pose_bone) for pose_bone in _pose_bones(armature)]
+    return {"armature": armature.name, "pose_bone_count": len(entries), "pose_bones": entries}
+
+
+def pose_report(ctx: Ctx, payload: dict) -> dict:
+    armature = _resolve_armature(ctx, payload.get("armature"))
+    return _pose_report(armature, payload.get("bone"))
+
+
+def set_pose_bone(ctx: Ctx, payload: dict) -> dict:
+    armature = _resolve_armature(ctx, payload.get("armature"))
+    pose_bone = _get_pose_bone(armature, payload.get("bone"))
+    with ctx.ensure(active=armature, mode="POSE", select=[armature]):
+        if payload.get("location") is not None:
+            pose_bone.location = _vec(payload.get("location"), [0.0, 0.0, 0.0])
+        if payload.get("rotation_mode") is not None:
+            pose_bone.rotation_mode = str(payload["rotation_mode"])
+        if payload.get("rotation") is not None:
+            if payload.get("rotation_mode") is None:
+                pose_bone.rotation_mode = "XYZ"
+            pose_bone.rotation_euler = _vec(payload.get("rotation"), [0.0, 0.0, 0.0])
+        if payload.get("scale") is not None:
+            pose_bone.scale = _vec(payload.get("scale"), [1.0, 1.0, 1.0])
+    return {"armature": armature.name, "pose_bone": _pose_bone_entry(pose_bone)}
+
+
+def _clear_pose_bone(pose_bone: Any) -> None:
+    pose_bone.location = [0.0, 0.0, 0.0]
+    if hasattr(pose_bone, "rotation_euler"):
+        pose_bone.rotation_euler = [0.0, 0.0, 0.0]
+    if hasattr(pose_bone, "rotation_quaternion"):
+        try:
+            pose_bone.rotation_quaternion = [1.0, 0.0, 0.0, 0.0]
+        except Exception:  # noqa: BLE001 - some fakes/properties may reject this shape
+            pass
+    pose_bone.scale = [1.0, 1.0, 1.0]
+
+
+def clear_pose(ctx: Ctx, payload: dict) -> dict:
+    armature = _resolve_armature(ctx, payload.get("armature"))
+    with ctx.ensure(active=armature, mode="POSE", select=[armature]):
+        for pose_bone in _pose_bones(armature):
+            _clear_pose_bone(pose_bone)
+    return _pose_report(armature)
+
+
+def report(ctx: Ctx, payload: dict) -> dict:
+    armature = _resolve_armature(ctx, payload.get("armature"))
+    bones = _bone_entries(armature)
+    pose = _pose_report(armature)
+    child_meshes = [
+        getattr(obj, "name", "?")
+        for obj in list(getattr(ctx.bpy.context.scene, "objects", []) or [])
+        if getattr(obj, "parent", None) is armature and getattr(obj, "type", None) == "MESH"
+    ]
+    return {
+        "armature": armature.name,
+        "bone_count": len(bones),
+        "bones": bones,
+        "pose_bone_count": pose["pose_bone_count"],
+        "pose_bones": pose["pose_bones"],
+        "child_meshes": child_meshes,
+    }
 
 
 COMMANDS = [
@@ -152,4 +272,8 @@ COMMANDS = [
     Command("rig.set_bone_transform", set_bone_transform, mutates=True, feedback="viewport"),
     Command("rig.parent_with_auto_weights", parent_with_auto_weights, mutates=True, feedback="viewport"),
     Command("rig.list_bones", list_bones, mutates=False),
+    Command("rig.report", report, mutates=False),
+    Command("rig.pose_report", pose_report, mutates=False),
+    Command("rig.set_pose_bone", set_pose_bone, mutates=True, feedback="viewport"),
+    Command("rig.clear_pose", clear_pose, mutates=True, feedback="viewport"),
 ]
