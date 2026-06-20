@@ -143,6 +143,7 @@ class FakeBpy(types.ModuleType):
             sphere_project = _Op(log, "uv.sphere_project")
             pack_islands = _Op(log, "uv.pack_islands")
             average_islands_scale = _Op(log, "uv.average_islands_scale")
+            export_layout = _Op(log, "uv.export_layout")
 
         class _ObjectOps:
             def mode_set(self_inner, mode="OBJECT", **kw):
@@ -476,3 +477,64 @@ def test_set_seams_invalid_edge_index(env) -> None:
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "uv.set_seams", {"object": "Cube", "edges": "8", "action": "SET"}, ctx)
     assert exc.value.code == INVALID_PARAMS
+
+
+# -- UV layout export -------------------------------------------------------------
+
+
+def test_router_contains_uv_export_layout() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert "uv.export_layout" in names
+
+
+def test_export_layout_selects_all_and_calls_operator(env, tmp_path) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(uv_layer_names=["UVMap"])))
+    reg = build_default_registry()
+    path = tmp_path / "uv_layout.png"
+
+    out = dispatch_on_main(
+        reg,
+        "uv.export_layout",
+        {
+            "object": "Cube",
+            "path": str(path),
+            "size": 512,
+            "opacity": 0.5,
+            "export_all": False,
+            "modified": True,
+        },
+        ctx,
+    )
+
+    assert out == {
+        "object": "Cube",
+        "path": str(path),
+        "size": 512,
+        "opacity": 0.5,
+        "export_all": False,
+        "modified": True,
+        "bytes": 0,
+    }
+    assert _names(bpy.op_calls) == ["mesh.select_all", "uv.export_layout"]
+    assert _kwargs(bpy.op_calls, "mesh.select_all") == {"action": "SELECT"}
+    assert _kwargs(bpy.op_calls, "uv.export_layout") == {
+        "filepath": str(path),
+        "size": (512, 512),
+        "opacity": 0.5,
+        "export_all": False,
+        "modified": True,
+    }
+    assert bpy.mode_calls == ["EDIT", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:uv.export_layout"]
+
+
+def test_export_layout_requires_path(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(uv_layer_names=["UVMap"])))
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "uv.export_layout", {"object": "Cube"}, ctx)
+    assert exc.value.code == INVALID_PARAMS
+    assert bpy.undo_pushes == []

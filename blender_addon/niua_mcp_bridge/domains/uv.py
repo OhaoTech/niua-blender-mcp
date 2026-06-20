@@ -11,6 +11,7 @@ read-only analytic feedback.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from ..context import Ctx
@@ -166,6 +167,41 @@ def set_seams(ctx: Ctx, payload: dict) -> dict:
     return _edge_report(obj)
 
 
+def export_layout(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    path = payload.get("path")
+    if not isinstance(path, str) or not path:
+        raise BridgeError(INVALID_PARAMS, "path is required")
+
+    size = int(payload.get("size", 1024))
+    opacity = float(payload.get("opacity", 0.25))
+    export_all = bool(payload.get("export_all", True))
+    modified = bool(payload.get("modified", False))
+    op = ctx.bpy.ops.uv.export_layout
+
+    with ctx.ensure(active=obj, mode="EDIT", select=[obj]):
+        ctx.check_poll(ctx.bpy.ops.mesh.select_all)
+        ctx.bpy.ops.mesh.select_all(action="SELECT")
+        ctx.check_poll(op)
+        op(
+            filepath=path,
+            size=(size, size),
+            opacity=opacity,
+            export_all=export_all,
+            modified=modified,
+        )
+
+    return {
+        "object": obj.name,
+        "path": path,
+        "size": size,
+        "opacity": opacity,
+        "export_all": export_all,
+        "modified": modified,
+        "bytes": os.path.getsize(path) if os.path.exists(path) else 0,
+    }
+
+
 def smart_unwrap(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_mesh(ctx, payload)
     angle_limit = float(payload.get("angle_limit", 66.0))
@@ -297,6 +333,7 @@ COMMANDS = [
     Command("uv.layer_delete", layer_delete, mutates=True, feedback="viewport"),
     Command("uv.seams", seams, mutates=False),
     Command("uv.set_seams", set_seams, mutates=True, feedback="viewport"),
+    Command("uv.export_layout", export_layout, mutates=True, feedback="viewport"),
     Command("uv.smart_unwrap", smart_unwrap, mutates=True, feedback="viewport"),
     Command("uv.unwrap", unwrap, mutates=True, feedback="viewport"),
     Command("uv.cube_project", cube_project, mutates=True, feedback="viewport"),

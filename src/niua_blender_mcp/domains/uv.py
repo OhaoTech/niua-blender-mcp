@@ -9,7 +9,7 @@ UV layer names, whether the mesh has UVs, and a cheap island count.
 
 from __future__ import annotations
 
-from ..kernel import Bool, Enum, Float, Str, ToolSpec
+from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
@@ -72,6 +72,22 @@ SPECS = [
             "object": Str(summary="Mesh object to edit (defaults to active)"),
             "edges": Str(default="", summary="Comma-separated edge indices"),
             "action": Enum(["SET", "ADD", "REMOVE", "CLEAR"], default="SET", summary="Seam mutation action"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.export_layout",
+        category="uv",
+        summary="Export the mesh UV layout as an image file",
+        command="uv.export_layout",
+        params={
+            "object": Str(summary="Mesh object to export (defaults to active)"),
+            "path": Str(required=True, summary="Destination image path"),
+            "size": Int(default=1024, minimum=1, maximum=16384, summary="Square output size in pixels"),
+            "opacity": Float(default=0.25, minimum=0.0, maximum=1.0, summary="Face fill opacity"),
+            "export_all": Bool(default=True, summary="Export all UVs, not just selected faces"),
+            "modified": Bool(default=False, summary="Export UVs after modifiers"),
         },
         mutates=True,
         feedback="viewport",
