@@ -1,7 +1,7 @@
 {
   "id": "modeling_prop",
   "competency": "modeling",
-  "goal": "Produce a game-ready hard-surface prop with clean, all-quad topology: no n-gons, no non-manifold geometry, minimal poles, within the triangle budget, watertight and correctly scaled.",
+  "goal": "Model a simple wooden shipping crate from the starting mesh: a roughly 1m cube-shaped box with chamfered (beveled) edges and a shallow recessed/inset panel on each of the four side faces (the classic crate look), believable real-world proportions, watertight. Keep topology clean throughout: all-quad (quad_ratio >= 0.95), zero n-gons, zero non-manifold edges, poles only on flat interiors, within the triangle budget. Use inset/extrude/bevel and re-quad as needed.",
   "gates": [
     {"path": "topology.quad_ratio", "op": ">=", "value": 0.95},
     {"path": "topology.ngons", "op": "==", "value": 0},

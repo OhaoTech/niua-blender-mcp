@@ -74,6 +74,11 @@ const rubric = await agent(
   `python -c "import sys; sys.path.insert(0,'${REPO}/src'); from niua_blender_mcp.evals.battery import load_task; print(load_task('${TASK}')['rubric'])"`,
   { phase: 'Setup', label: 'load rubric' },
 )
+const goal = await agent(
+  `Run and return the full stdout:\n` +
+  `python -c "import sys; sys.path.insert(0,'${REPO}/src'); from niua_blender_mcp.evals.battery import load_task; print(load_task('${TASK}')['goal'])"`,
+  { phase: 'Setup', label: 'load goal' },
+)
 
 let passed = false
 let critique = 'First attempt — start from the playbook.'
@@ -86,8 +91,8 @@ for (let round = 1; round <= MAX_ROUNDS && !passed; round++) {
 
   phase('Attempt')
   await agent(
-    `You are a senior 3D game artist working in a LIVE Blender. Improve the mesh "${SUBJECT}" toward:\n` +
-    `  clean all-quad game-ready topology: quad_ratio >= 0.95, zero n-gons, zero non-manifold edges, within tri budget.\n` +
+    `You are a senior 3D game artist working in a LIVE Blender. Improve the mesh "${SUBJECT}" toward this brief:\n` +
+    `  ${goal}\n` +
     `Drive Blender ONLY via shell: ${CALL} <tool> '<json-args>'\n` +
     `Available: model.retopo_quads, mesh.* operators, and capabilities.search / capabilities.describe / capabilities.invoke to discover anything else\n` +
     `  (e.g. ${CALL} capabilities.search '{"query":"quad","kind":"operator"}').\n\n` +
