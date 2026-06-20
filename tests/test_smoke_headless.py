@@ -385,6 +385,44 @@ def test_mesh_edit_changes_geometry_end_to_end(bridge: BlenderBridge) -> None:
     assert after["ngons"] == 0
 
 
+def test_mesh_selection_topology_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("object.create", {"type": "CUBE", "name": "MeshSelectHero"})
+    before = bridge.call("mesh.report", {"object": "MeshSelectHero"})
+    assert before["faces"] == 6
+
+    selected = bridge.call(
+        "mesh.select_by_index",
+        {"object": "MeshSelectHero", "mode": "FACE", "indices": "0", "action": "REPLACE"},
+    )
+    assert selected["faces"] == [0]
+    assert selected["counts"]["faces"] == 1
+
+    reported_selection = bridge.call("mesh.selection_report", {"object": "MeshSelectHero"})
+    assert reported_selection["faces"] == [0]
+
+    deleted = bridge.call("mesh.delete", {"object": "MeshSelectHero", "type": "FACE"})
+    assert deleted == {"object": "MeshSelectHero", "deleted": "FACE"}
+    after_delete = bridge.call("mesh.report", {"object": "MeshSelectHero"})
+    assert after_delete["faces"] == 5
+
+    bridge.call("object.create", {"type": "CUBE", "name": "MeshConvertHero"})
+    bridge.call("mesh.select_all", {"object": "MeshConvertHero", "action": "SELECT"})
+    converted = bridge.call("mesh.quads_to_tris", {"object": "MeshConvertHero"})
+    assert converted == {"object": "MeshConvertHero", "applied": "quads_to_tris"}
+    tri_report = bridge.call("mesh.report", {"object": "MeshConvertHero"})
+    assert tri_report["faces"] == 12
+
+    bridge.call("mesh.select_all", {"object": "MeshConvertHero", "action": "SELECT"})
+    quads = bridge.call("mesh.tris_to_quads", {"object": "MeshConvertHero"})
+    assert quads == {"object": "MeshConvertHero", "applied": "tris_to_quads"}
+    quad_report = bridge.call("mesh.report", {"object": "MeshConvertHero"})
+    assert quad_report["faces"] == 6
+
+    bridge.call("mesh.select_all", {"object": "MeshConvertHero", "action": "SELECT"})
+    cleanup = bridge.call("mesh.remove_doubles", {"object": "MeshConvertHero", "threshold": 0.0001})
+    assert cleanup == {"object": "MeshConvertHero", "applied": "remove_doubles", "threshold": 0.0001}
+
+
 def test_feedback_capture_returns_a_verdict(bridge: BlenderBridge) -> None:
     # Headless has no GPU/display, so this may report unavailable; it must not crash.
     result = bridge.call("feedback.capture", {"mode": "viewport"})

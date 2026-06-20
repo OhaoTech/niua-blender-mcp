@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 4: Object Creation / Transforms.
+Subsystem 5: Mesh Modeling.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -56,4 +56,11 @@ mutation, transform application, origin setting, and local/world bounds reads. I
 specialized object families such as cameras, lights, curves, text, armatures, and GUI
 mouse/keyboard parity deferred to their later subsystems.
 
-Next after verification: Subsystem 5, Mesh Modeling.
+Subsystem 5 is implemented as an expanded `mesh.*` surface. It covers explicit mesh
+selection reports, select-all, index-based vertex/edge/face selection, delete, dissolve,
+merge, remove doubles, tri/quad conversion, fill, edge/face creation, the previous
+extrude/bevel/inset/subdivide/normal/shading tools, and analytic topology reporting.
+Viewport mouse picking, knife drawing, box/lasso selection, gizmos, and other event-led
+mesh workflows remain deferred to subsystem 12.
+
+Next after verification: Subsystem 6, Curves / Text / Grease Pencil / Non-Mesh Geometry.
