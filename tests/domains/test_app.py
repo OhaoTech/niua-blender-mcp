@@ -8,7 +8,7 @@ import pytest
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import INVALID_PARAMS, PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
 class _Op:
@@ -26,17 +26,84 @@ class _Op:
             self._side(kwargs)
 
 
+class _Workspaces(list):
+    def get(self, name: str):
+        for workspace in self:
+            if workspace.name == name:
+                return workspace
+        return None
+
+
+class _Window:
+    def __init__(self, context, workspace) -> None:
+        self._context = context
+        self._workspace = workspace
+
+    @property
+    def workspace(self):
+        return self._workspace
+
+    @workspace.setter
+    def workspace(self, workspace) -> None:
+        self._workspace = workspace
+        self._context.workspace = workspace
+
+
+class FakeAddonUtils(types.ModuleType):
+    def __init__(self) -> None:
+        super().__init__("addon_utils")
+        self.states = {
+            "mesh_looptools": (True, True),
+            "io_scene_obj": (False, False),
+        }
+        self._modules = [
+            types.SimpleNamespace(
+                __name__="mesh_looptools",
+                bl_info={"name": "LoopTools", "version": (4, 9, 0), "category": "Mesh"},
+            ),
+            types.SimpleNamespace(
+                __name__="io_scene_obj",
+                bl_info={"name": "Wavefront OBJ", "version": (1, 0, 0), "category": "Import-Export"},
+            ),
+        ]
+
+    def modules(self):
+        return list(self._modules)
+
+    def check(self, module: str):
+        return self.states.get(module, (False, False))
+
+
 class FakeBpy(types.ModuleType):
     def __init__(self) -> None:
         super().__init__("bpy")
         self.op_calls: list = []
         self.undo_pushes: list[str] = []
         self.app = types.SimpleNamespace(version_string="5.1.1", version=(5, 1, 1), background=False)
-        self.data = types.SimpleNamespace(filepath="", is_dirty=False)
+        workspaces = _Workspaces(
+            [
+                types.SimpleNamespace(name="Layout"),
+                types.SimpleNamespace(name="Modeling"),
+                types.SimpleNamespace(name="Scripting"),
+            ]
+        )
+        self.data = types.SimpleNamespace(filepath="", is_dirty=False, workspaces=workspaces)
         render = types.SimpleNamespace(engine="BLENDER_EEVEE")
         scene = types.SimpleNamespace(name="Scene", render=render)
-        workspace = types.SimpleNamespace(name="Layout")
-        self.context = types.SimpleNamespace(scene=scene, workspace=workspace)
+        preferences = types.SimpleNamespace(
+            view=types.SimpleNamespace(ui_scale=1.25, show_tooltips=True),
+            edit=types.SimpleNamespace(use_global_undo=True, undo_steps=32),
+            filepaths=types.SimpleNamespace(temporary_directory="/tmp", render_output_directory="//"),
+            system=types.SimpleNamespace(memory_cache_limit=4096),
+        )
+        self.context = types.SimpleNamespace(
+            scene=scene,
+            workspace=workspaces[0],
+            window=None,
+            preferences=preferences,
+        )
+        self.context.window = _Window(self.context, workspaces[0])
+        self.addon_utils = FakeAddonUtils()
 
         bpy = self
 
@@ -58,24 +125,41 @@ class FakeBpy(types.ModuleType):
                 bpy.data.filepath = kwargs["filepath"]
                 bpy.data.is_dirty = False
 
+        def _addon_enable(kwargs):
+            module = kwargs["module"]
+            bpy.addon_utils.states[module] = (True, True)
+
+        def _addon_disable(kwargs):
+            module = kwargs["module"]
+            bpy.addon_utils.states[module] = (False, False)
+
         class _WmOps:
             read_factory_settings = _Op(bpy.op_calls, "wm.read_factory_settings", side=_new)
             open_mainfile = _Op(bpy.op_calls, "wm.open_mainfile", side=_open)
             save_mainfile = _Op(bpy.op_calls, "wm.save_mainfile", side=_save)
             save_as_mainfile = _Op(bpy.op_calls, "wm.save_as_mainfile", side=_save_as)
             revert_mainfile = _Op(bpy.op_calls, "wm.revert_mainfile", side=lambda kw: setattr(bpy.data, "is_dirty", False))
+            save_userpref = _Op(bpy.op_calls, "wm.save_userpref")
 
         class _EdOps:
+            undo = _Op(bpy.op_calls, "ed.undo")
+            redo = _Op(bpy.op_calls, "ed.redo")
+
             def undo_push(self, message: str = "", **kw):
                 bpy.undo_pushes.append(message)
 
-        self.ops = types.SimpleNamespace(wm=_WmOps(), ed=_EdOps())
+        class _PreferencesOps:
+            addon_enable = _Op(bpy.op_calls, "preferences.addon_enable", side=_addon_enable)
+            addon_disable = _Op(bpy.op_calls, "preferences.addon_disable", side=_addon_disable)
+
+        self.ops = types.SimpleNamespace(wm=_WmOps(), ed=_EdOps(), preferences=_PreferencesOps())
 
 
 @pytest.fixture()
 def env(monkeypatch):
     bpy = FakeBpy()
     monkeypatch.setitem(sys.modules, "bpy", bpy)
+    monkeypatch.setitem(sys.modules, "addon_utils", bpy.addon_utils)
     return Ctx(bpy), bpy
 
 
@@ -202,3 +286,74 @@ def test_file_revert_requires_force_and_saved_file(env):
     out = dispatch_on_main(reg, "app.file_revert", {"force": True}, ctx)
     assert _names(bpy.op_calls) == ["wm.revert_mainfile"]
     assert out["is_dirty"] is False
+
+
+def test_undo_and_redo_call_ed_ops_without_undo_push(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    assert dispatch_on_main(reg, "app.undo", {}, ctx) == {"ok": True, "applied": ["ed.undo"]}
+    assert dispatch_on_main(reg, "app.redo", {}, ctx) == {"ok": True, "applied": ["ed.redo"]}
+    assert _names(bpy.op_calls) == ["ed.undo", "ed.redo"]
+    assert bpy.undo_pushes == []
+
+
+def test_workspaces_lists_and_switches_active_workspace(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "app.workspaces", {}, ctx)
+    assert out == {"active": "Layout", "workspaces": ["Layout", "Modeling", "Scripting"]}
+
+    switched = dispatch_on_main(reg, "app.workspace_set", {"name": "Modeling"}, ctx)
+    assert switched == {"active": "Modeling", "workspaces": ["Layout", "Modeling", "Scripting"]}
+    assert bpy.context.window.workspace.name == "Modeling"
+    assert bpy.context.workspace.name == "Modeling"
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "app.workspace_set", {"name": "Compositing"}, ctx)
+    assert exc.value.code == NOT_FOUND
+
+
+def test_addons_lists_and_toggles_modules(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "app.addons", {}, ctx)
+    assert out["addons"][0] == {
+        "module": "io_scene_obj",
+        "name": "Wavefront OBJ",
+        "version": [1, 0, 0],
+        "category": "Import-Export",
+        "enabled": False,
+        "loaded": False,
+    }
+    assert out["addons"][1]["module"] == "mesh_looptools"
+    assert out["enabled"] == ["mesh_looptools"]
+
+    enabled = dispatch_on_main(reg, "app.addon_enable", {"module": "io_scene_obj"}, ctx)
+    assert enabled["module"] == "io_scene_obj"
+    assert enabled["enabled"] is True
+    assert bpy.op_calls[-1] == ("preferences.addon_enable", {"module": "io_scene_obj"})
+
+    disabled = dispatch_on_main(reg, "app.addon_disable", {"module": "mesh_looptools"}, ctx)
+    assert disabled["module"] == "mesh_looptools"
+    assert disabled["enabled"] is False
+    assert bpy.op_calls[-1] == ("preferences.addon_disable", {"module": "mesh_looptools"})
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "app.addon_enable", {"module": "missing_addon"}, ctx)
+    assert exc.value.code == NOT_FOUND
+
+
+def test_preferences_summary_and_save(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    summary = dispatch_on_main(reg, "app.preferences_summary", {}, ctx)
+    assert summary == {
+        "view": {"ui_scale": 1.25, "show_tooltips": True},
+        "edit": {"use_global_undo": True, "undo_steps": 32},
+        "filepaths": {"temporary_directory": "/tmp", "render_output_directory": "//"},
+        "system": {"memory_cache_limit": 4096},
+    }
+
+    saved = dispatch_on_main(reg, "app.preferences_save", {}, ctx)
+    assert saved == {"ok": True, "applied": ["wm.save_userpref"]}
+    assert bpy.op_calls[-1] == ("wm.save_userpref", {})
