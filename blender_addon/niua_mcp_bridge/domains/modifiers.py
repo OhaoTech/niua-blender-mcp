@@ -47,6 +47,17 @@ def _get_modifier(obj: Any, name: str) -> Any:
     return mod
 
 
+def _modifier_list(obj: Any) -> list[Any]:
+    return list(getattr(obj, "modifiers", []) or [])
+
+
+def _modifier_index(obj: Any, mod: Any) -> int:
+    for index, candidate in enumerate(_modifier_list(obj)):
+        if candidate is mod or getattr(candidate, "name", None) == getattr(mod, "name", None):
+            return index
+    return -1
+
+
 def _modifier_type_items(ctx: Ctx) -> list[Any]:
     modifier_type = getattr(getattr(ctx.bpy, "types", None), "Modifier", None)
     bl_rna = getattr(modifier_type, "bl_rna", None)
@@ -201,6 +212,57 @@ def set_property(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "modifier": name, "property": prop, "value": getattr(mod, prop)}
 
 
+def set_visibility(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_object(ctx, payload)
+    name = str(payload.get("name", ""))
+    mod = _get_modifier(obj, name)
+    flags = {
+        "viewport": "show_viewport",
+        "render": "show_render",
+        "editmode": "show_in_editmode",
+        "cage": "show_on_cage",
+        "expanded": "show_expanded",
+    }
+    for param, attr in flags.items():
+        if param in payload:
+            setattr(mod, attr, bool(payload[param]))
+    return {"object": obj.name, "modifier": _modifier_report(mod, _modifier_index(obj, mod))}
+
+
+def move(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_object(ctx, payload)
+    name = str(payload.get("name", ""))
+    _get_modifier(obj, name)
+    index = int(payload.get("index", 0))
+    op = ctx.bpy.ops.object.modifier_move_to_index
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        ctx.check_poll(op)
+        op(modifier=name, index=index)
+    mod = _get_modifier(obj, name)
+    return {"object": obj.name, "modifier": _modifier_report(mod, _modifier_index(obj, mod))}
+
+
+def copy(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_object(ctx, payload)
+    name = str(payload.get("name", ""))
+    _get_modifier(obj, name)
+    before_names = {getattr(mod, "name", "") for mod in _modifier_list(obj)}
+    op = ctx.bpy.ops.object.modifier_copy
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        ctx.check_poll(op)
+        op(modifier=name)
+    after = _modifier_list(obj)
+    copied = next((mod for mod in after if getattr(mod, "name", "") not in before_names), None)
+    if copied is None and after:
+        copied = after[-1]
+    if copied is None:
+        raise BridgeError(PRECONDITION, f"modifier copy did not create a modifier: {name}")
+    new_name = payload.get("new_name")
+    if isinstance(new_name, str) and new_name:
+        copied.name = new_name
+    return {"object": obj.name, "modifier": _modifier_report(copied, _modifier_index(obj, copied))}
+
+
 def apply(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_object(ctx, payload)
     name = str(payload.get("name", ""))
@@ -236,6 +298,9 @@ COMMANDS = [
     Command("modifiers.types", types_list, mutates=False),
     Command("modifiers.add", add, mutates=True, feedback="viewport"),
     Command("modifiers.set", set_property, mutates=True, feedback="viewport"),
+    Command("modifiers.set_visibility", set_visibility, mutates=True, feedback="viewport"),
+    Command("modifiers.move", move, mutates=True, feedback="viewport"),
+    Command("modifiers.copy", copy, mutates=True, feedback="viewport"),
     Command("modifiers.apply", apply, mutates=True, feedback="viewport"),
     Command("modifiers.remove", remove, mutates=True, feedback="viewport"),
     Command("modifiers.list", list_modifiers, mutates=False),

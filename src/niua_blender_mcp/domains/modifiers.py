@@ -12,7 +12,7 @@ applying a modifier on a multi-user mesh).
 
 from __future__ import annotations
 
-from ..kernel import Str, ToolSpec
+from ..kernel import Bool, Int, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
@@ -45,6 +45,49 @@ SPECS = [
             "name": Str(required=True, summary="Name of the modifier to edit"),
             "property": Str(required=True, summary="Modifier property to set (e.g. 'levels', 'thickness')"),
             "value": Str(required=True, summary="New value (coerced to the property's type)"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="modifiers.set_visibility",
+        category="modifiers",
+        summary="Set common modifier stack visibility flags",
+        command="modifiers.set_visibility",
+        params={
+            "object": Str(summary="Object owning the modifier (defaults to active)"),
+            "name": Str(required=True, summary="Name of the modifier to edit"),
+            "viewport": Bool(summary="Show modifier in viewport"),
+            "render": Bool(summary="Show modifier in renders"),
+            "editmode": Bool(summary="Show modifier in edit mode"),
+            "cage": Bool(summary="Show modifier on cage"),
+            "expanded": Bool(summary="Show modifier panel expanded"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="modifiers.move",
+        category="modifiers",
+        summary="Move a modifier to a stack index",
+        command="modifiers.move",
+        params={
+            "object": Str(summary="Object owning the modifier (defaults to active)"),
+            "name": Str(required=True, summary="Name of the modifier to move"),
+            "index": Int(required=True, minimum=0, summary="Destination stack index"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="modifiers.copy",
+        category="modifiers",
+        summary="Copy a modifier in the stack",
+        command="modifiers.copy",
+        params={
+            "object": Str(summary="Object owning the modifier (defaults to active)"),
+            "name": Str(required=True, summary="Name of the modifier to copy"),
+            "new_name": Str(default="", summary="Optional name for the copied modifier"),
         },
         mutates=True,
         feedback="viewport",

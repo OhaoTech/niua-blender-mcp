@@ -60,6 +60,18 @@ class FakeModifierStack:
     def remove(self, mod: FakeModifier) -> None:
         self._items.remove(mod)
 
+    def move_to_index(self, mod: FakeModifier, index: int) -> None:
+        self._items.remove(mod)
+        self._items.insert(max(0, min(index, len(self._items))), mod)
+
+    def copy(self, mod: FakeModifier) -> FakeModifier:
+        copy = FakeModifier(f"{mod.name}.001", mod.type)
+        for key, value in vars(mod).items():
+            if key not in {"name"}:
+                setattr(copy, key, value)
+        self._items.append(copy)
+        return copy
+
     def __iter__(self):
         return iter(self._items)
 
@@ -105,6 +117,16 @@ class _Op:
             mod = obj.modifiers.get(kwargs.get("modifier", "")) if obj else None
             if mod is not None:
                 obj.modifiers.remove(mod)
+        elif self._name == "object.modifier_move_to_index":
+            obj = self._bpy._active_obj
+            mod = obj.modifiers.get(kwargs.get("modifier", "")) if obj else None
+            if mod is not None:
+                obj.modifiers.move_to_index(mod, int(kwargs.get("index", 0)))
+        elif self._name == "object.modifier_copy":
+            obj = self._bpy._active_obj
+            mod = obj.modifiers.get(kwargs.get("modifier", "")) if obj else None
+            if mod is not None:
+                obj.modifiers.copy(mod)
 
 
 class FakeBpy(types.ModuleType):
@@ -167,6 +189,8 @@ class FakeBpy(types.ModuleType):
         class _ObjectOps:
             modifier_apply = _Op(log, "object.modifier_apply", bpy)
             modifier_remove = _Op(log, "object.modifier_remove", bpy)
+            modifier_move_to_index = _Op(log, "object.modifier_move_to_index", bpy)
+            modifier_copy = _Op(log, "object.modifier_copy", bpy)
 
             def mode_set(self_inner, mode="OBJECT", **kw):
                 bpy.mode_calls.append(mode)
@@ -370,6 +394,77 @@ def test_set_missing_modifier_raises_not_found(env) -> None:
             ctx,
         )
     assert exc.value.code == NOT_FOUND
+
+
+def test_router_contains_modifier_stack_controls() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"modifiers.set_visibility", "modifiers.move", "modifiers.copy"} <= names
+
+
+def test_set_visibility_writes_only_provided_flags(env) -> None:
+    ctx, bpy = env
+    obj = FakeObj("Cube")
+    mod = obj.modifiers.new(name="Bev", type="BEVEL")
+    mod.show_render = True
+    mod.show_in_editmode = False
+    bpy.add(obj)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(
+        reg,
+        "modifiers.set_visibility",
+        {"object": "Cube", "name": "Bev", "viewport": False, "editmode": True, "expanded": False},
+        ctx,
+    )
+
+    assert mod.show_viewport is False
+    assert mod.show_render is True
+    assert mod.show_in_editmode is True
+    assert mod.show_expanded is False
+    assert result["modifier"]["show_viewport"] is False
+    assert result["modifier"]["show_render"] is True
+    assert bpy.undo_pushes == ["niua:modifiers.set_visibility"]
+
+
+def test_move_runs_operator_and_reorders_stack(env) -> None:
+    ctx, bpy = env
+    obj = FakeObj("Cube")
+    obj.mode = "EDIT"
+    obj.modifiers.new(name="A", type="BEVEL")
+    obj.modifiers.new(name="B", type="SOLIDIFY")
+    obj.modifiers.new(name="C", type="TRIANGULATE")
+    bpy.add(obj)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "modifiers.move", {"object": "Cube", "name": "C", "index": 0}, ctx)
+
+    assert [m.name for m in obj.modifiers] == ["C", "A", "B"]
+    assert result["modifier"]["name"] == "C"
+    assert result["modifier"]["index"] == 0
+    assert ("object.modifier_move_to_index", {"modifier": "C", "index": 0}) in bpy.op_calls
+    assert bpy.mode_calls == ["OBJECT", "EDIT"]
+    assert bpy.undo_pushes == ["niua:modifiers.move"]
+
+
+def test_copy_runs_operator_and_renames_copy(env) -> None:
+    ctx, bpy = env
+    obj = FakeObj("Cube")
+    obj.modifiers.new(name="Bev", type="BEVEL")
+    bpy.add(obj)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(
+        reg,
+        "modifiers.copy",
+        {"object": "Cube", "name": "Bev", "new_name": "BevCopy"},
+        ctx,
+    )
+
+    assert [m.name for m in obj.modifiers] == ["Bev", "BevCopy"]
+    assert result["modifier"]["name"] == "BevCopy"
+    assert result["modifier"]["type"] == "BEVEL"
+    assert ("object.modifier_copy", {"modifier": "Bev"}) in bpy.op_calls
+    assert bpy.undo_pushes == ["niua:modifiers.copy"]
 
 
 # -- apply -------------------------------------------------------------------------
