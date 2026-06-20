@@ -141,32 +141,40 @@ def _resolve_light(ctx: Ctx, name: Any = "") -> Any:
 
 def _light_entry(obj: Any) -> dict:
     data = getattr(obj, "data", None)
-    return {
+    out = {
         "light": getattr(obj, "name", ""),
         "type": getattr(data, "type", None),
         "location": _float_list(getattr(obj, "location", [])),
         "rotation": _float_list(getattr(obj, "rotation_euler", [])),
         "energy": float(getattr(data, "energy", 0.0) or 0.0),
         "color": _float_list(getattr(data, "color", [])),
-        "size": float(getattr(data, "size", 0.0) or 0.0),
-        "spot_size": float(getattr(data, "spot_size", 0.0) or 0.0),
-        "spot_blend": float(getattr(data, "spot_blend", 0.0) or 0.0),
     }
+    for key in ("size", "spot_size", "spot_blend"):
+        try:
+            out[key] = float(getattr(data, key) or 0.0)
+        except AttributeError:
+            out[key] = None
+    return out
+
+
+def _set_if_supported(data: Any, key: str, value: Any, *, required: bool) -> None:
+    try:
+        getattr(data, key)
+        setattr(data, key, value)
+    except AttributeError as exc:
+        if required:
+            raise BridgeError(PRECONDITION, f"light type does not support property: {key}") from exc
 
 
 def _set_light_data(obj: Any, payload: dict, *, defaults: bool = False) -> None:
     data = getattr(obj, "data", None)
-    scalar_values = {
-        "energy": float(payload.get("energy", 10.0)),
-        "size": float(payload.get("size", getattr(data, "size", 1.0))),
-        "spot_size": float(payload.get("spot_size", getattr(data, "spot_size", 0.785398))),
-        "spot_blend": float(payload.get("spot_blend", getattr(data, "spot_blend", 0.15))),
-    }
-    for key, value in scalar_values.items():
-        if defaults or key in payload:
-            setattr(data, key, value)
+    if defaults or "energy" in payload:
+        data.energy = float(payload.get("energy", 10.0))
     if defaults or "color" in payload:
         data.color = _vec(payload.get("color"), [1.0, 1.0, 1.0])
+    for key, fallback in (("size", 1.0), ("spot_size", 0.785398), ("spot_blend", 0.15)):
+        if defaults or key in payload:
+            _set_if_supported(data, key, float(payload.get(key, fallback)), required=key in payload)
 
 
 def light_create(ctx: Ctx, payload: dict) -> dict:
@@ -399,13 +407,39 @@ def _compositor_tree(ctx: Ctx, *, ensure: bool = False) -> Any:
         scene.use_nodes = True
     tree = getattr(scene, "node_tree", None)
     if tree is None:
+        tree = getattr(scene, "compositing_node_group", None)
+    if tree is None and ensure:
+        try:
+            tree = ctx.bpy.data.node_groups.new("Scene Compositor", "CompositorNodeTree")
+            scene.compositing_node_group = tree
+        except Exception as exc:  # noqa: BLE001 - unavailable on older/partial bpy
+            raise BridgeError(PRECONDITION, f"could not create compositor node tree: {exc}") from exc
+    if tree is None:
         raise BridgeError(PRECONDITION, "scene has no compositor node tree")
+    if ensure:
+        _ensure_default_compositor_nodes(tree)
     return tree
+
+
+def _ensure_default_compositor_nodes(tree: Any) -> None:
+    nodes = getattr(tree, "nodes", None)
+    if list(nodes or []):
+        return
+    try:
+        nodes.new(type="CompositorNodeRLayers")
+        try:
+            nodes.new(type="CompositorNodeComposite")
+        except Exception:  # noqa: BLE001 - Blender 5.1 removed/renamed this node type
+            nodes.new(type="CompositorNodeViewer")
+    except Exception as exc:  # noqa: BLE001
+        raise BridgeError(PRECONDITION, f"could not initialize compositor nodes: {exc}") from exc
 
 
 def compositor_report(ctx: Ctx, payload: dict) -> dict:
     scene = ctx.bpy.context.scene
     tree = getattr(scene, "node_tree", None)
+    if tree is None:
+        tree = getattr(scene, "compositing_node_group", None)
     nodes = list(getattr(tree, "nodes", []) or []) if tree is not None else []
     links = list(getattr(tree, "links", []) or []) if tree is not None else []
     return {
@@ -416,7 +450,10 @@ def compositor_report(ctx: Ctx, payload: dict) -> dict:
 
 
 def compositor_enable(ctx: Ctx, payload: dict) -> dict:
-    ctx.bpy.context.scene.use_nodes = bool(payload.get("enable", True))
+    enabled = bool(payload.get("enable", True))
+    ctx.bpy.context.scene.use_nodes = enabled
+    if enabled:
+        _compositor_tree(ctx, ensure=True)
     return compositor_report(ctx, {})
 
 

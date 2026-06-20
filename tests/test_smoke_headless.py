@@ -577,6 +577,82 @@ def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:
         assert "data" in img or img.get("available") is False
 
 
+def test_rendering_cameras_lighting_compositor_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "RenderSubject"})
+
+    camera = bridge.call(
+        "camera.create",
+        {
+            "name": "ShotCam",
+            "location": [4, -6, 4],
+            "rotation": [1.1, 0.0, 0.55],
+            "lens": 35,
+            "active": True,
+        },
+    )
+    assert camera["camera"] == "ShotCam"
+    assert camera["active"] is True
+    assert bridge.call("camera.list", {})["active"] == "ShotCam"
+
+    camera = bridge.call("camera.set", {"camera": "ShotCam", "clip_end": 750})
+    assert camera["clip_end"] == 750.0
+
+    light = bridge.call(
+        "light.create",
+        {
+            "type": "AREA",
+            "name": "KeyLight",
+            "location": [0, -3, 4],
+            "energy": 400,
+            "color": [1.0, 0.9, 0.75],
+            "size": 4,
+        },
+    )
+    assert light["light"] == "KeyLight"
+    assert light["type"] == "AREA"
+
+    light = bridge.call("light.set", {"light": "KeyLight", "energy": 250})
+    assert light["energy"] == 250.0
+    assert bridge.call("light.list", {})["count"] >= 1
+
+    render_settings = bridge.call(
+        "render.set_settings",
+        {"engine": "BLENDER_WORKBENCH", "resolution_x": 64, "resolution_y": 64, "image_format": "PNG"},
+    )
+    assert render_settings["engine"] == "BLENDER_WORKBENCH"
+    assert render_settings["resolution"] == [64, 64]
+    assert render_settings["camera"] == "ShotCam"
+
+    world = bridge.call("world.set", {"color": [0.02, 0.03, 0.04], "strength": 0.8})
+    assert world["color"] == pytest.approx([0.02, 0.03, 0.04])
+    assert world["strength"] == pytest.approx(0.8)
+
+    compositor = bridge.call("compositor.enable", {"enable": True})
+    assert compositor["use_nodes"] is True
+    assert compositor["nodes"]
+
+    added = bridge.call("compositor.add_node", {"type": "CompositorNodeBlur", "name": "SoftBlur"})
+    assert added["node"]["name"] == "SoftBlur"
+    assert any(node["name"] == "SoftBlur" for node in bridge.call("compositor.report", {})["nodes"])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "still.png")
+        still = bridge.call(
+            "render.still",
+            {
+                "path": path,
+                "camera": "ShotCam",
+                "engine": "BLENDER_WORKBENCH",
+                "resolution_x": 64,
+                "resolution_y": 64,
+                "image_format": "PNG",
+            },
+        )
+        assert still["path"] == path
+        assert still["format"] == "PNG"
+        assert os.path.exists(path) and os.path.getsize(path) > 0
+
+
 # --- Phase 2 domain smoke: one safe op per pack, end to end in real Blender ----------
 # Each verifies the pack's command actually dispatches, mutates (where applicable), and
 # the analytic read reflects the change. All headless-safe (no GPU/area context needed).

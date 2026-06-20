@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 10: Animation / Rigging.
+Subsystem 11: Rendering / Cameras / Lighting / Compositor.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -98,4 +98,12 @@ Graph Editor, Dope Sheet, NLA, driver editing, weight-paint brush gestures, and 
 rig recipe workflows remain available through reflection or deferred to subsystem 12 and
 Layer 2.
 
-Next after verification: Subsystem 11, Rendering / Cameras / Lighting / Compositor.
+Subsystem 11 is implemented as `camera.*`, `light.*`, `render.*`, `world.*`, and
+`compositor.*`. It covers camera creation/list/report/edit/activation, light
+creation/list/report/edit, render settings report/mutation, headless Workbench still
+rendering to disk with settings restoration, world color/background strength, and
+compositor node-tree enable/report/add/link. Viewport camera/light gizmos, render-region
+dragging, compositor editor gestures, and production lighting/render artistry remain
+deferred to subsystem 12 and Layer 2.
+
+Next after verification: Subsystem 12, UI Automation / GUI Parity Layer.
