@@ -15,7 +15,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import PRECONDITION, BridgeError
+from ..errors import NOT_FOUND, PRECONDITION, BridgeError
 
 
 def _resolve_mesh(ctx: Ctx, payload: dict) -> Any:
@@ -51,6 +51,60 @@ def _edit_all_faces(ctx: Ctx, obj: Any, op: Any, **kwargs: Any) -> None:
         ctx.bpy.ops.mesh.select_all(action="SELECT")
         ctx.check_poll(op)
         op(**kwargs)
+
+
+def _uv_layers(obj: Any) -> Any:
+    return getattr(getattr(obj, "data", None), "uv_layers", None)
+
+
+def _layer_report(obj: Any) -> dict:
+    layers = list(_uv_layers(obj) or [])
+    active = getattr(_uv_layers(obj), "active", None)
+    names = [getattr(layer, "name", "") for layer in layers]
+    active_name = getattr(active, "name", None) if active is not None else None
+    return {
+        "object": obj.name,
+        "layers": names,
+        "count": len(layers),
+        "active": active_name,
+        "active_index": names.index(active_name) if active_name in names else None,
+    }
+
+
+def _get_uv_layer(obj: Any, name: str) -> Any:
+    layers = _uv_layers(obj)
+    getter = getattr(layers, "get", None)
+    layer = getter(name) if callable(getter) else None
+    if layer is None:
+        layer = next((candidate for candidate in list(layers or []) if getattr(candidate, "name", None) == name), None)
+    if layer is None:
+        raise BridgeError(NOT_FOUND, f"UV layer not found: {name}", {"object": getattr(obj, "name", "?")})
+    return layer
+
+
+def layers(ctx: Ctx, payload: dict) -> dict:
+    return _layer_report(_resolve_mesh(ctx, payload))
+
+
+def layer_create(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    name = payload.get("name")
+    name = name if isinstance(name, str) and name else "UVMap"
+    _uv_layers(obj).new(name=name, do_init=bool(payload.get("do_init", True)))
+    return _layer_report(obj)
+
+
+def layer_set_active(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    _uv_layers(obj).active = _get_uv_layer(obj, str(payload.get("name", "")))
+    return _layer_report(obj)
+
+
+def layer_delete(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    layer = _get_uv_layer(obj, str(payload.get("name", "")))
+    _uv_layers(obj).remove(layer)
+    return _layer_report(obj)
 
 
 def smart_unwrap(ctx: Ctx, payload: dict) -> dict:
@@ -178,6 +232,10 @@ def report(ctx: Ctx, payload: dict) -> dict:
 
 
 COMMANDS = [
+    Command("uv.layers", layers, mutates=False),
+    Command("uv.layer_create", layer_create, mutates=True, feedback="viewport"),
+    Command("uv.layer_set_active", layer_set_active, mutates=True, feedback="viewport"),
+    Command("uv.layer_delete", layer_delete, mutates=True, feedback="viewport"),
     Command("uv.smart_unwrap", smart_unwrap, mutates=True, feedback="viewport"),
     Command("uv.unwrap", unwrap, mutates=True, feedback="viewport"),
     Command("uv.cube_project", cube_project, mutates=True, feedback="viewport"),

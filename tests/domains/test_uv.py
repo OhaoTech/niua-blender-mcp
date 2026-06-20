@@ -16,6 +16,7 @@ from contextlib import contextmanager
 
 import pytest
 
+from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
@@ -29,6 +30,24 @@ class FakeUVLayers(list):
         names = names or []
         super().__init__(types.SimpleNamespace(name=n) for n in names)
         self.active = self[-1] if self else None
+        self.new_calls = []
+
+    def get(self, name: str):
+        return next((layer for layer in self if layer.name == name), None)
+
+    def new(self, name: str = "UVMap", do_init: bool = True):
+        self.new_calls.append({"name": name, "do_init": do_init})
+        layer = types.SimpleNamespace(name=name)
+        self.append(layer)
+        if self.active is None:
+            self.active = layer
+        return layer
+
+    def remove(self, layer) -> None:
+        index = self.index(layer)
+        super().remove(layer)
+        if self.active is layer:
+            self.active = self[min(index, len(self) - 1)] if self else None
 
 
 class FakeMesh:
@@ -335,3 +354,66 @@ def test_report_is_read_only_no_undo(env) -> None:
     reg = build_default_registry()
     dispatch_on_main(reg, "uv.report", {"object": "Cube"}, ctx)
     assert bpy.undo_pushes == []
+
+
+# -- UV layer management ----------------------------------------------------------
+
+
+def test_router_contains_uv_layer_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"uv.layers", "uv.layer_create", "uv.layer_set_active", "uv.layer_delete"} <= names
+
+
+def test_layers_reports_active_layer(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(uv_layer_names=["UVMap", "Lightmap"])))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "uv.layers", {"object": "Cube"}, ctx)
+
+    assert out == {
+        "object": "Cube",
+        "layers": ["UVMap", "Lightmap"],
+        "count": 2,
+        "active": "Lightmap",
+        "active_index": 1,
+    }
+
+
+def test_layer_create_uses_mesh_uv_layers_new(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(uv_layer_names=["UVMap"])
+    bpy.add(FakeObj("Cube", data=mesh))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "uv.layer_create", {"object": "Cube", "name": "Lightmap", "do_init": False}, ctx)
+
+    assert mesh.uv_layers.new_calls == [{"name": "Lightmap", "do_init": False}]
+    assert out["layers"] == ["UVMap", "Lightmap"]
+    assert out["active"] == "UVMap"
+    assert bpy.undo_pushes == ["niua:uv.layer_create"]
+
+
+def test_layer_set_active_by_name(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(uv_layer_names=["UVMap", "Lightmap"])
+    bpy.add(FakeObj("Cube", data=mesh))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "uv.layer_set_active", {"object": "Cube", "name": "UVMap"}, ctx)
+
+    assert mesh.uv_layers.active.name == "UVMap"
+    assert out["active"] == "UVMap"
+    assert out["active_index"] == 0
+
+
+def test_layer_delete_by_name(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(uv_layer_names=["UVMap", "Lightmap"])
+    bpy.add(FakeObj("Cube", data=mesh))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "uv.layer_delete", {"object": "Cube", "name": "Lightmap"}, ctx)
+
+    assert out["layers"] == ["UVMap"]
+    assert out["active"] == "UVMap"

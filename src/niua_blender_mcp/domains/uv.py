@@ -9,9 +9,53 @@ UV layer names, whether the mesh has UVs, and a cheap island count.
 
 from __future__ import annotations
 
-from ..kernel import Enum, Float, Str, ToolSpec
+from ..kernel import Bool, Enum, Float, Str, ToolSpec
 
 SPECS = [
+    ToolSpec(
+        name="uv.layers",
+        category="uv",
+        summary="List UV layers and active UV layer",
+        command="uv.layers",
+        params={"object": Str(summary="Mesh object to inspect (defaults to active)")},
+    ),
+    ToolSpec(
+        name="uv.layer_create",
+        category="uv",
+        summary="Create a UV layer",
+        command="uv.layer_create",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "name": Str(default="UVMap", summary="UV layer name"),
+            "do_init": Bool(default=True, summary="Initialize from existing UVs"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.layer_set_active",
+        category="uv",
+        summary="Set the active UV layer by name",
+        command="uv.layer_set_active",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "name": Str(required=True, summary="UV layer name"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="uv.layer_delete",
+        category="uv",
+        summary="Delete a UV layer by name",
+        command="uv.layer_delete",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "name": Str(required=True, summary="UV layer name"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
     ToolSpec(
         name="uv.smart_unwrap",
         category="uv",
