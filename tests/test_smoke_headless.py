@@ -179,6 +179,33 @@ def test_feedback_capture_views_returns_envelope(bridge: BlenderBridge) -> None:
         assert "data" in img or img.get("available") is False
 
 
+def test_topology_overlay_renders_two_distinct_images(bridge: BlenderBridge) -> None:
+    bridge.call(
+        "rna.call_operator",
+        {
+            "idname": "mesh.primitive_circle_add",
+            "args": json.dumps({"vertices": 5, "fill_type": "NGON"}),
+        },
+    )
+    info = bridge.call("scene.info", {})
+    names = [o["name"] for o in info["objects"] if o["name"].startswith("Circle")]
+    assert names, "primitive_circle_add did not create a Circle"
+
+    out = bridge.call("feedback.topology", {"object": names[0], "view": "persp", "res": 256})
+    if not out.get("available"):
+        reason = out.get("reason", "")
+        if "OpenGL" in reason or "opengl" in reason or "GPU" in reason:
+            pytest.skip(f"headless renderer unavailable: {reason}")
+        pytest.fail(f"topology overlay failed: {reason}")
+    assert out["available"] is True
+    assert out["groups"]["ngons"] == 1
+    assert len(out["images"]) == 2
+    modes = {img["mode"] for img in out["images"]}
+    assert modes == {"facetype", "wireframe"}
+    data = {img["mode"]: img["data"] for img in out["images"]}
+    assert data["facetype"] != data["wireframe"]
+
+
 def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:
     # Orbit. Same contract: envelope shape holds even when rendering is unavailable
     # headless, and 'count' is honored / clamped into 2..24.
