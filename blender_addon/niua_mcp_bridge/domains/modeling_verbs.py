@@ -56,7 +56,27 @@ def bevel_edges(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "applied": ["edges_select_sharp", "bevel"], "segments": segments}
 
 
+def recess_panels(ctx: Ctx, payload: dict) -> dict:
+    obj_name = payload.get("object")
+    if not isinstance(obj_name, str) or not obj_name:
+        raise BridgeError(INVALID_PARAMS, "object is required")
+    obj = ctx.get_object(obj_name)
+    if getattr(obj, "type", None) != "MESH":
+        raise BridgeError(PRECONDITION, f"object is not a mesh: {obj_name}")
+
+    inset = float(payload.get("inset", 0.08))
+    depth = float(payload.get("depth", 0.04))
+    ops = ctx.bpy.ops
+    with ctx.ensure(active=obj, mode="EDIT", select=[obj]):
+        ctx.check_poll(ops.mesh.select_all)
+        ops.mesh.select_all(action="SELECT")
+        ctx.check_poll(ops.mesh.inset)
+        ops.mesh.inset(thickness=inset, depth=-depth, use_individual=True)
+    return {"object": obj.name, "applied": ["select_all", "inset"], "inset": inset, "depth": depth}
+
+
 COMMANDS = [
     Command("model.retopo_quads", retopo_quads, mutates=True, feedback="viewport"),
     Command("model.bevel_edges", bevel_edges, mutates=True, feedback="viewport"),
+    Command("model.recess_panels", recess_panels, mutates=True, feedback="viewport"),
 ]

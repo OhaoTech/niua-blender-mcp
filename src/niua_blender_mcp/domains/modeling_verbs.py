@@ -43,4 +43,18 @@ SPECS = [
         feedback="viewport",
         tier="curated",
     ),
+    ToolSpec(
+        name="model.recess_panels",
+        category="modeling",
+        summary="Inset all faces and push the inset inward to create recessed hard-surface panels",
+        command="model.recess_panels",
+        params={
+            "object": Str(required=True, summary="Mesh object to panel-recess"),
+            "inset": Float(default=0.08, minimum=0.0, summary="Panel inset thickness"),
+            "depth": Float(default=0.04, minimum=0.0, summary="Inward panel recess depth"),
+        },
+        mutates=True,
+        feedback="viewport",
+        tier="curated",
+    ),
 ]

@@ -83,6 +83,7 @@ class _FakeBpy(types.ModuleType):
             select_all = _Op(log, "mesh.select_all")
             edges_select_sharp = _Op(log, "mesh.edges_select_sharp")
             bevel = _Op(log, "mesh.bevel")
+            inset = _Op(log, "mesh.inset")
             tris_convert_to_quads = _Op(log, "mesh.tris_convert_to_quads")
             normals_make_consistent = _Op(log, "mesh.normals_make_consistent")
             remove_doubles = _Op(log, "mesh.remove_doubles")
@@ -166,3 +167,33 @@ def test_bevel_edges_is_exposed_in_server_router():
     specs = {s.name: s for s in build_router().specs()}
     assert "model.bevel_edges" in specs
     assert specs["model.bevel_edges"].tier == "curated"
+
+
+def test_recess_panels_insets_all_faces_with_depth(monkeypatch):
+    bpy = _make_bpy_with_object(monkeypatch)
+    reg = build_default_registry()
+    out = dispatch_on_main(
+        reg,
+        "model.recess_panels",
+        {"object": "Cube", "inset": 0.08, "depth": 0.04},
+        Ctx(bpy),
+    )
+    assert out == {
+        "object": "Cube",
+        "applied": ["select_all", "inset"],
+        "inset": 0.08,
+        "depth": 0.04,
+    }
+    assert _names(bpy.op_calls) == ["mesh.select_all", "mesh.inset"]
+    assert bpy.op_calls[0][1] == {"action": "SELECT"}
+    assert bpy.op_calls[1][1] == {"thickness": 0.08, "depth": -0.04, "use_individual": True}
+    assert bpy.mode_calls == ["EDIT", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:model.recess_panels"]
+
+
+def test_recess_panels_is_exposed_in_server_router():
+    from niua_blender_mcp.domains import build_router
+
+    specs = {s.name: s for s in build_router().specs()}
+    assert "model.recess_panels" in specs
+    assert specs["model.recess_panels"].tier == "curated"
