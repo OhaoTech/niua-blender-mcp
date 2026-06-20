@@ -54,4 +54,24 @@ SPECS = [
         mutates=True,
         feedback="viewport",
     ),
+    ToolSpec(
+        name="ui.screenshot",
+        category="ui",
+        summary="Capture Blender's UI screenshot when screen.screenshot is available",
+        command="ui.screenshot",
+        params={
+            "path": Str(required=True, summary="Output screenshot path"),
+            "full": Bool(default=False, summary="Capture the full Blender window when supported"),
+        },
+    ),
+    ToolSpec(
+        name="ui.redraw",
+        category="ui",
+        summary="Request a Blender UI redraw when wm.redraw_timer is available",
+        command="ui.redraw",
+        params={
+            "type": Str(default="DRAW_WIN_SWAP", summary="Redraw timer type"),
+            "iterations": Int(default=1, minimum=1, summary="Number of redraw iterations"),
+        },
+    ),
 ]

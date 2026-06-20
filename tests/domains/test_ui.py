@@ -4,6 +4,7 @@ import json
 import sys
 import types
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
@@ -50,6 +51,8 @@ class _Op:
 
     def __call__(self, **kwargs):
         self.calls.append(dict(kwargs))
+        if self.name == "screen.screenshot" and kwargs.get("filepath"):
+            Path(kwargs["filepath"]).write_bytes(b"fake")
 
 
 class _MissingOp:
@@ -197,6 +200,11 @@ def test_router_exposes_ui_operator_tools():
     assert {"ui.operator_poll", "ui.operator_invoke"} <= names
 
 
+def test_router_exposes_ui_screenshot_and_redraw_tools():
+    names = {spec.name for spec in build_router().specs()}
+    assert {"ui.screenshot", "ui.redraw"} <= names
+
+
 def test_ui_state_reports_background_windows_and_capabilities(env):
     ctx, _bpy = env
     reg = build_default_registry()
@@ -306,3 +314,50 @@ def test_operator_invoke_unknown_operator_and_bad_json_are_clean_errors(env):
     with pytest.raises(BridgeError) as exc2:
         dispatch_on_main(reg, "ui.operator_invoke", {"idname": "mesh.bevel", "args": "{nope"}, ctx)
     assert exc2.value.code == INVALID_PARAMS
+
+
+def test_screenshot_returns_unavailable_when_operator_poll_fails(env, tmp_path):
+    ctx, _bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "ui.screenshot", {"path": str(tmp_path / "shot.png")}, ctx)
+
+    assert out["available"] is False
+    assert "screen.screenshot" in out["reason"]
+
+
+def test_screenshot_success_returns_file_metadata(env, tmp_path):
+    ctx, bpy = env
+    bpy.ops.screen.screenshot.poll_ok = True
+    reg = build_default_registry()
+    path = tmp_path / "shot.png"
+
+    out = dispatch_on_main(reg, "ui.screenshot", {"path": str(path), "full": True}, ctx)
+
+    assert out == {"available": True, "path": str(path), "size": 4, "applied": ["screen.screenshot"]}
+    assert bpy.ops.screen.screenshot.calls == [{"filepath": str(path), "full": True}]
+
+
+def test_redraw_returns_unavailable_when_operator_poll_fails(env):
+    ctx, bpy = env
+    bpy.ops.wm.redraw_timer.poll_ok = False
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "ui.redraw", {}, ctx)
+
+    assert out["available"] is False
+    assert "wm.redraw_timer" in out["reason"]
+
+
+def test_redraw_success_calls_redraw_operator(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "ui.redraw", {"type": "DRAW_WIN", "iterations": 2}, ctx)
+
+    assert out == {
+        "available": True,
+        "applied": ["wm.redraw_timer"],
+        "args": {"type": "DRAW_WIN", "iterations": 2},
+    }
+    assert bpy.ops.wm.redraw_timer.calls == [{"type": "DRAW_WIN", "iterations": 2}]

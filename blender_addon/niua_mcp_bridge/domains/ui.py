@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import nullcontext
 from typing import Any
 
@@ -119,6 +120,13 @@ def _require_idname(payload: dict) -> str:
     if not isinstance(idname, str) or not idname:
         raise BridgeError(INVALID_PARAMS, "idname is required")
     return idname
+
+
+def _require_string(payload: dict, key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value:
+        raise BridgeError(INVALID_PARAMS, f"{key} is required")
+    return value
 
 
 def _target_summary(
@@ -313,9 +321,47 @@ def operator_invoke(ctx: Ctx, payload: dict) -> dict:
     return result
 
 
+def screenshot(ctx: Ctx, payload: dict) -> dict:
+    path = _require_string(payload, "path")
+    op = _operator(ctx, "screen.screenshot")
+    capability = _poll_capability(ctx, "screen.screenshot")
+    if not capability.get("available"):
+        return capability
+    try:
+        op(filepath=path, full=bool(payload.get("full", False)))
+    except Exception as exc:  # noqa: BLE001
+        raise BridgeError(PRECONDITION, f"screen.screenshot failed: {exc}", {"error": str(exc)}) from exc
+    return {
+        "available": True,
+        "path": path,
+        "size": os.path.getsize(path) if os.path.exists(path) else 0,
+        "applied": ["screen.screenshot"],
+    }
+
+
+def redraw(ctx: Ctx, payload: dict) -> dict:
+    op = _operator(ctx, "wm.redraw_timer")
+    capability = _poll_capability(ctx, "wm.redraw_timer")
+    if not capability.get("available"):
+        return capability
+    redraw_type = str(payload.get("type", "DRAW_WIN_SWAP") or "DRAW_WIN_SWAP")
+    iterations = int(payload.get("iterations", 1) or 1)
+    try:
+        op(type=redraw_type, iterations=iterations)
+    except Exception as exc:  # noqa: BLE001
+        raise BridgeError(PRECONDITION, f"wm.redraw_timer failed: {exc}", {"error": str(exc)}) from exc
+    return {
+        "available": True,
+        "applied": ["wm.redraw_timer"],
+        "args": {"type": redraw_type, "iterations": iterations},
+    }
+
+
 COMMANDS = [
     Command("ui.state", state, mutates=False),
     Command("ui.windows", windows, mutates=False),
     Command("ui.operator_poll", operator_poll, mutates=False),
     Command("ui.operator_invoke", operator_invoke, mutates=True, feedback="viewport"),
+    Command("ui.screenshot", screenshot, mutates=False),
+    Command("ui.redraw", redraw, mutates=False),
 ]
