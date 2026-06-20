@@ -18,6 +18,9 @@ from ..context import Ctx
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
+UV_EXPORT_EXT_TO_FORMAT = {"png": "PNG", "svg": "SVG", "eps": "EPS"}
+UV_EXPORT_FORMATS = {"PNG", "SVG", "EPS"}
+
 
 def _resolve_mesh(ctx: Ctx, payload: dict) -> Any:
     """Return the target mesh object (named, else active); fail cleanly otherwise."""
@@ -167,11 +170,33 @@ def set_seams(ctx: Ctx, payload: dict) -> dict:
     return _edge_report(obj)
 
 
+def _infer_layout_format(path: str) -> str:
+    ext = os.path.splitext(path)[1].lstrip(".").lower()
+    fmt = UV_EXPORT_EXT_TO_FORMAT.get(ext)
+    if fmt is None:
+        raise BridgeError(
+            INVALID_PARAMS,
+            f"cannot infer UV layout format from extension: {ext or '(none)'}",
+            {"path": path, "extension": ext, "supported": sorted(UV_EXPORT_EXT_TO_FORMAT)},
+        )
+    return fmt
+
+
 def export_layout(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_mesh(ctx, payload)
     path = payload.get("path")
     if not isinstance(path, str) or not path:
         raise BridgeError(INVALID_PARAMS, "path is required")
+
+    fmt = str(payload.get("format", "AUTO")).upper()
+    if fmt in ("", "AUTO"):
+        fmt = _infer_layout_format(path)
+    if fmt not in UV_EXPORT_FORMATS:
+        raise BridgeError(
+            INVALID_PARAMS,
+            f"unsupported UV layout format: {fmt}",
+            {"supported": sorted(UV_EXPORT_FORMATS)},
+        )
 
     size = int(payload.get("size", 1024))
     opacity = float(payload.get("opacity", 0.25))
@@ -183,13 +208,21 @@ def export_layout(ctx: Ctx, payload: dict) -> dict:
         ctx.check_poll(ctx.bpy.ops.mesh.select_all)
         ctx.bpy.ops.mesh.select_all(action="SELECT")
         ctx.check_poll(op)
-        op(
-            filepath=path,
-            size=(size, size),
-            opacity=opacity,
-            export_all=export_all,
-            modified=modified,
-        )
+        try:
+            op(
+                filepath=path,
+                size=(size, size),
+                opacity=opacity,
+                export_all=export_all,
+                modified=modified,
+                mode=fmt,
+            )
+        except Exception as exc:  # noqa: BLE001 - Blender operators raise RuntimeError/SystemError
+            raise BridgeError(
+                PRECONDITION,
+                f"could not export UV layout: {exc}",
+                {"path": path, "format": fmt},
+            ) from exc
 
     return {
         "object": obj.name,
@@ -198,6 +231,7 @@ def export_layout(ctx: Ctx, payload: dict) -> dict:
         "opacity": opacity,
         "export_all": export_all,
         "modified": modified,
+        "format": fmt,
         "bytes": os.path.getsize(path) if os.path.exists(path) else 0,
     }
 

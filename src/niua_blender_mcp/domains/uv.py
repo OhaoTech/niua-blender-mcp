@@ -88,6 +88,7 @@ SPECS = [
             "opacity": Float(default=0.25, minimum=0.0, maximum=1.0, summary="Face fill opacity"),
             "export_all": Bool(default=True, summary="Export all UVs, not just selected faces"),
             "modified": Bool(default=False, summary="Export UVs after modifiers"),
+            "format": Enum(["AUTO", "PNG", "SVG", "EPS"], default="AUTO", summary="Output file format"),
         },
         mutates=True,
         feedback="viewport",

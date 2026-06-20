@@ -83,12 +83,15 @@ class _Op:
         self._log = log
         self._name = name
         self._poll_ok = poll_ok
+        self._raises = None
 
     def poll(self) -> bool:
         return self._poll_ok
 
     def __call__(self, **kwargs):
         self._log.append((self._name, kwargs))
+        if self._raises is not None:
+            raise self._raises
 
 
 class FakeBpy(types.ModuleType):
@@ -514,6 +517,7 @@ def test_export_layout_selects_all_and_calls_operator(env, tmp_path) -> None:
         "opacity": 0.5,
         "export_all": False,
         "modified": True,
+        "format": "PNG",
         "bytes": 0,
     }
     assert _names(bpy.op_calls) == ["mesh.select_all", "uv.export_layout"]
@@ -524,6 +528,7 @@ def test_export_layout_selects_all_and_calls_operator(env, tmp_path) -> None:
         "opacity": 0.5,
         "export_all": False,
         "modified": True,
+        "mode": "PNG",
     }
     assert bpy.mode_calls == ["EDIT", "OBJECT"]
     assert bpy.undo_pushes == ["niua:uv.export_layout"]
@@ -537,4 +542,42 @@ def test_export_layout_requires_path(env) -> None:
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "uv.export_layout", {"object": "Cube"}, ctx)
     assert exc.value.code == INVALID_PARAMS
+    assert bpy.undo_pushes == []
+
+
+def test_export_layout_infers_svg_format(env, tmp_path) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(uv_layer_names=["UVMap"])))
+    reg = build_default_registry()
+    path = tmp_path / "uv_layout.svg"
+
+    out = dispatch_on_main(reg, "uv.export_layout", {"object": "Cube", "path": str(path)}, ctx)
+
+    assert out["format"] == "SVG"
+    assert _kwargs(bpy.op_calls, "uv.export_layout")["mode"] == "SVG"
+
+
+def test_export_layout_accepts_explicit_format(env, tmp_path) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(uv_layer_names=["UVMap"])))
+    reg = build_default_registry()
+    path = tmp_path / "uv_layout.out"
+
+    out = dispatch_on_main(reg, "uv.export_layout", {"object": "Cube", "path": str(path), "format": "EPS"}, ctx)
+
+    assert out["format"] == "EPS"
+    assert _kwargs(bpy.op_calls, "uv.export_layout")["mode"] == "EPS"
+
+
+def test_export_layout_operator_failure_is_precondition(env, tmp_path) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(uv_layer_names=["UVMap"])))
+    bpy.ops.uv.export_layout._raises = RuntimeError("GPU functions are not available")
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "uv.export_layout", {"object": "Cube", "path": str(tmp_path / "uv_layout.png")}, ctx)
+
+    assert exc.value.code == PRECONDITION
+    assert "could not export UV layout" in exc.value.message
     assert bpy.undo_pushes == []

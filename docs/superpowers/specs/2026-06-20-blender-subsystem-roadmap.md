@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 8: Materials / Shading / Nodes / Textures.
+Subsystem 9: UV / Images.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -83,4 +83,10 @@ editing from JSON, image texture wiring, image datablock load/list/report, and l
 smoke coverage for shader graph plus texture wiring. UV layout/editing, texture
 painting, and baking remain deferred to subsystem 9 and later Layer 2 work.
 
-Next after verification: Subsystem 9, UV / Images.
+Subsystem 9 is implemented as expanded `uv.*` plus the image datablock tools from
+subsystem 8. It covers UV layer listing/creation/activation/deletion, seam reports
+and mutation, unwrap/projection/pack/average-scale operators, analytic UV reports,
+and UV layout image export. Texture painting, baking, UDIM/tile-specific editing,
+and GUI event parity remain deferred to later focused work and subsystem 12.
+
+Next after verification: Subsystem 10, Animation / Rigging.

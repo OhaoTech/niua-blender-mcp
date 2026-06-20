@@ -760,21 +760,43 @@ def test_anim_keyframe_and_report(bridge: BlenderBridge) -> None:
     assert interp["fcurves"] == 3 and interp["keyframes"] == 6
 
 
-def test_uv_smart_unwrap_then_report(bridge: BlenderBridge) -> None:
-    # Smart-unwrap a cube (verifies uv.smart_project kwargs in 5.x), then uv.report.
+def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
     before = bridge.call("uv.report", {"object": "UVHero"})
-    # A factory cube already ships with a default UVMap; smart_unwrap rebuilds it.
     assert "has_uvs" in before
 
-    bridge.call("uv.smart_unwrap", {"object": "UVHero", "angle_limit": 66.0, "island_margin": 0.02})
+    created = bridge.call("uv.layer_create", {"object": "UVHero", "name": "Lightmap", "do_init": True})
+    assert "Lightmap" in created["layers"]
+
+    active = bridge.call("uv.layer_set_active", {"object": "UVHero", "name": "Lightmap"})
+    assert active["active"] == "Lightmap"
+
+    seams = bridge.call("uv.set_seams", {"object": "UVHero", "edges": "0,1", "action": "SET"})
+    assert seams["seam_edges"] == [0, 1]
+
+    removed = bridge.call("uv.set_seams", {"object": "UVHero", "edges": "1", "action": "REMOVE"})
+    assert removed["seam_edges"] == [0]
+
+    bridge.call("uv.unwrap", {"object": "UVHero", "method": "ANGLE_BASED", "island_margin": 0.02})
+    bridge.call("uv.pack_islands", {"object": "UVHero", "margin": 0.01})
 
     after = bridge.call("uv.report", {"object": "UVHero"})
     assert after["has_uvs"] is True
     assert after["uv_layer_count"] >= 1
-    # bmesh island detection should find at least one island after a real unwrap.
+    assert after["active_uv_layer"] == "Lightmap"
     assert after["island_count"] is None or after["island_count"] >= 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "uv_layout.svg")
+        exported = bridge.call(
+            "uv.export_layout",
+            {"object": "UVHero", "path": path, "size": 512, "opacity": 0.25},
+        )
+        assert exported["path"] == path
+        assert exported["size"] == 512
+        assert exported["format"] == "SVG"
+        assert os.path.exists(path) and os.path.getsize(path) > 0
 
 
 def test_rig_armature_bone_and_list(bridge: BlenderBridge) -> None:
