@@ -92,4 +92,16 @@ SPECS = [
         mutates=True,
         feedback="viewport",
     ),
+    ToolSpec(
+        name="context.poll_operator",
+        category="context",
+        summary="Check whether a Blender operator polls in the current or proposed context",
+        command="context.poll_operator",
+        params={
+            "idname": Str(required=True, summary="Operator id, e.g. mesh.subdivide"),
+            "object": Str(default="", summary="Optional active object for the poll"),
+            "mode": Str(default="", summary="Optional mode for the poll"),
+            "select": Str(default="", summary="Optional comma-separated selected objects"),
+        },
+    ),
 ]

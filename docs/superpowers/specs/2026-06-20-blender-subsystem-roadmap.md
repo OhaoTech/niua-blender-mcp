@@ -35,15 +35,19 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 2: Scene Tree / Outliner.
+Subsystem 3: Context / Selection / Modes.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
 
-Subsystem 2 is implemented as a data-backed `outliner.*` surface. It covers logical
+Subsystem 2 is complete as a data-backed `outliner.*` surface. It covers logical
 scene tree reads, collection organization, object collection membership, parent
 hierarchy, object/collection restriction flags, view layers, layer-collection
 restrictions, and orphan listing/purge. GUI mouse/keyboard Outliner parity remains
 deferred to subsystem 12.
 
-Next after verification: Subsystem 3, Context / Selection / Modes.
+Subsystem 3 is implemented as a `context.*` surface. It covers active object reads and
+mutation, object selection actions, interaction mode switching, mesh select mode,
+editor-area discovery, and operator poll checks in current or proposed context.
+
+Next after verification: Subsystem 4, Object Creation / Transforms.

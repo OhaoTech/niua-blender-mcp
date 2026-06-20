@@ -6,7 +6,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
+from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 _MESH_SELECT_MODES = {
     "VERT": [True, False, False],
@@ -228,6 +228,44 @@ def mesh_select_mode(ctx: Ctx, payload: dict) -> dict:
     return _context_summary(ctx)
 
 
+def _operator(ctx: Ctx, idname: str) -> Any:
+    category, _, name = idname.partition(".")
+    if not category or not name:
+        raise BridgeError(INVALID_PARAMS, f"idname must be '<cat>.<name>', got: {idname!r}")
+    try:
+        op = getattr(getattr(ctx.bpy.ops, category), name)
+    except Exception as exc:  # noqa: BLE001
+        raise BridgeError(NOT_FOUND, f"operator not found: {idname}", {"error": str(exc)}) from exc
+    probe = getattr(op, "get_rna_type", None)
+    if callable(probe):
+        try:
+            probe()
+        except Exception as exc:  # noqa: BLE001
+            raise BridgeError(NOT_FOUND, f"operator not found: {idname}", {"error": str(exc)}) from exc
+    return op
+
+
+def poll_operator(ctx: Ctx, payload: dict) -> dict:
+    idname = payload.get("idname")
+    if not isinstance(idname, str) or not idname:
+        raise BridgeError(INVALID_PARAMS, "idname is required")
+    op = _operator(ctx, idname)
+    obj = payload.get("object") if isinstance(payload.get("object"), str) and payload.get("object") else None
+    mode = payload.get("mode") if isinstance(payload.get("mode"), str) and payload.get("mode") else None
+    select = _split_names(payload.get("select"), "select") if isinstance(payload.get("select"), str) and payload.get("select") else None
+    try:
+        with ctx.ensure(active=obj, mode=mode, select=select):
+            poll = getattr(op, "poll", None)
+            available = bool(poll()) if callable(poll) else True
+    except BridgeError as exc:
+        return {"idname": idname, "available": False, "reason": exc.message}
+    except Exception as exc:  # noqa: BLE001
+        return {"idname": idname, "available": False, "reason": str(exc)}
+    if not available:
+        return {"idname": idname, "available": False, "reason": "operator poll returned false"}
+    return {"idname": idname, "available": True}
+
+
 COMMANDS = [
     Command("context.info", info, mutates=False),
     Command("context.areas", areas, mutates=False),
@@ -236,4 +274,5 @@ COMMANDS = [
     Command("context.select_all", select_all, mutates=True, feedback="viewport"),
     Command("context.mode_set", mode_set, mutates=True, feedback="viewport"),
     Command("context.mesh_select_mode", mesh_select_mode, mutates=True, feedback="viewport"),
+    Command("context.poll_operator", poll_operator, mutates=False),
 ]

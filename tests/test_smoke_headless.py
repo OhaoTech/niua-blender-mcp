@@ -220,6 +220,48 @@ def test_outliner_scene_tree_workflow(bridge: BlenderBridge) -> None:
     assert any(obj["name"] == "OutlinerChild" for obj in props["objects"])
 
 
+def test_context_selection_mode_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "CtxCube"})
+    bridge.call("scene.create_object", {"type": "SPHERE", "name": "CtxSphere"})
+
+    active = bridge.call("context.set_active", {"object": "CtxCube"})
+    assert active["active"]["name"] == "CtxCube"
+    assert "CtxCube" in {obj["name"] for obj in active["selected"]}
+
+    selected = bridge.call(
+        "context.select_objects",
+        {"objects": "CtxSphere", "action": "REPLACE", "active": "CtxSphere"},
+    )
+    assert [obj["name"] for obj in selected["selected"]] == ["CtxSphere"]
+    assert selected["active"]["name"] == "CtxSphere"
+
+    added = bridge.call("context.select_objects", {"objects": "CtxCube", "action": "ADD"})
+    assert {"CtxCube", "CtxSphere"} == {obj["name"] for obj in added["selected"]}
+
+    toggled = bridge.call("context.select_objects", {"objects": "CtxSphere", "action": "TOGGLE"})
+    assert [obj["name"] for obj in toggled["selected"]] == ["CtxCube"]
+
+    edit = bridge.call("context.mode_set", {"mode": "EDIT", "object": "CtxCube"})
+    assert edit["active"]["name"] == "CtxCube"
+    assert edit["object_mode"] == "EDIT"
+
+    mesh_mode = bridge.call("context.mesh_select_mode", {"mode": "EDGE"})
+    assert mesh_mode["mesh_select_mode"] == {"vertex": False, "edge": True, "face": False}
+
+    poll = bridge.call(
+        "context.poll_operator",
+        {"idname": "mesh.subdivide", "object": "CtxCube", "mode": "EDIT", "select": "CtxCube"},
+    )
+    assert poll == {"idname": "mesh.subdivide", "available": True}
+
+    object_mode = bridge.call("context.mode_set", {"mode": "OBJECT", "object": "CtxCube"})
+    assert object_mode["object_mode"] == "OBJECT"
+
+    info = bridge.call("context.info", {})
+    assert info["active"]["name"] == "CtxCube"
+    assert "context_mode" in info
+
+
 def test_rna_describe_reads_live_api(bridge: BlenderBridge) -> None:
     described = bridge.call("rna.describe", {"path": "op:mesh.primitive_cube_add"})
     assert described["kind"] == "operator"

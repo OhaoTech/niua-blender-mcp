@@ -8,7 +8,7 @@ import pytest
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import NOT_FOUND, PRECONDITION, BridgeError
 
 
 class _NamedList(list):
@@ -68,6 +68,7 @@ class FakeBpy(types.ModuleType):
         self.mode_calls: list[str] = []
         self.mode_poll_ok = True
         self.mode_raise = False
+        self.operator_poll_ok = True
 
         class _Context:
             scene = self.scene
@@ -105,9 +106,21 @@ class FakeBpy(types.ModuleType):
                 if bpy._active_obj is not None:
                     bpy._active_obj.mode = mode
 
+        class _Subdivide:
+            def poll(self_inner):
+                return bpy.operator_poll_ok
+
+            def get_rna_type(self_inner):
+                return types.SimpleNamespace(properties=[])
+
+        class _MissingOp:
+            def get_rna_type(self_inner):
+                raise AttributeError("missing")
+
         self.ops = types.SimpleNamespace(
             ed=types.SimpleNamespace(undo_push=lambda message="", **kw: None),
             object=types.SimpleNamespace(mode_set=_ModeSet()),
+            mesh=types.SimpleNamespace(subdivide=_Subdivide(), missing=_MissingOp()),
         )
 
     def add_area(self, area_type: str = "VIEW_3D") -> None:
@@ -261,3 +274,32 @@ def test_mesh_select_mode_maps_named_modes(env):
 
     assert bpy.tool_settings.mesh_select_mode == [False, True, True]
     assert out["mesh_select_mode"] == {"vertex": False, "edge": True, "face": True}
+
+
+def test_poll_operator_reports_available_and_unavailable_without_invoking(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "context.poll_operator",
+        {"idname": "mesh.subdivide", "object": "Cube", "mode": "EDIT", "select": "Cube"},
+        ctx,
+    )
+    assert out["idname"] == "mesh.subdivide"
+    assert out["available"] is True
+
+    bpy.operator_poll_ok = False
+    out2 = dispatch_on_main(reg, "context.poll_operator", {"idname": "mesh.subdivide"}, ctx)
+    assert out2["idname"] == "mesh.subdivide"
+    assert out2["available"] is False
+    assert "poll" in out2["reason"]
+
+
+def test_poll_operator_unknown_operator_is_not_found(env):
+    ctx, _bpy = env
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "context.poll_operator", {"idname": "mesh.missing"}, ctx)
+    assert exc.value.code == NOT_FOUND
