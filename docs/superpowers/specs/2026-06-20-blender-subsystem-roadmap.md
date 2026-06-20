@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 9: UV / Images.
+Subsystem 10: Animation / Rigging.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -89,4 +89,13 @@ and mutation, unwrap/projection/pack/average-scale operators, analytic UV report
 and UV layout image export. Texture painting, baking, UDIM/tile-specific editing,
 and GUI event parity remain deferred to later focused work and subsystem 12.
 
-Next after verification: Subsystem 10, Animation / Rigging.
+Subsystem 10 is implemented as expanded `anim.*` plus expanded `rig.*`. It covers
+timeline range/current-frame/FPS reads and mutation, detailed action/f-curve/keyframe
+reports, existing keyframe insertion/deletion/interpolation, armature rest-bone
+authoring, pose bone reports and transforms, pose constraint list/add/remove, vertex
+group reports/creation, and deterministic skinning weight assignment by vertex index.
+Graph Editor, Dope Sheet, NLA, driver editing, weight-paint brush gestures, and control
+rig recipe workflows remain available through reflection or deferred to subsystem 12 and
+Layer 2.
+
+Next after verification: Subsystem 11, Rendering / Cameras / Lighting / Compositor.

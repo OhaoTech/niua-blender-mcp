@@ -742,22 +742,96 @@ def test_materials_shading_textures_workflow(bridge: BlenderBridge) -> None:
     assert any(node["type"] == "TEX_IMAGE" for node in final_report["nodes"])
 
 
-def test_anim_keyframe_and_report(bridge: BlenderBridge) -> None:
-    # Insert two location keyframes, then anim.report must count the f-curves/keys.
-    # Regression guard for Blender 4.4+ slotted actions: f-curves moved off
-    # action.fcurves into action.layers[].strips[].channelbag(slot).fcurves; a naive
-    # reader reports 0 keyframes and set_interpolation wrongly fails preconditions.
+def test_animation_rigging_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "AnimHero"})
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "RigBody"})
+
+    timeline = bridge.call(
+        "anim.set_timeline",
+        {"frame_start": 1, "frame_end": 48, "frame_current": 12, "fps": 30},
+    )
+    assert timeline["frame_start"] == 1
+    assert timeline["frame_end"] == 48
+    assert timeline["frame_current"] == 12
+    assert timeline["fps"] == 30
+    assert bridge.call("anim.timeline", {})["frame_current"] == 12
+
     bridge.call("anim.insert_keyframe", {"object": "AnimHero", "data_path": "location", "frame": 1})
     bridge.call("anim.insert_keyframe", {"object": "AnimHero", "data_path": "location", "frame": 10})
 
     report = bridge.call("anim.report", {"object": "AnimHero"})
-    assert report["fcurves"] == 3  # location x/y/z
-    assert report["keyframes"] == 6  # two keys per channel
+    assert report["fcurves"] == 3
+    assert report["keyframes"] == 6
     assert report["action"] is not None
+
+    keyframes = bridge.call("anim.keyframes", {"object": "AnimHero"})
+    assert keyframes["fcurve_count"] == 3
+    assert keyframes["keyframe_count"] == 6
+    assert any(fcurve["data_path"] == "location" for fcurve in keyframes["fcurves"])
 
     interp = bridge.call("anim.set_interpolation", {"object": "AnimHero", "interpolation": "LINEAR"})
     assert interp["fcurves"] == 3 and interp["keyframes"] == 6
+
+    bridge.call("rig.add_armature", {"name": "RigHero", "location": [0, 0, 0]})
+    bridge.call(
+        "rig.add_bone",
+        {"armature": "RigHero", "name": "Spine", "head": [0, 0, 0], "tail": [0, 0, 1]},
+    )
+
+    pose = bridge.call(
+        "rig.set_pose_bone",
+        {
+            "armature": "RigHero",
+            "bone": "Spine",
+            "location": [0.1, 0.2, 0.3],
+            "rotation": [0.0, 0.0, 0.25],
+            "scale": [1.0, 1.1, 1.0],
+            "rotation_mode": "XYZ",
+        },
+    )
+    assert pose["pose_bone"]["name"] == "Spine"
+    assert pose["pose_bone"]["rotation_mode"] == "XYZ"
+
+    constraint = bridge.call(
+        "rig.constraint_add",
+        {
+            "armature": "RigHero",
+            "bone": "Spine",
+            "type": "COPY_LOCATION",
+            "name": "CopyAnimHero",
+            "target": "AnimHero",
+            "influence": 0.5,
+        },
+    )
+    assert constraint["constraint"]["name"] == "CopyAnimHero"
+    assert constraint["constraint"]["target"] == "AnimHero"
+
+    constraints = bridge.call("rig.constraints", {"armature": "RigHero", "bone": "Spine"})
+    assert constraints["constraint_count"] == 1
+
+    removed = bridge.call(
+        "rig.constraint_remove",
+        {"armature": "RigHero", "bone": "Spine", "name": "CopyAnimHero"},
+    )
+    assert removed["constraint_count"] == 0
+
+    groups = bridge.call("rig.vertex_group_create", {"mesh": "RigBody", "name": "Spine"})
+    assert groups["groups"][0]["name"] == "Spine"
+
+    weighted = bridge.call(
+        "rig.assign_weights",
+        {"mesh": "RigBody", "group": "Spine", "vertices": "0,1,2", "weight": 0.8},
+    )
+    assert [item["index"] for item in weighted["groups"][0]["vertices"]] == [0, 1, 2]
+    assert [item["weight"] for item in weighted["groups"][0]["vertices"]] == pytest.approx([0.8, 0.8, 0.8])
+
+    rig_report = bridge.call("rig.report", {"armature": "RigHero"})
+    assert "Spine" in {bone["name"] for bone in rig_report["bones"]}
+    assert "Spine" in {bone["name"] for bone in rig_report["pose_bones"]}
+
+    cleared = bridge.call("rig.clear_pose", {"armature": "RigHero"})
+    spine = next(bone for bone in cleared["pose_bones"] if bone["name"] == "Spine")
+    assert spine["location"] == [0.0, 0.0, 0.0]
 
 
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
@@ -797,20 +871,6 @@ def test_uv_images_workflow(bridge: BlenderBridge) -> None:
         assert exported["size"] == 512
         assert exported["format"] == "SVG"
         assert os.path.exists(path) and os.path.getsize(path) > 0
-
-
-def test_rig_armature_bone_and_list(bridge: BlenderBridge) -> None:
-    # Create an armature, author an edit-bone, confirm it persists into object mode.
-    # Verifies edit_bones authoring survives the EDIT->OBJECT mode round-trip headless.
-    bridge.call("rig.add_armature", {"name": "RigHero", "location": [0, 0, 0]})
-    bridge.call(
-        "rig.add_bone",
-        {"armature": "RigHero", "name": "Spine", "head": [0, 0, 0], "tail": [0, 0, 1]},
-    )
-
-    bones = bridge.call("rig.list_bones", {"armature": "RigHero"})
-    names = {b["name"] for b in bones["bones"]}
-    assert "Spine" in names  # the authored edit-bone is now a rest-pose Bone
 
 
 # --- Phase 3 smoke: live RNA discovery + generic execution, end to end -----------------
