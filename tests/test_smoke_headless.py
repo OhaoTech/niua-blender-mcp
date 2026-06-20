@@ -262,6 +262,80 @@ def test_context_selection_mode_workflow(bridge: BlenderBridge) -> None:
     assert "context_mode" in info
 
 
+def test_object_lifecycle_transform_workflow(bridge: BlenderBridge) -> None:
+    created = bridge.call(
+        "object.create",
+        {
+            "type": "TORUS",
+            "name": "ObjTorus",
+            "major_radius": 1.25,
+            "minor_radius": 0.25,
+            "major_segments": 24,
+            "minor_segments": 8,
+            "location": [1, 2, 3],
+            "rotation": [0.2, 0.1, 0.0],
+            "scale": [1.5, 1.0, 0.5],
+        },
+    )
+    assert created["name"] == "ObjTorus"
+    assert created["location"] == [1.0, 2.0, 3.0]
+
+    moved = bridge.call(
+        "object.transform_set",
+        {
+            "object": "ObjTorus",
+            "location": [2, 3, 4],
+            "rotation": [0.4, 0.0, 0.2],
+            "scale": [2, 1, 1],
+            "delta_location": [0.1, 0.0, 0.0],
+            "rotation_mode": "XYZ",
+        },
+    )
+    assert moved["location"] == [2.0, 3.0, 4.0]
+    assert moved["delta_location"] == pytest.approx([0.1, 0.0, 0.0])
+
+    transform = bridge.call("object.transform_get", {"object": "ObjTorus"})
+    assert transform["name"] == "ObjTorus"
+    assert transform["scale"] == [2.0, 1.0, 1.0]
+
+    bounds = bridge.call("object.bounds", {"object": "ObjTorus"})
+    assert bounds["object"] == "ObjTorus"
+    assert len(bounds["local"]) == 8
+    assert len(bounds["world"]) == 8
+
+    duplicate = bridge.call(
+        "object.duplicate",
+        {"object": "ObjTorus", "name": "ObjTorusCopy", "offset": [1, 0, 0]},
+    )
+    assert duplicate["name"] == "ObjTorusCopy"
+    assert duplicate["location"][0] == 3.0
+
+    origin = bridge.call(
+        "object.origin_set",
+        {"object": "ObjTorus", "type": "ORIGIN_GEOMETRY", "center": "BOUNDS"},
+    )
+    assert origin == {"object": "ObjTorus", "origin": "ORIGIN_GEOMETRY", "center": "BOUNDS"}
+
+    applied = bridge.call("object.transform_apply", {"object": "ObjTorus"})
+    assert applied["object"] == "ObjTorus"
+    assert applied["applied"] == {
+        "location": True,
+        "rotation": True,
+        "scale": True,
+        "properties": True,
+        "isolate_users": False,
+    }
+    after_apply = bridge.call("object.transform_get", {"object": "ObjTorus"})
+    assert after_apply["location"] == [0.0, 0.0, 0.0]
+    assert after_apply["scale"] == [1.0, 1.0, 1.0]
+
+    deleted = bridge.call("object.delete", {"objects": "ObjTorusCopy"})
+    assert deleted == {"deleted": ["ObjTorusCopy"], "count": 1}
+    names = {obj["name"] for obj in bridge.call("scene.info", {})["objects"]}
+    assert "ObjTorus" in names
+    assert "ObjTorusCopy" not in names
+
+
 def test_rna_describe_reads_live_api(bridge: BlenderBridge) -> None:
     described = bridge.call("rna.describe", {"path": "op:mesh.primitive_cube_add"})
     assert described["kind"] == "operator"

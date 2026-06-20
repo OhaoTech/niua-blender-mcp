@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 3: Context / Selection / Modes.
+Subsystem 4: Object Creation / Transforms.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -46,8 +46,14 @@ hierarchy, object/collection restriction flags, view layers, layer-collection
 restrictions, and orphan listing/purge. GUI mouse/keyboard Outliner parity remains
 deferred to subsystem 12.
 
-Subsystem 3 is implemented as a `context.*` surface. It covers active object reads and
+Subsystem 3 is complete as a `context.*` surface. It covers active object reads and
 mutation, object selection actions, interaction mode switching, mesh select mode,
 editor-area discovery, and operator poll checks in current or proposed context.
 
-Next after verification: Subsystem 4, Object Creation / Transforms.
+Subsystem 4 is implemented as an `object.*` surface. It covers common primitive and
+empty creation, object duplication, object deletion, renaming, transform reads and
+mutation, transform application, origin setting, and local/world bounds reads. It keeps
+specialized object families such as cameras, lights, curves, text, armatures, and GUI
+mouse/keyboard parity deferred to their later subsystems.
+
+Next after verification: Subsystem 5, Mesh Modeling.
