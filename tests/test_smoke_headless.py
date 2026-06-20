@@ -299,6 +299,23 @@ def test_rna_search_finds_operator_by_query(bridge: BlenderBridge) -> None:
     assert result["count"] == len(result["matches"]) >= 1
 
 
+def test_capabilities_search_finds_bevel(bridge: BlenderBridge) -> None:
+    out = bridge.call("capabilities.search", {"query": "bevel", "kind": "operator"})
+    assert any(m["idname"] == "mesh.bevel" for m in out["matches"])
+
+
+def test_manifest_matches_live_rna_sample(bridge: BlenderBridge) -> None:
+    from niua_blender_mcp.manifest import load_manifest
+
+    m = load_manifest()
+    for idname in ["mesh.subdivide", "mesh.bevel", "uv.unwrap"]:
+        if idname not in m.operators:
+            continue
+        live = bridge.call("capabilities.describe", {"id": idname})
+        assert live["id"] == idname
+        assert "properties" in live
+
+
 def test_rna_call_operator_creates_object(bridge: BlenderBridge) -> None:
     # Generic operator execution: add a UV sphere, confirm it lands in the scene.
     before = {o["name"] for o in bridge.call("scene.info", {})["objects"]}
