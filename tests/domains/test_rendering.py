@@ -7,6 +7,7 @@ camera/render/world state, and bpy.data.objects lookup.
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 from contextlib import contextmanager
@@ -57,6 +58,56 @@ class FakeObj:
         return self._selected
 
 
+class FakeInput:
+    def __init__(self, name: str, default_value=None) -> None:
+        self.name = name
+        self.identifier = name
+        self.type = "VALUE"
+        self.enabled = True
+        self.is_linked = False
+        self.default_value = default_value
+
+
+class FakeNode:
+    def __init__(self, name: str, type: str = "BACKGROUND") -> None:
+        self.name = name
+        self.label = ""
+        self.type = type
+        self.bl_idname = "ShaderNodeBackground"
+        self.location = [0.0, 0.0]
+        self.inputs = {"Color": FakeInput("Color", [0.05, 0.05, 0.05]), "Strength": FakeInput("Strength", 1.0)}
+        self.outputs = {}
+
+
+class FakeNodes(list):
+    def get(self, name: str):
+        return next((node for node in self if node.name == name), None)
+
+
+class FakeWorld:
+    def __init__(self) -> None:
+        self.name = "World"
+        self.color = [0.05, 0.05, 0.05]
+        self.use_nodes = False
+        self.node_tree = types.SimpleNamespace(nodes=FakeNodes([FakeNode("Background")]), links=[])
+
+
+class FakeImageSettings:
+    def __init__(self) -> None:
+        self.file_format = "PNG"
+
+
+class FakeRenderSettings:
+    def __init__(self) -> None:
+        self.engine = "BLENDER_WORKBENCH"
+        self.filepath = ""
+        self.resolution_x = 1920
+        self.resolution_y = 1080
+        self.resolution_percentage = 100
+        self.film_transparent = False
+        self.image_settings = FakeImageSettings()
+
+
 class _Op:
     def __init__(self, log: list, name: str, on_call=None) -> None:
         self._log = log
@@ -90,6 +141,8 @@ class FakeBpy(types.ModuleType):
                 self_inner.objects = []
                 self_inner.name = "Scene"
                 self_inner.camera = None
+                self_inner.render = FakeRenderSettings()
+                self_inner.world = FakeWorld()
 
         self.scene = _Scene()
 
@@ -154,7 +207,14 @@ class FakeBpy(types.ModuleType):
             def undo(self_inner, **kw):
                 pass
 
-        self.ops = types.SimpleNamespace(object=_ObjectOps(), ed=_EdOps())
+        def _render(**kwargs):
+            with open(bpy.scene.render.filepath, "wb") as fh:
+                fh.write(b"\x89PNG\r\n\x1a\nfake")
+
+        class _RenderOps:
+            render = _Op(log, "render.render", on_call=_render)
+
+        self.ops = types.SimpleNamespace(object=_ObjectOps(), render=_RenderOps(), ed=_EdOps())
 
     def add(self, obj: FakeObj) -> FakeObj:
         self.objects_by_name[obj.name] = obj
@@ -297,3 +357,88 @@ def test_light_create_and_set(env) -> None:
     assert listed["count"] == 1
     assert listed["lights"][0]["light"] == "Key"
     assert bpy.undo_pushes == ["niua:light.create", "niua:light.set"]
+
+
+def test_router_contains_render_world_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"render.settings", "render.set_settings", "render.still", "world.report", "world.set"} <= names
+
+
+def test_render_settings_reports_and_set(env) -> None:
+    ctx, bpy = env
+    cam = bpy.add(FakeObj("ShotCam", "CAMERA", FakeCameraData("ShotCam")))
+    bpy.scene.camera = cam
+    reg = build_default_registry()
+
+    before = dispatch_on_main(reg, "render.settings", {}, ctx)
+    assert before["engine"] == "BLENDER_WORKBENCH"
+    assert before["resolution"] == [1920, 1080]
+    assert before["image_format"] == "PNG"
+    assert before["camera"] == "ShotCam"
+
+    after = dispatch_on_main(
+        reg,
+        "render.set_settings",
+        {
+            "engine": "CYCLES",
+            "filepath": "/tmp/out.png",
+            "resolution_x": 640,
+            "resolution_y": 360,
+            "image_format": "OPEN_EXR",
+            "transparent": True,
+        },
+        ctx,
+    )
+    assert after["engine"] == "CYCLES"
+    assert after["filepath"] == "/tmp/out.png"
+    assert after["resolution"] == [640, 360]
+    assert after["image_format"] == "OPEN_EXR"
+    assert after["transparent"] is True
+    assert bpy.undo_pushes == ["niua:render.set_settings"]
+
+
+def test_render_still_writes_file_and_restores_settings(env, tmp_path) -> None:
+    ctx, bpy = env
+    cam = bpy.add(FakeObj("ShotCam", "CAMERA", FakeCameraData("ShotCam")))
+    bpy.scene.camera = cam
+    bpy.scene.render.filepath = "/keep/old.png"
+    bpy.scene.render.resolution_x = 1920
+    bpy.scene.render.resolution_y = 1080
+    bpy.scene.render.engine = "BLENDER_WORKBENCH"
+    path = tmp_path / "still.png"
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "render.still",
+        {"path": str(path), "camera": "ShotCam", "engine": "CYCLES", "resolution_x": 64, "resolution_y": 32},
+        ctx,
+    )
+
+    assert out["path"] == str(path)
+    assert out["bytes"] > 0
+    assert os.path.exists(path)
+    assert bpy.scene.render.filepath == "/keep/old.png"
+    assert bpy.scene.render.resolution_x == 1920
+    assert bpy.scene.render.resolution_y == 1080
+    assert bpy.scene.render.engine == "BLENDER_WORKBENCH"
+    assert bpy.scene.camera is cam
+    assert _kwargs(bpy.op_calls, "render.render") == {"write_still": True}
+    assert bpy.undo_pushes == []
+
+
+def test_world_report_and_set_color_strength(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    before = dispatch_on_main(reg, "world.report", {}, ctx)
+    assert before["world"] == "World"
+    assert before["color"] == [0.05, 0.05, 0.05]
+    assert before["strength"] == 1.0
+
+    after = dispatch_on_main(reg, "world.set", {"color": [0.1, 0.2, 0.3], "strength": 2.5}, ctx)
+    assert after["color"] == [0.1, 0.2, 0.3]
+    assert after["use_nodes"] is True
+    assert after["strength"] == 2.5
+    assert bpy.scene.world.node_tree.nodes.get("Background").inputs["Strength"].default_value == 2.5
+    assert bpy.undo_pushes == ["niua:world.set"]

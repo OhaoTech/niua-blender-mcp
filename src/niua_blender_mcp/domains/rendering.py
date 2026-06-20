@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from ..kernel import Bool, Enum, Float, Str, ToolSpec, Vec3
+from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec, Vec3
 
 CAMERA_TYPES = ["PERSP", "ORTHO", "PANO"]
 LIGHT_TYPES = ["POINT", "SUN", "SPOT", "AREA"]
+RENDER_ENGINES = ["BLENDER_WORKBENCH", "BLENDER_EEVEE_NEXT", "CYCLES"]
+IMAGE_FORMATS = ["PNG", "JPEG", "OPEN_EXR", "TIFF", "BMP", "TARGA"]
 
 SPECS = [
     ToolSpec(
@@ -111,6 +113,62 @@ SPECS = [
             "size": Float(minimum=0.0, summary="Area/point light size"),
             "spot_size": Float(minimum=0.0, summary="Spot cone angle in radians"),
             "spot_blend": Float(minimum=0.0, maximum=1.0, summary="Spot edge softness"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="render.settings",
+        category="render",
+        summary="Report active render settings",
+        command="render.settings",
+        params={},
+    ),
+    ToolSpec(
+        name="render.set_settings",
+        category="render",
+        summary="Set common render settings",
+        command="render.set_settings",
+        params={
+            "engine": Enum(RENDER_ENGINES, summary="Render engine"),
+            "filepath": Str(summary="Render output path"),
+            "resolution_x": Int(minimum=1, maximum=16384, summary="Render width in pixels"),
+            "resolution_y": Int(minimum=1, maximum=16384, summary="Render height in pixels"),
+            "image_format": Enum(IMAGE_FORMATS, summary="Render image format"),
+            "transparent": Bool(summary="Film transparent"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="render.still",
+        category="render",
+        summary="Render a still image to disk, restoring prior scene settings after",
+        command="render.still",
+        params={
+            "path": Str(required=True, summary="Destination image path"),
+            "camera": Str(default="", summary="Camera object to use for this render"),
+            "engine": Enum(RENDER_ENGINES, summary="Temporary render engine"),
+            "resolution_x": Int(minimum=1, maximum=16384, summary="Temporary render width"),
+            "resolution_y": Int(minimum=1, maximum=16384, summary="Temporary render height"),
+            "image_format": Enum(IMAGE_FORMATS, default="PNG", summary="Temporary image format"),
+        },
+    ),
+    ToolSpec(
+        name="world.report",
+        category="world",
+        summary="Report scene world color and background strength",
+        command="world.report",
+        params={},
+    ),
+    ToolSpec(
+        name="world.set",
+        category="world",
+        summary="Set scene world color and/or background strength",
+        command="world.set",
+        params={
+            "color": Vec3(summary="World RGB color"),
+            "strength": Float(minimum=0.0, summary="Background strength"),
         },
         mutates=True,
         feedback="viewport",

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import HANDLER_ERROR, NOT_FOUND, PRECONDITION, BridgeError
+from ..errors import HANDLER_ERROR, INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
 def _vec(value: Any, default: list[float]) -> list[float]:
@@ -200,6 +201,153 @@ def light_set(ctx: Ctx, payload: dict) -> dict:
     return _light_entry(obj)
 
 
+def _render_settings(ctx: Ctx) -> dict:
+    scene = ctx.bpy.context.scene
+    render = scene.render
+    image_settings = getattr(render, "image_settings", None)
+    camera = getattr(scene, "camera", None)
+    return {
+        "scene": getattr(scene, "name", None),
+        "engine": getattr(render, "engine", None),
+        "filepath": getattr(render, "filepath", ""),
+        "resolution": [int(getattr(render, "resolution_x", 0) or 0), int(getattr(render, "resolution_y", 0) or 0)],
+        "resolution_percentage": int(getattr(render, "resolution_percentage", 0) or 0),
+        "image_format": getattr(image_settings, "file_format", None),
+        "transparent": bool(getattr(render, "film_transparent", False)),
+        "camera": getattr(camera, "name", None) if camera is not None else None,
+    }
+
+
+def render_settings(ctx: Ctx, payload: dict) -> dict:
+    return _render_settings(ctx)
+
+
+def _apply_render_settings(ctx: Ctx, payload: dict) -> None:
+    render = ctx.bpy.context.scene.render
+    if payload.get("engine") is not None:
+        render.engine = str(payload["engine"])
+    if payload.get("filepath") is not None:
+        render.filepath = str(payload["filepath"])
+    if payload.get("resolution_x") is not None:
+        render.resolution_x = int(payload["resolution_x"])
+    if payload.get("resolution_y") is not None:
+        render.resolution_y = int(payload["resolution_y"])
+    if payload.get("transparent") is not None:
+        render.film_transparent = bool(payload["transparent"])
+    if payload.get("image_format") is not None:
+        render.image_settings.file_format = str(payload["image_format"])
+
+
+def render_set_settings(ctx: Ctx, payload: dict) -> dict:
+    _apply_render_settings(ctx, payload)
+    return _render_settings(ctx)
+
+
+def render_still(ctx: Ctx, payload: dict) -> dict:
+    path = payload.get("path")
+    if not isinstance(path, str) or not path:
+        raise BridgeError(INVALID_PARAMS, "path is required")
+    scene = ctx.bpy.context.scene
+    render = scene.render
+    image_settings = render.image_settings
+    old = {
+        "filepath": render.filepath,
+        "engine": render.engine,
+        "resolution_x": render.resolution_x,
+        "resolution_y": render.resolution_y,
+        "image_format": image_settings.file_format,
+        "camera": getattr(scene, "camera", None),
+    }
+    try:
+        render.filepath = path
+        image_settings.file_format = str(payload.get("image_format", "PNG"))
+        if payload.get("engine") is not None:
+            render.engine = str(payload["engine"])
+        if payload.get("resolution_x") is not None:
+            render.resolution_x = int(payload["resolution_x"])
+        if payload.get("resolution_y") is not None:
+            render.resolution_y = int(payload["resolution_y"])
+        if payload.get("camera"):
+            scene.camera = _resolve_camera(ctx, payload.get("camera"))
+        op = ctx.bpy.ops.render.render
+        ctx.check_poll(op)
+        try:
+            op(write_still=True)
+        except Exception as exc:  # noqa: BLE001 - Blender render operators raise runtime errors
+            raise BridgeError(PRECONDITION, f"could not render still: {exc}", {"path": path}) from exc
+    finally:
+        render.filepath = old["filepath"]
+        render.engine = old["engine"]
+        render.resolution_x = old["resolution_x"]
+        render.resolution_y = old["resolution_y"]
+        image_settings.file_format = old["image_format"]
+        scene.camera = old["camera"]
+    return {
+        "path": path,
+        "format": str(payload.get("image_format", "PNG")),
+        "bytes": os.path.getsize(path) if os.path.exists(path) else 0,
+    }
+
+
+def _socket_get(sockets: Any, name: str) -> Any:
+    getter = getattr(sockets, "get", None)
+    if callable(getter):
+        return getter(name)
+    try:
+        return sockets[name]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _background_node(world: Any) -> Any:
+    tree = getattr(world, "node_tree", None)
+    nodes = getattr(tree, "nodes", None)
+    getter = getattr(nodes, "get", None)
+    node = getter("Background") if callable(getter) else None
+    if node is None:
+        node = next((candidate for candidate in list(nodes or []) if getattr(candidate, "type", None) == "BACKGROUND"), None)
+    return node
+
+
+def _world_strength(world: Any) -> float | None:
+    node = _background_node(world)
+    if node is None:
+        return None
+    socket = _socket_get(getattr(node, "inputs", None), "Strength")
+    value = getattr(socket, "default_value", None) if socket is not None else None
+    return float(value) if value is not None else None
+
+
+def world_report(ctx: Ctx, payload: dict) -> dict:
+    world = getattr(ctx.bpy.context.scene, "world", None)
+    if world is None:
+        raise BridgeError(PRECONDITION, "scene has no world")
+    return {
+        "world": getattr(world, "name", None),
+        "color": _float_list(getattr(world, "color", [])),
+        "use_nodes": bool(getattr(world, "use_nodes", False)),
+        "strength": _world_strength(world),
+    }
+
+
+def world_set(ctx: Ctx, payload: dict) -> dict:
+    world = getattr(ctx.bpy.context.scene, "world", None)
+    if world is None:
+        raise BridgeError(PRECONDITION, "scene has no world")
+    if payload.get("color") is not None:
+        world.color = _vec(payload.get("color"), [0.05, 0.05, 0.05])
+    if payload.get("strength") is not None:
+        world.use_nodes = True
+        node = _background_node(world)
+        if node is None:
+            raise BridgeError(PRECONDITION, "world has no Background node")
+        socket = _socket_get(getattr(node, "inputs", None), "Strength")
+        if socket is None:
+            raise BridgeError(PRECONDITION, "world Background node has no Strength input")
+        socket.default_value = float(payload["strength"])
+    return world_report(ctx, {})
+
+
 COMMANDS = [
     Command("camera.create", camera_create, mutates=True, feedback="viewport"),
     Command("camera.list", camera_list, mutates=False),
@@ -210,4 +358,9 @@ COMMANDS = [
     Command("light.list", light_list, mutates=False),
     Command("light.report", light_report, mutates=False),
     Command("light.set", light_set, mutates=True, feedback="viewport"),
+    Command("render.settings", render_settings, mutates=False),
+    Command("render.set_settings", render_set_settings, mutates=True, feedback="viewport"),
+    Command("render.still", render_still, mutates=False),
+    Command("world.report", world_report, mutates=False),
+    Command("world.set", world_set, mutates=True, feedback="viewport"),
 ]
