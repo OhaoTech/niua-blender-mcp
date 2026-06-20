@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib
 import pkgutil
 
+from ..codegen import generate_specs
 from ..kernel import Router, ToolSpec
 
 #: The module-level attribute each domain module must expose.
@@ -37,4 +38,5 @@ def _discover_specs() -> list[ToolSpec]:
 def build_router() -> Router:
     router = Router()
     router.add(_discover_specs())  # curated-over-rna precedence lives in Router.register
+    router.add(generate_specs())
     return router

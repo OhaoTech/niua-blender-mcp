@@ -101,3 +101,21 @@ def test_bridge_error_surfaces_as_tool_error() -> None:
     resp = server.handle(rpc("tools/call", {"name": "scene.set_transform", "arguments": {"object": "Ghost"}}))
     assert resp["result"]["isError"] is True
     assert resp["result"]["structuredContent"]["code"] == NOT_FOUND
+
+
+def test_generated_tools_hidden_from_list_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("NIUA_BLENDER_MCP_LIST_ALL", raising=False)
+    server = create_server(bridge=RecordingBridge())
+    listed = {t["name"] for t in server._tool_defs()}
+    assert not any(t.startswith("modeling.") for t in listed)
+    assert "capabilities.search" in listed
+
+
+def test_generated_tool_routes_through_invoke() -> None:
+    bridge = RecordingBridge()
+    server = create_server(bridge=bridge)
+    server._tools_call({"name": "modeling.subdivide", "arguments": {"number_cuts": 3}})
+    command, payload = bridge.calls[-1]
+    assert command == "capabilities.invoke"
+    assert payload["idname"] == "mesh.subdivide"
+    assert '"number_cuts": 3' in payload["args"]

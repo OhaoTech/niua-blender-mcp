@@ -8,6 +8,9 @@ from niua_mcp_bridge.domains import build_default_registry
 
 
 def test_server_commands_match_addon_handlers() -> None:
-    server_commands = {spec.command for spec in build_router().specs()}
+    server_commands = {
+        "capabilities.invoke" if spec.tier == "generated" else spec.command
+        for spec in build_router().specs()
+    }
     addon_commands = build_default_registry().names()
     assert server_commands == addon_commands

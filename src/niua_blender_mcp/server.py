@@ -7,6 +7,7 @@ capture image are returned as native MCP image content so the agent can see them
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -92,9 +93,11 @@ class NiuaBlenderMCP:
 
     # -- tools -------------------------------------------------------------
     def _tool_defs(self) -> list[JSON]:
+        list_all = os.environ.get("NIUA_BLENDER_MCP_LIST_ALL") == "1"
         return [
             {"name": s.name, "description": s.summary, "inputSchema": s.input_schema()}
             for s in self.router.specs()
+            if list_all or s.tier != "generated"
         ]
 
     def _tools_call(self, params: JSON) -> JSON:
@@ -116,7 +119,10 @@ class NiuaBlenderMCP:
             )
 
         try:
-            result = self.bridge.call(spec.command, clean)
+            if spec.tier == "generated":
+                result = self.bridge.call("capabilities.invoke", {"idname": spec.command, "args": json.dumps(clean)})
+            else:
+                result = self.bridge.call(spec.command, clean)
         except BridgeError as exc:
             return self._tool_error(exc.code, exc.message, exc.detail)
         return self._tool_result(result)
