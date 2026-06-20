@@ -39,6 +39,44 @@ class FakeData:
         self.splines = splines or []
 
 
+class FakeTextData(FakeData):
+    def __init__(self, name: str) -> None:
+        super().__init__(name, splines=[])
+        self.body = "Text"
+        self.align_x = "LEFT"
+        self.align_y = "TOP_BASELINE"
+        self.size = 1.0
+        self.space_line = 1.0
+        self.offset_x = 0.0
+        self.offset_y = 0.0
+        self.dimensions = "2D"
+        self.fill_mode = "BOTH"
+
+
+class FakeMetaElement:
+    def __init__(self, element_type: str) -> None:
+        self.type = element_type
+
+
+class FakeMetaData:
+    def __init__(self, element_type: str) -> None:
+        self.name = "MetaData"
+        self.materials = []
+        self.elements = [FakeMetaElement(element_type)]
+
+
+class FakeLayer:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class FakeGreaseData:
+    def __init__(self) -> None:
+        self.name = "GreaseData"
+        self.materials = [object()]
+        self.layers = [FakeLayer("Layer")]
+
+
 class FakeObject:
     def __init__(self, name: str, obj_type: str = "CURVE", data=None) -> None:
         self.name = name
@@ -111,18 +149,60 @@ class FakeBpy(types.ModuleType):
                 obj.scale = list(kwargs.get("scale", [1, 1, 1]))
                 bpy.add(obj)
 
+            def primitive_nurbs_curve_add(self, **kwargs):
+                bpy.op_calls.append(("curve.primitive_nurbs_curve_add", kwargs))
+                obj = FakeObject("NurbsCurve", data=FakeData("NurbsCurve", splines=[FakeSpline("NURBS", points=5)]))
+                obj.location = list(kwargs.get("location", [0, 0, 0]))
+                obj.rotation_euler = list(kwargs.get("rotation", [0, 0, 0]))
+                obj.scale = list(kwargs.get("scale", [1, 1, 1]))
+                bpy.add(obj)
+
         class ObjectOps:
+            def text_add(self, **kwargs):
+                bpy.op_calls.append(("object.text_add", kwargs))
+                obj = FakeObject("Text", obj_type="FONT", data=FakeTextData("TextData"))
+                obj.location = list(kwargs.get("location", [0, 0, 0]))
+                obj.rotation_euler = list(kwargs.get("rotation", [0, 0, 0]))
+                obj.scale = list(kwargs.get("scale", [1, 1, 1]))
+                bpy.add(obj)
+
+            def metaball_add(self, **kwargs):
+                bpy.op_calls.append(("object.metaball_add", kwargs))
+                obj = FakeObject("Mball", obj_type="META", data=FakeMetaData(kwargs.get("type", "BALL")))
+                obj.location = list(kwargs.get("location", [0, 0, 0]))
+                obj.rotation_euler = list(kwargs.get("rotation", [0, 0, 0]))
+                obj.scale = list(kwargs.get("scale", [1, 1, 1]))
+                bpy.add(obj)
+
+            def grease_pencil_add(self, **kwargs):
+                bpy.op_calls.append(("object.grease_pencil_add", kwargs))
+                obj = FakeObject("GPencil", obj_type="GREASEPENCIL", data=FakeGreaseData())
+                obj.location = list(kwargs.get("location", [0, 0, 0]))
+                obj.rotation_euler = list(kwargs.get("rotation", [0, 0, 0]))
+                obj.scale = list(kwargs.get("scale", [1, 1, 1]))
+                obj.show_in_front = bool(kwargs.get("use_in_front", False))
+                bpy.add(obj)
+
             def mode_set(self, mode="OBJECT", **kwargs):
                 bpy.mode_calls.append(mode)
                 active = bpy.context.view_layer.objects.active
                 if active is not None:
                     active.mode = mode
 
+        class SurfaceOps:
+            def primitive_nurbs_surface_surface_add(self, **kwargs):
+                bpy.op_calls.append(("surface.primitive_nurbs_surface_surface_add", kwargs))
+                obj = FakeObject("SurfPatch", obj_type="SURFACE", data=FakeData("SurfData", splines=[FakeSpline("NURBS", points=16)]))
+                obj.location = list(kwargs.get("location", [0, 0, 0]))
+                obj.rotation_euler = list(kwargs.get("rotation", [0, 0, 0]))
+                obj.scale = list(kwargs.get("scale", [1, 1, 1]))
+                bpy.add(obj)
+
         class EdOps:
             def undo_push(self, message="", **kwargs):
                 bpy.op_calls.append(("ed.undo_push", {"message": message, **kwargs}))
 
-        return types.SimpleNamespace(curve=CurveOps(), object=ObjectOps(), ed=EdOps())
+        return types.SimpleNamespace(curve=CurveOps(), object=ObjectOps(), surface=SurfaceOps(), ed=EdOps())
 
 
 def env(monkeypatch):
@@ -187,3 +267,95 @@ def test_create_curve_dispatches_operator_and_reports(monkeypatch) -> None:
             "scale": [2.0, 2.0, 2.0],
         },
     )
+
+
+def test_router_contains_non_mesh_creation_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {
+        "geometry.create_text",
+        "geometry.create_surface",
+        "geometry.create_metaball",
+        "geometry.create_grease_pencil",
+    } <= names
+
+
+def test_create_text_sets_text_fields(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "geometry.create_text",
+        {
+            "name": "Label",
+            "body": "Hello",
+            "align_x": "CENTER",
+            "align_y": "CENTER",
+            "size": 2.5,
+            "location": [1, 0, 0],
+        },
+        ctx,
+    )
+
+    assert out["name"] == "Label"
+    assert out["type"] == "FONT"
+    assert out["text"]["body"] == "Hello"
+    assert out["text"]["align_x"] == "CENTER"
+    assert out["text"]["align_y"] == "CENTER"
+    assert out["text"]["size"] == 2.5
+    assert bpy.op_calls[0][0] == "object.text_add"
+
+
+def test_create_surface_metaball_and_grease_pencil(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    reg = build_default_registry()
+
+    surface = dispatch_on_main(
+        reg,
+        "geometry.create_surface",
+        {"type": "SURFACE", "name": "Patch", "radius": 1.5},
+        ctx,
+    )
+    metaball = dispatch_on_main(
+        reg,
+        "geometry.create_metaball",
+        {"type": "CAPSULE", "name": "Blob", "radius": 0.75},
+        ctx,
+    )
+    grease = dispatch_on_main(
+        reg,
+        "geometry.create_grease_pencil",
+        {"type": "EMPTY", "name": "Sketch", "radius": 1.0, "use_in_front": True},
+        ctx,
+    )
+
+    assert surface["name"] == "Patch"
+    assert surface["type"] == "SURFACE"
+    assert surface["splines"] == [{"type": "NURBS", "bezier_points": 0, "points": 16}]
+    assert metaball["name"] == "Blob"
+    assert metaball["type"] == "META"
+    assert metaball["metaball"] == {"elements": 1, "types": ["CAPSULE"]}
+    assert grease["name"] == "Sketch"
+    assert grease["type"] == "GREASEPENCIL"
+    assert grease["grease_pencil"] == {"layers": 1, "names": ["Layer"]}
+    assert ("surface.primitive_nurbs_surface_surface_add", {
+        "radius": 1.5,
+        "location": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0],
+    }) in bpy.op_calls
+    assert ("object.metaball_add", {
+        "type": "CAPSULE",
+        "radius": 0.75,
+        "location": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0],
+    }) in bpy.op_calls
+    assert ("object.grease_pencil_add", {
+        "type": "EMPTY",
+        "radius": 1.0,
+        "use_in_front": True,
+        "location": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0],
+    }) in bpy.op_calls

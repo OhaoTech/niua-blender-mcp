@@ -16,6 +16,15 @@ _CURVE_OPS = {
     "NURBS_PATH": "primitive_nurbs_path_add",
 }
 
+_SURFACE_OPS = {
+    "CURVE": "primitive_nurbs_surface_curve_add",
+    "CIRCLE": "primitive_nurbs_surface_circle_add",
+    "SURFACE": "primitive_nurbs_surface_surface_add",
+    "CYLINDER": "primitive_nurbs_surface_cylinder_add",
+    "SPHERE": "primitive_nurbs_surface_sphere_add",
+    "TORUS": "primitive_nurbs_surface_torus_add",
+}
+
 
 def _vec(value: Any, default: list[float]) -> list[float]:
     if value is None:
@@ -53,6 +62,26 @@ def _primitive_kwargs(payload: dict) -> dict:
         "rotation": _vec(payload.get("rotation"), [0.0, 0.0, 0.0]),
         "scale": _vec(payload.get("scale"), [1.0, 1.0, 1.0]),
     }
+
+
+def _transform_kwargs(payload: dict) -> dict:
+    return {
+        "location": _vec(payload.get("location"), [0.0, 0.0, 0.0]),
+        "rotation": _vec(payload.get("rotation"), [0.0, 0.0, 0.0]),
+        "scale": _vec(payload.get("scale"), [1.0, 1.0, 1.0]),
+    }
+
+
+def _rename(obj: Any, payload: dict) -> None:
+    name = payload.get("name")
+    if isinstance(name, str) and name:
+        obj.name = name
+
+
+def _text_set(data: Any, payload: dict) -> None:
+    for key in ("body", "align_x", "align_y", "size"):
+        if key in payload:
+            setattr(data, key, payload[key])
 
 
 def _splines_report(data: Any) -> list[dict]:
@@ -143,13 +172,57 @@ def create_curve(ctx: Ctx, payload: dict) -> dict:
     before = {getattr(obj, "name", "") for obj in _scene_objects(ctx)}
     getattr(ctx.bpy.ops.curve, op_name)(**_primitive_kwargs(payload))
     obj = _created(ctx, before)
-    name = payload.get("name")
-    if isinstance(name, str) and name:
-        obj.name = name
+    _rename(obj, payload)
+    return _object_report(obj)
+
+
+def create_text(ctx: Ctx, payload: dict) -> dict:
+    before = {getattr(obj, "name", "") for obj in _scene_objects(ctx)}
+    ctx.bpy.ops.object.text_add(**_transform_kwargs(payload))
+    obj = _created(ctx, before)
+    _rename(obj, payload)
+    _text_set(obj.data, payload)
+    return _object_report(obj)
+
+
+def create_surface(ctx: Ctx, payload: dict) -> dict:
+    surface_type = str(payload.get("type", "")).upper()
+    op_name = _SURFACE_OPS.get(surface_type)
+    if op_name is None:
+        raise BridgeError(INVALID_PARAMS, f"unsupported surface type: {surface_type}")
+    before = {getattr(obj, "name", "") for obj in _scene_objects(ctx)}
+    getattr(ctx.bpy.ops.surface, op_name)(**_primitive_kwargs(payload))
+    obj = _created(ctx, before)
+    _rename(obj, payload)
+    return _object_report(obj)
+
+
+def create_metaball(ctx: Ctx, payload: dict) -> dict:
+    before = {getattr(obj, "name", "") for obj in _scene_objects(ctx)}
+    kwargs = _primitive_kwargs(payload)
+    kwargs["type"] = str(payload.get("type", "BALL"))
+    ctx.bpy.ops.object.metaball_add(**kwargs)
+    obj = _created(ctx, before)
+    _rename(obj, payload)
+    return _object_report(obj)
+
+
+def create_grease_pencil(ctx: Ctx, payload: dict) -> dict:
+    before = {getattr(obj, "name", "") for obj in _scene_objects(ctx)}
+    kwargs = _primitive_kwargs(payload)
+    kwargs["type"] = str(payload.get("type", "EMPTY"))
+    kwargs["use_in_front"] = bool(payload.get("use_in_front", False))
+    ctx.bpy.ops.object.grease_pencil_add(**kwargs)
+    obj = _created(ctx, before)
+    _rename(obj, payload)
     return _object_report(obj)
 
 
 COMMANDS = [
     Command("geometry.create_curve", create_curve, mutates=True, feedback="viewport"),
+    Command("geometry.create_text", create_text, mutates=True, feedback="viewport"),
+    Command("geometry.create_surface", create_surface, mutates=True, feedback="viewport"),
+    Command("geometry.create_metaball", create_metaball, mutates=True, feedback="viewport"),
+    Command("geometry.create_grease_pencil", create_grease_pencil, mutates=True, feedback="viewport"),
     Command("geometry.report", report, mutates=False),
 ]
