@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 5: Mesh Modeling.
+Subsystem 6: Curves / Text / Grease Pencil / Non-Mesh Geometry.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -63,4 +63,10 @@ extrude/bevel/inset/subdivide/normal/shading tools, and analytic topology report
 Viewport mouse picking, knife drawing, box/lasso selection, gizmos, and other event-led
 mesh workflows remain deferred to subsystem 12.
 
-Next after verification: Subsystem 6, Curves / Text / Grease Pencil / Non-Mesh Geometry.
+Subsystem 6 is implemented as a `geometry.*` surface. It covers curve, text, surface,
+metaball, and grease pencil object creation; non-mesh geometry reporting; curve-like
+data setters; text setters; and conversion to mesh through Blender's object conversion
+operator. Fine-grained curve point editing, text cursor editing, grease pencil stroke
+authoring, and GUI event parity remain deferred to later focused work and subsystem 12.
+
+Next after verification: Subsystem 7, Modifiers / Geometry Nodes.

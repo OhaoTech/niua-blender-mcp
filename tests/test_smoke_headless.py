@@ -423,6 +423,73 @@ def test_mesh_selection_topology_workflow(bridge: BlenderBridge) -> None:
     assert cleanup == {"object": "MeshConvertHero", "applied": "remove_doubles", "threshold": 0.0001}
 
 
+def test_non_mesh_geometry_workflow(bridge: BlenderBridge) -> None:
+    curve = bridge.call(
+        "geometry.create_curve",
+        {"type": "BEZIER_CIRCLE", "name": "GeoCurve", "radius": 1.5, "location": [1, 0, 0]},
+    )
+    assert curve["name"] == "GeoCurve"
+    assert curve["type"] == "CURVE"
+    assert curve["splines"]
+
+    reported = bridge.call("geometry.report", {"object": "GeoCurve"})
+    assert reported["name"] == "GeoCurve"
+    assert "curve" in reported
+
+    updated = bridge.call(
+        "geometry.set_curve",
+        {
+            "object": "GeoCurve",
+            "bevel_depth": 0.08,
+            "bevel_resolution": 2,
+            "extrude": 0.12,
+            "resolution_u": 24,
+            "dimensions": "3D",
+            "use_fill_caps": True,
+        },
+    )
+    assert updated["curve"]["bevel_depth"] == pytest.approx(0.08)
+    assert updated["curve"]["bevel_resolution"] == 2
+    assert updated["curve"]["extrude"] == pytest.approx(0.12)
+    assert updated["curve"]["resolution_u"] == 24
+    assert updated["curve"]["use_fill_caps"] is True
+
+    text = bridge.call(
+        "geometry.create_text",
+        {"name": "GeoLabel", "body": "Niua", "align_x": "CENTER", "size": 1.25},
+    )
+    assert text["type"] == "FONT"
+    assert text["text"]["body"] == "Niua"
+
+    text_updated = bridge.call(
+        "geometry.set_text",
+        {"object": "GeoLabel", "body": "Niua MCP", "align_y": "CENTER", "offset_x": 0.2},
+    )
+    assert text_updated["text"]["body"] == "Niua MCP"
+    assert text_updated["text"]["align_y"] == "CENTER"
+    assert text_updated["text"]["offset_x"] == pytest.approx(0.2)
+
+    surface = bridge.call("geometry.create_surface", {"type": "SURFACE", "name": "GeoSurface"})
+    assert surface["type"] == "SURFACE"
+    assert "splines" in surface
+
+    metaball = bridge.call("geometry.create_metaball", {"type": "CAPSULE", "name": "GeoBlob"})
+    assert metaball["type"] == "META"
+    assert metaball["metaball"]["elements"] >= 1
+    assert "CAPSULE" in metaball["metaball"]["types"]
+
+    grease = bridge.call("geometry.create_grease_pencil", {"type": "EMPTY", "name": "GeoSketch"})
+    assert grease["type"] == "GREASEPENCIL"
+    assert "grease_pencil" in grease
+
+    converted = bridge.call(
+        "geometry.convert_to_mesh",
+        {"object": "GeoCurve", "name": "GeoCurveMesh", "keep_original": False},
+    )
+    assert converted["name"] == "GeoCurveMesh"
+    assert converted["type"] == "MESH"
+
+
 def test_feedback_capture_returns_a_verdict(bridge: BlenderBridge) -> None:
     # Headless has no GPU/display, so this may report unavailable; it must not crash.
     result = bridge.call("feedback.capture", {"mode": "viewport"})
