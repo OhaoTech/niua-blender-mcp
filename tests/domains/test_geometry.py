@@ -3,10 +3,13 @@ from __future__ import annotations
 import sys
 import types
 
+import pytest
+
 from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
+from niua_mcp_bridge.errors import PRECONDITION, BridgeError
 
 
 class _NamedList(list):
@@ -359,3 +362,86 @@ def test_create_surface_metaball_and_grease_pencil(monkeypatch) -> None:
         "rotation": [0.0, 0.0, 0.0],
         "scale": [1.0, 1.0, 1.0],
     }) in bpy.op_calls
+
+
+def test_router_contains_geometry_setters() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"geometry.set_curve", "geometry.set_text"} <= names
+
+
+def test_set_curve_updates_only_provided_fields(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    data = FakeData("CurveData")
+    data.bevel_resolution = 7
+    bpy.add(FakeObject("CurveHero", data=data))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "geometry.set_curve",
+        {
+            "object": "CurveHero",
+            "bevel_depth": 0.25,
+            "extrude": 0.5,
+            "resolution_u": 24,
+            "dimensions": "2D",
+            "use_fill_caps": True,
+        },
+        ctx,
+    )
+
+    assert data.bevel_depth == 0.25
+    assert data.extrude == 0.5
+    assert data.resolution_u == 24
+    assert data.dimensions == "2D"
+    assert data.use_fill_caps is True
+    assert data.bevel_resolution == 7
+    assert out["curve"]["bevel_depth"] == 0.25
+
+
+def test_set_curve_rejects_unsupported_object_type(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("Blob", obj_type="META", data=FakeMetaData("BALL")))
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "geometry.set_curve", {"object": "Blob", "bevel_depth": 0.1}, ctx)
+    assert exc.value.code == PRECONDITION
+
+
+def test_set_text_updates_only_provided_fields(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    data = FakeTextData("TextData")
+    data.align_y = "TOP"
+    bpy.add(FakeObject("Label", obj_type="FONT", data=data))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "geometry.set_text",
+        {
+            "object": "Label",
+            "body": "Updated",
+            "align_x": "RIGHT",
+            "size": 3.0,
+            "offset_x": 0.25,
+        },
+        ctx,
+    )
+
+    assert data.body == "Updated"
+    assert data.align_x == "RIGHT"
+    assert data.align_y == "TOP"
+    assert data.size == 3.0
+    assert data.offset_x == 0.25
+    assert out["text"]["body"] == "Updated"
+
+
+def test_set_text_rejects_non_text_object(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("CurveHero", data=FakeData("CurveData")))
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "geometry.set_text", {"object": "CurveHero", "body": "Nope"}, ctx)
+    assert exc.value.code == PRECONDITION

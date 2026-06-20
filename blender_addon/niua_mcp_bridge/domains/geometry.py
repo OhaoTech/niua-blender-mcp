@@ -6,7 +6,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import HANDLER_ERROR, INVALID_PARAMS, BridgeError
+from ..errors import HANDLER_ERROR, INVALID_PARAMS, PRECONDITION, BridgeError
 
 _CURVE_OPS = {
     "BEZIER": "primitive_bezier_curve_add",
@@ -79,7 +79,7 @@ def _rename(obj: Any, payload: dict) -> None:
 
 
 def _text_set(data: Any, payload: dict) -> None:
-    for key in ("body", "align_x", "align_y", "size"):
+    for key in ("body", "align_x", "align_y", "size", "space_line", "offset_x", "offset_y"):
         if key in payload:
             setattr(data, key, payload[key])
 
@@ -218,11 +218,59 @@ def create_grease_pencil(ctx: Ctx, payload: dict) -> dict:
     return _object_report(obj)
 
 
+def _require_curve_like(ctx: Ctx, name: Any) -> Any:
+    obj = ctx.get_object(name)
+    if getattr(obj, "type", None) not in {"CURVE", "FONT", "SURFACE"}:
+        raise BridgeError(
+            PRECONDITION,
+            f"object is not curve-like: {getattr(obj, 'name', '?')}",
+            {"type": getattr(obj, "type", None)},
+        )
+    return obj
+
+
+def _require_text(ctx: Ctx, name: Any) -> Any:
+    obj = ctx.get_object(name)
+    if getattr(obj, "type", None) != "FONT":
+        raise BridgeError(
+            PRECONDITION,
+            f"object is not text: {getattr(obj, 'name', '?')}",
+            {"type": getattr(obj, "type", None)},
+        )
+    return obj
+
+
+def set_curve(ctx: Ctx, payload: dict) -> dict:
+    obj = _require_curve_like(ctx, payload.get("object"))
+    data = obj.data
+    for key in (
+        "bevel_depth",
+        "bevel_resolution",
+        "extrude",
+        "resolution_u",
+        "render_resolution_u",
+        "dimensions",
+        "fill_mode",
+        "use_fill_caps",
+    ):
+        if key in payload:
+            setattr(data, key, payload[key])
+    return _object_report(obj)
+
+
+def set_text(ctx: Ctx, payload: dict) -> dict:
+    obj = _require_text(ctx, payload.get("object"))
+    _text_set(obj.data, payload)
+    return _object_report(obj)
+
+
 COMMANDS = [
     Command("geometry.create_curve", create_curve, mutates=True, feedback="viewport"),
     Command("geometry.create_text", create_text, mutates=True, feedback="viewport"),
     Command("geometry.create_surface", create_surface, mutates=True, feedback="viewport"),
     Command("geometry.create_metaball", create_metaball, mutates=True, feedback="viewport"),
     Command("geometry.create_grease_pencil", create_grease_pencil, mutates=True, feedback="viewport"),
+    Command("geometry.set_curve", set_curve, mutates=True, feedback="viewport"),
+    Command("geometry.set_text", set_text, mutates=True, feedback="viewport"),
     Command("geometry.report", report, mutates=False),
 ]
