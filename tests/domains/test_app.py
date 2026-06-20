@@ -12,13 +12,14 @@ from niua_mcp_bridge.errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, Brid
 
 
 class _Op:
-    def __init__(self, log: list, name: str, side=None) -> None:
+    def __init__(self, log: list, name: str, side=None, can_poll: bool = True) -> None:
         self._log = log
         self._name = name
         self._side = side
+        self._can_poll = can_poll
 
     def poll(self) -> bool:
-        return True
+        return self._can_poll
 
     def __call__(self, **kwargs):
         self._log.append((self._name, kwargs))
@@ -295,6 +296,28 @@ def test_undo_and_redo_call_ed_ops_without_undo_push(env):
     assert dispatch_on_main(reg, "app.redo", {}, ctx) == {"ok": True, "applied": ["ed.redo"]}
     assert _names(bpy.op_calls) == ["ed.undo", "ed.redo"]
     assert bpy.undo_pushes == []
+
+
+def test_undo_and_redo_report_unavailable_when_poll_fails(env):
+    ctx, bpy = env
+    bpy.ops.ed.undo = _Op(bpy.op_calls, "ed.undo", can_poll=False)
+    bpy.ops.ed.redo = _Op(bpy.op_calls, "ed.redo", can_poll=False)
+    reg = build_default_registry()
+
+    undo = dispatch_on_main(reg, "app.undo", {}, ctx)
+    redo = dispatch_on_main(reg, "app.redo", {}, ctx)
+
+    assert undo == {
+        "ok": False,
+        "available": False,
+        "reason": "ed.undo is not available in the current Blender context",
+    }
+    assert redo == {
+        "ok": False,
+        "available": False,
+        "reason": "ed.redo is not available in the current Blender context",
+    }
+    assert bpy.op_calls == []
 
 
 def test_workspaces_lists_and_switches_active_workspace(env):

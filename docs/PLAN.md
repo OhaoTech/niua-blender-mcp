@@ -106,17 +106,18 @@ gizmo/UI-driven ops) cannot be poll-verified headless and need a later GUI pass.
       **The actual rendered multi-angle/turntable PNGs are verified in a GUI session, not
       headless** (pure `--background` with no GL context returns the graceful degrade).
 - [ ] UV/topology/diagnostic captures; `GPUOffScreen` non-intrusive.
-- [x] `io` import/export (the niua asset seam; Godot-ready glTF). Four tools, all
+- [x] `io` import/export (engine-neutral asset file seam). Three curated tools, all
       auto-discovered, parity holds, verified end to end against real Blender 5.1.1
-      headless (243 tests green): `io.import` (AUTO format inference by extension; new
-      objects via scene before/after diff), `io.export_gltf` (GLB/separate, selection,
-      apply-modifiers, +Y up), `io.export` (generic GLB/FBX/OBJ router), `io.prepare_godot`
-      (apply transforms then export one object to Godot-ready GLB). Headless smoke proves
-      the full seam: export writes a non-empty GLB (verified `glTF` magic), a round-trip
-      re-imports at least one mesh object, and prepare_godot applies transforms
-      (location→0, scale→1) before exporting. Exports stay `mutates=False` (selection set
-      only for the call, restored on exit). Operator ids confirmed on 5.1.1 below.
-      **Decoupling held:** the domain only moves files; it knows nothing about niua or Godot.
+      headless: `io.import` (AUTO format inference by extension; new objects via scene
+      before/after diff), `io.export` (format-param export for GLB/GLTF/FBX/OBJ with
+      selection, apply-modifiers, and +Y-up flags), and `io.prepare_asset` (apply
+      transforms, then export one object using the requested format). Headless smoke
+      proves the full seam: export writes a non-empty GLB (verified `glTF` magic), a
+      round-trip re-imports at least one mesh object, and `io.prepare_asset` applies
+      transforms (location→0, scale→1) before exporting. Exports stay `mutates=False`
+      (selection set only for the call, restored on exit). Operator ids confirmed on
+      5.1.1 below. **Decoupling held:** the domain only moves files; it knows nothing
+      about any orchestrator or game engine.
 - [ ] Async heavy ops (modal operators), the critique loop (Phase 6).
 
 **Headless worker mode vs worker pool.** A single headless worker
@@ -133,7 +134,7 @@ Phase 6; it is not required for the io seam, which is synchronous file in/out.
 - Export: `export_scene.gltf` (kwargs `filepath`, `export_format`, `use_selection`,
   `export_apply`, `export_yup` all present), `export_scene.fbx` (`filepath`,
   `use_selection`), `wm.obj_export` (`filepath`, `export_selected_objects`).
-- `object.transform_apply(location=, rotation=, scale=)` for `io.prepare_godot`.
+- `object.transform_apply(location=, rotation=, scale=)` for `io.prepare_asset`.
 - **Collada (DAE) is NOT available in this build:** `bpy.app.build_options` has no
   `collada` flag (OpenCollada was dropped), so `wm.collada_import`/`wm.collada_export`
   do not resolve. The `getattr` on `bpy.ops` returns a lazy callable (does not raise), so
@@ -255,14 +256,16 @@ stub, playbook store, retopo seed recipe, and `model.retopo_quads`. Wave 2
 
 ## Project status — 7-phase plan COMPLETE  ✅
 
-All seven phases (0–6) are shipped and verified end to end against **real Blender 5.1.1
-headless**, not just fake-bpy: 262 tests green including the server↔add-on command-parity
-test, with **55 curated tools across 13 domains** (scene, mesh, uv, shading, modifiers,
-anim, rig, io, feedback, session, plus the `rna` discovery/exec, introspection, and gated
-`system` escape hatches). Every phase added a domain pack without touching the kernel
-contract, kept handlers tiny, pushed exactly one undo step per successful mutation, and
-held parity. The full agentic spine is exercised headlessly: read → create/move →
-introspect live RNA → edit mesh/uv/shading/modifiers/anim/rig → export Godot-ready glTF →
+All seven phases (0–6) plus subsystem-1 app/session/file coverage are verified end to
+end against **real Blender 5.1.1 headless**, not just fake-bpy. The surface now has
+**79 curated add-on commands** and **96 server specs** including generated tier-2 tools:
+scene, app/session/files, mesh, uv, shading, modifiers, anim, rig, io, feedback,
+session, capabilities, modeling craft verbs, `rna` discovery/exec, introspection, and
+gated `system` escape hatches. Every phase added a domain pack without touching the
+kernel contract, kept handlers tiny, pushed exactly one undo step per successful scene
+mutation, and held parity. The full agentic spine is exercised headlessly: read →
+create/move → app/file save/open → introspect live RNA → edit
+mesh/uv/shading/modifiers/anim/rig → export an engine-neutral asset by requested format →
 checkpoint/edit/revert (safe iterate) → critique bundle (analytic facts). The **only** part
 that remains a GUI/GPU demonstration is the *rendered pixels* of the eyes — the actual
 multi-angle/turntable/critique PNGs — which require a live GL context and so come back

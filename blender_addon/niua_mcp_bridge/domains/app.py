@@ -198,14 +198,24 @@ def file_revert(ctx: Ctx, payload: dict) -> dict:
     return _state(ctx)
 
 
+def _call_context_op(op: Any, op_name: str) -> dict:
+    poll = getattr(op, "poll", None)
+    if callable(poll) and not poll():
+        return {
+            "ok": False,
+            "available": False,
+            "reason": f"{op_name} is not available in the current Blender context",
+        }
+    op()
+    return {"ok": True, "applied": [op_name]}
+
+
 def undo(ctx: Ctx, payload: dict) -> dict:
-    ctx.bpy.ops.ed.undo()
-    return {"ok": True, "applied": ["ed.undo"]}
+    return _call_context_op(ctx.bpy.ops.ed.undo, "ed.undo")
 
 
 def redo(ctx: Ctx, payload: dict) -> dict:
-    ctx.bpy.ops.ed.redo()
-    return {"ok": True, "applied": ["ed.redo"]}
+    return _call_context_op(ctx.bpy.ops.ed.redo, "ed.redo")
 
 
 def workspaces(ctx: Ctx, payload: dict) -> dict:

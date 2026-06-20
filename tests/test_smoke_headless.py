@@ -82,6 +82,47 @@ def test_scene_info_round_trips(bridge: BlenderBridge) -> None:
     assert isinstance(info["objects"], list)
 
 
+def test_app_info_and_workspaces_round_trip(bridge: BlenderBridge) -> None:
+    info = bridge.call("app.info", {})
+    assert info["version_string"]
+    assert isinstance(info["version"], list)
+    assert isinstance(info["background"], bool)
+    assert "filepath" in info
+    assert "is_dirty" in info
+    assert "scene" in info
+
+    workspaces = bridge.call("app.workspaces", {})
+    assert isinstance(workspaces["workspaces"], list)
+    assert workspaces["workspaces"], "Blender should expose at least one workspace"
+    assert workspaces["active"] in workspaces["workspaces"] or workspaces["active"] is None
+
+
+def test_app_file_save_copy_save_as_and_open_round_trip(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "FileHero"})
+    with tempfile.TemporaryDirectory() as tmp:
+        saved_path = os.path.join(tmp, "saved.blend")
+        copy_path = os.path.join(tmp, "copy.blend")
+
+        saved = bridge.call("app.file_save_as", {"path": saved_path})
+        assert saved["filepath"] == saved_path
+        assert saved["is_saved"] is True
+        assert os.path.exists(saved_path) and os.path.getsize(saved_path) > 0
+
+        copied = bridge.call("app.file_save_copy", {"path": copy_path})
+        assert copied["filepath"] == saved_path
+        assert os.path.exists(copy_path) and os.path.getsize(copy_path) > 0
+
+        bridge.call("scene.create_object", {"type": "CUBE", "name": "AfterCopy"})
+        opened = bridge.call("app.file_open", {"path": copy_path, "force": True})
+        assert opened["filepath"] == copy_path
+        assert opened["is_saved"] is True
+
+        info = bridge.call("scene.info", {})
+        names = {o["name"] for o in info["objects"]}
+        assert "FileHero" in names
+        assert "AfterCopy" not in names
+
+
 def test_create_move_and_undo_semantics(bridge: BlenderBridge) -> None:
     created = bridge.call("scene.create_object", {"type": "CUBE", "name": "NiuaHero"})
     assert created["name"] == "NiuaHero"
@@ -91,6 +132,24 @@ def test_create_move_and_undo_semantics(bridge: BlenderBridge) -> None:
 
     info = bridge.call("scene.info", {})
     assert any(o["name"] == "NiuaHero" for o in info["objects"])
+
+
+def test_app_undo_redo_keep_bridge_alive(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "UndoHero"})
+    undo = bridge.call("app.undo", {})
+    if undo.get("available") is False:
+        assert "current Blender context" in undo["reason"]
+        assert "objects" in bridge.call("scene.info", {})
+        return
+    assert undo == {"ok": True, "applied": ["ed.undo"]}
+
+    redo = bridge.call("app.redo", {})
+    if redo.get("available") is False:
+        assert "current Blender context" in redo["reason"]
+        assert "objects" in bridge.call("scene.info", {})
+        return
+    assert redo == {"ok": True, "applied": ["ed.redo"]}
+    assert "objects" in bridge.call("scene.info", {})
 
 
 def test_rna_describe_reads_live_api(bridge: BlenderBridge) -> None:

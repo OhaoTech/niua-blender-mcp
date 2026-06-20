@@ -319,7 +319,7 @@ niua-blender-mcp/
 - **Phase 2 of capability — RNA generation pass** over allowlisted categories, plus the
   context resolver hardening.
 - **Phase 3 — feedback depth:** multi-angle/turntable, UV/topology/diagnostic captures.
-- **Phase N — niua/Godot seams (`io`) + headless mode + the critique loop.**
+- **Phase N — engine-neutral file seams (`io`) + headless mode + the critique loop.**
 ```
 
 ## Phase 6 — the critique loop
