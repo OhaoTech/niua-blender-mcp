@@ -20,6 +20,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "niua_blender_mcp.manifest" = ["*.json"]
+"niua_blender_mcp.evals.battery.modeling_prop" = ["*.json", "*.md"]
+"niua_blender_mcp.playbooks" = ["*.md"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "blender_addon"]

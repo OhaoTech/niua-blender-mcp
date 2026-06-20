@@ -246,6 +246,13 @@ Remaining layer-1 fill is additive: expand the manifest domain allowlists over t
 Layer 2 remains a separate spec: senior craft verbs, judgment playbooks, deeper
 eyes, and game-pipeline conventions.
 
+## Layer 2 Phase A vertical slice  ✅ DONE
+
+The senior-artist scaffold now has a proven modeling/topology vertical slice:
+topology eye, deterministic gate checker, modeling battery plus harness and judge
+stub, playbook store, retopo seed recipe, and `model.retopo_quads`. Wave 2
+(UV/bake/materials) and the Phase B convergence loop are next.
+
 ## Project status — 7-phase plan COMPLETE  ✅
 
 All seven phases (0–6) are shipped and verified end to end against **real Blender 5.1.1
