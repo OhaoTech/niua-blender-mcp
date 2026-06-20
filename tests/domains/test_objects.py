@@ -154,7 +154,61 @@ class FakeBpy(types.ModuleType):
             object=cube,
             view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=cube)),
         )
-        self.ops = types.SimpleNamespace(ed=types.SimpleNamespace(undo_push=lambda message="", **kw: None))
+        self.op_calls = []
+        self.ops = self._make_ops(root, objects)
+
+    def _create(self, name: str, obj_type: str = "MESH", location=None, collection=None):
+        obj = FakeObject(name, obj_type)
+        if location is not None:
+            obj.location = [float(v) for v in location]
+        self.data.objects.add(obj)
+        (collection or self.context.scene.collection).objects.link(obj)
+        self.context.object = obj
+        self.context.view_layer.objects.active = obj
+        return obj
+
+    def _make_ops(self, root, objects):
+        bpy = self
+
+        class Mesh:
+            def primitive_cube_add(self, **kwargs):
+                bpy.op_calls.append(("mesh.primitive_cube_add", kwargs))
+                bpy._create("Cube", location=kwargs.get("location"), collection=root)
+
+            def primitive_uv_sphere_add(self, **kwargs):
+                bpy.op_calls.append(("mesh.primitive_uv_sphere_add", kwargs))
+                bpy._create("Sphere", location=kwargs.get("location"), collection=root)
+
+            def primitive_plane_add(self, **kwargs):
+                bpy.op_calls.append(("mesh.primitive_plane_add", kwargs))
+                bpy._create("Plane", location=kwargs.get("location"), collection=root)
+
+            def primitive_cylinder_add(self, **kwargs):
+                bpy.op_calls.append(("mesh.primitive_cylinder_add", kwargs))
+                bpy._create("Cylinder", location=kwargs.get("location"), collection=root)
+
+            def primitive_cone_add(self, **kwargs):
+                bpy.op_calls.append(("mesh.primitive_cone_add", kwargs))
+                bpy._create("Cone", location=kwargs.get("location"), collection=root)
+
+            def primitive_torus_add(self, **kwargs):
+                bpy.op_calls.append(("mesh.primitive_torus_add", kwargs))
+                bpy._create("Torus", location=kwargs.get("location"), collection=root)
+
+            def primitive_monkey_add(self, **kwargs):
+                bpy.op_calls.append(("mesh.primitive_monkey_add", kwargs))
+                bpy._create("Suzanne", location=kwargs.get("location"), collection=root)
+
+        class ObjectOps:
+            def empty_add(self, **kwargs):
+                bpy.op_calls.append(("object.empty_add", kwargs))
+                bpy._create("Empty", obj_type="EMPTY", location=kwargs.get("location"), collection=root)
+
+        class Ed:
+            def undo_push(self, message="", **kwargs):
+                bpy.op_calls.append(("ed.undo_push", {"message": message, **kwargs}))
+
+        return types.SimpleNamespace(mesh=Mesh(), object=ObjectOps(), ed=Ed())
 
 
 @pytest.fixture()
@@ -170,6 +224,11 @@ def test_router_contains_object_read_tools() -> None:
         "object.transform_get",
         "object.bounds",
     } <= names
+
+
+def test_router_contains_object_create_tool() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert "object.create" in names
 
 
 def test_transform_get_returns_object_state(env) -> None:
@@ -200,3 +259,77 @@ def test_bounds_returns_local_and_world_corners(env) -> None:
     assert out["local"][0] == [-1.0, -1.0, -1.0]
     assert out["world"][0] == [0.0, 1.0, 2.0]
     assert out["center"] == [1.0, 2.0, 3.0]
+
+
+def test_create_dispatches_supported_primitives(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    cube = dispatch_on_main(
+        reg,
+        "object.create",
+        {
+            "type": "CUBE",
+            "name": "HeroCube",
+            "location": [3, 2, 1],
+            "rotation": [0.1, 0.2, 0.3],
+            "scale": [2, 2, 2],
+            "size": 4.0,
+            "calc_uvs": False,
+        },
+        ctx,
+    )
+    torus = dispatch_on_main(
+        reg,
+        "object.create",
+        {
+            "type": "TORUS",
+            "name": "HeroTorus",
+            "major_radius": 2.0,
+            "minor_radius": 0.4,
+            "major_segments": 24,
+            "minor_segments": 8,
+        },
+        ctx,
+    )
+    empty = dispatch_on_main(
+        reg,
+        "object.create",
+        {
+            "type": "EMPTY",
+            "name": "HeroEmpty",
+            "empty_display_type": "CUBE",
+            "radius": 1.5,
+        },
+        ctx,
+    )
+
+    assert cube["name"] == "HeroCube"
+    assert torus["name"] == "HeroTorus"
+    assert empty["name"] == "HeroEmpty"
+    assert bpy.data.objects.get("HeroCube") is not None
+    assert bpy.data.objects.get("HeroTorus") is not None
+    assert bpy.data.objects.get("HeroEmpty").type == "EMPTY"
+    calls = {name: kwargs for name, kwargs in bpy.op_calls}
+    assert calls["mesh.primitive_cube_add"] == {
+        "size": 4.0,
+        "calc_uvs": False,
+        "location": [3.0, 2.0, 1.0],
+        "rotation": [0.1, 0.2, 0.3],
+        "scale": [2.0, 2.0, 2.0],
+    }
+    assert calls["mesh.primitive_torus_add"] == {
+        "major_radius": 2.0,
+        "minor_radius": 0.4,
+        "major_segments": 24,
+        "minor_segments": 8,
+        "location": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+    }
+    assert calls["object.empty_add"] == {
+        "type": "CUBE",
+        "radius": 1.5,
+        "location": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0],
+    }
