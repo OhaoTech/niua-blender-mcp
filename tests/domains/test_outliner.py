@@ -8,7 +8,7 @@ import pytest
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import INVALID_PARAMS, PRECONDITION, BridgeError
 
 
 class _NamedList(list):
@@ -337,3 +337,73 @@ def test_object_link_unlink_and_move_use_actual_collection_membership(env):
     assert moved["object"]["collections"] == ["Props"]
     assert bpy.context.scene.collection.objects.get("Rig") is None
     assert bpy.data.collections.get("Props").objects.get("Rig") is not None
+
+
+def test_parent_set_and_clear_preserve_world_transform_and_reject_self_parent(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    cube = bpy.data.objects.get("Cube")
+    rig = bpy.data.objects.get("Rig")
+
+    cleared = dispatch_on_main(reg, "outliner.parent_clear", {"object": "Cube"}, ctx)
+    assert cleared["object"]["parent"] is None
+    assert cube.parent is None
+    assert cube.matrix_world == FakeMatrix("Cube.world")
+
+    parented = dispatch_on_main(
+        reg, "outliner.parent_set", {"object": "Cube", "parent": "Rig"}, ctx
+    )
+    assert parented["object"]["parent"] == "Rig"
+    assert cube.parent is rig
+    assert cube.matrix_parent_inverse == FakeMatrix("Rig.world.inverted")
+    assert cube.matrix_world == FakeMatrix("Cube.world")
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "outliner.parent_set", {"object": "Cube", "parent": "Cube"}, ctx)
+    assert exc.value.code == PRECONDITION
+
+
+def test_visibility_set_maps_to_object_hide_flags(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    cube = bpy.data.objects.get("Cube")
+
+    out = dispatch_on_main(
+        reg,
+        "outliner.visibility_set",
+        {"object": "Cube", "viewport": False, "render": False, "selectable": False},
+        ctx,
+    )
+    assert cube.hide_viewport is True
+    assert cube.hide_render is True
+    assert cube.hide_select is True
+    assert out["object"]["visible"] is False
+    assert out["object"]["renderable"] is False
+    assert out["object"]["selectable"] is False
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "outliner.visibility_set", {"object": "Cube"}, ctx)
+    assert exc.value.code == INVALID_PARAMS
+
+
+def test_collection_visibility_set_maps_to_collection_hide_flags(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    props = bpy.data.collections.get("Props")
+
+    out = dispatch_on_main(
+        reg,
+        "outliner.collection_visibility_set",
+        {"collection": "Props", "viewport": False, "render": False, "selectable": False},
+        ctx,
+    )
+    assert props.hide_viewport is True
+    assert props.hide_render is True
+    assert props.hide_select is True
+    assert out["collection"]["visible"] is False
+    assert out["collection"]["renderable"] is False
+    assert out["collection"]["selectable"] is False
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "outliner.collection_visibility_set", {"collection": "Props"}, ctx)
+    assert exc.value.code == INVALID_PARAMS

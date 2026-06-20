@@ -216,6 +216,28 @@ def _optional_str(payload: dict, key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _copy_matrix(value: Any) -> Any:
+    copier = getattr(value, "copy", None)
+    return copier() if callable(copier) else value
+
+
+def _remove_child(parent: Any, child: Any) -> None:
+    children = getattr(parent, "children", None)
+    if isinstance(children, list) and child in children:
+        children.remove(child)
+
+
+def _add_child(parent: Any, child: Any) -> None:
+    children = getattr(parent, "children", None)
+    if isinstance(children, list) and child not in children:
+        children.append(child)
+
+
+def _require_any_flag(payload: dict, names: tuple[str, ...]) -> None:
+    if not any(name in payload and payload.get(name) is not None for name in names):
+        raise BridgeError(INVALID_PARAMS, f"at least one of {', '.join(names)} is required")
+
+
 def tree(ctx: Ctx, payload: dict) -> dict:
     scene = getattr(ctx.bpy.context, "scene", None)
     root = getattr(scene, "collection", None)
@@ -363,6 +385,66 @@ def object_move(ctx: Ctx, payload: dict) -> dict:
     return {"object": _object_summary(obj)}
 
 
+def parent_set(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(_require_str(payload, "object"))
+    parent = ctx.get_object(_require_str(payload, "parent"))
+    if obj is parent:
+        raise BridgeError(PRECONDITION, "object cannot be parented to itself")
+    keep_transform = bool(payload.get("keep_transform", True))
+    world = _copy_matrix(getattr(obj, "matrix_world", None)) if keep_transform else None
+    old_parent = getattr(obj, "parent", None)
+    if old_parent is not None and old_parent is not parent:
+        _remove_child(old_parent, obj)
+    obj.parent = parent
+    _add_child(parent, obj)
+    if keep_transform:
+        parent_world = getattr(parent, "matrix_world", None)
+        inverted = getattr(parent_world, "inverted", None)
+        if callable(inverted):
+            obj.matrix_parent_inverse = inverted()
+        if world is not None:
+            obj.matrix_world = world
+    return {"object": _object_summary(obj)}
+
+
+def parent_clear(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(_require_str(payload, "object"))
+    keep_transform = bool(payload.get("keep_transform", True))
+    world = _copy_matrix(getattr(obj, "matrix_world", None)) if keep_transform else None
+    old_parent = getattr(obj, "parent", None)
+    if old_parent is not None:
+        _remove_child(old_parent, obj)
+    obj.parent = None
+    obj.matrix_parent_inverse = None
+    if keep_transform and world is not None:
+        obj.matrix_world = world
+    return {"object": _object_summary(obj)}
+
+
+def visibility_set(ctx: Ctx, payload: dict) -> dict:
+    _require_any_flag(payload, ("viewport", "render", "selectable"))
+    obj = ctx.get_object(_require_str(payload, "object"))
+    if payload.get("viewport") is not None:
+        obj.hide_viewport = not bool(payload["viewport"])
+    if payload.get("render") is not None:
+        obj.hide_render = not bool(payload["render"])
+    if payload.get("selectable") is not None:
+        obj.hide_select = not bool(payload["selectable"])
+    return {"object": _object_summary(obj)}
+
+
+def collection_visibility_set(ctx: Ctx, payload: dict) -> dict:
+    _require_any_flag(payload, ("viewport", "render", "selectable"))
+    collection = _find_collection(ctx, _require_str(payload, "collection"))
+    if payload.get("viewport") is not None:
+        collection.hide_viewport = not bool(payload["viewport"])
+    if payload.get("render") is not None:
+        collection.hide_render = not bool(payload["render"])
+    if payload.get("selectable") is not None:
+        collection.hide_select = not bool(payload["selectable"])
+    return {"collection": _collection_flags(collection)}
+
+
 COMMANDS = [
     Command("outliner.tree", tree, mutates=False),
     Command("outliner.describe", describe, mutates=False),
@@ -374,4 +456,13 @@ COMMANDS = [
     Command("outliner.object_link", object_link, mutates=True, feedback="viewport"),
     Command("outliner.object_unlink", object_unlink, mutates=True, feedback="viewport"),
     Command("outliner.object_move", object_move, mutates=True, feedback="viewport"),
+    Command("outliner.parent_set", parent_set, mutates=True, feedback="viewport"),
+    Command("outliner.parent_clear", parent_clear, mutates=True, feedback="viewport"),
+    Command("outliner.visibility_set", visibility_set, mutates=True, feedback="viewport"),
+    Command(
+        "outliner.collection_visibility_set",
+        collection_visibility_set,
+        mutates=True,
+        feedback="viewport",
+    ),
 ]
