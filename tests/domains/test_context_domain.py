@@ -8,6 +8,7 @@ import pytest
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
+from niua_mcp_bridge.errors import PRECONDITION, BridgeError
 
 
 class _NamedList(list):
@@ -132,3 +133,69 @@ def test_context_areas_reports_headless_empty_state(env):
     out = dispatch_on_main(reg, "context.areas", {}, ctx)
 
     assert out == {"has_view3d": False, "windows": []}
+
+
+def test_set_active_sets_active_and_optionally_selects(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    sphere = bpy.data.objects.get("Sphere")
+
+    out = dispatch_on_main(reg, "context.set_active", {"object": "Sphere"}, ctx)
+
+    assert bpy.view_layer.objects.active is sphere
+    assert sphere.select_get() is True
+    assert out["active"]["name"] == "Sphere"
+
+
+def test_set_active_rejects_hidden_or_unselectable_objects(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    sphere = bpy.data.objects.get("Sphere")
+    sphere.hide_select = True
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "context.set_active", {"object": "Sphere"}, ctx)
+    assert exc.value.code == PRECONDITION
+
+    sphere.hide_select = False
+    sphere.hide_viewport = True
+    with pytest.raises(BridgeError) as exc2:
+        dispatch_on_main(reg, "context.set_active", {"object": "Sphere"}, ctx)
+    assert exc2.value.code == PRECONDITION
+
+
+def test_select_objects_replace_add_remove_toggle_and_active(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "context.select_objects",
+        {"objects": "Sphere", "action": "REPLACE", "active": "Sphere"},
+        ctx,
+    )
+    assert [obj["name"] for obj in out["selected"]] == ["Sphere"]
+    assert out["active"]["name"] == "Sphere"
+
+    out = dispatch_on_main(reg, "context.select_objects", {"objects": "Cube", "action": "ADD"}, ctx)
+    assert [obj["name"] for obj in out["selected"]] == ["Cube", "Sphere"]
+
+    out = dispatch_on_main(reg, "context.select_objects", {"objects": "Sphere", "action": "REMOVE"}, ctx)
+    assert [obj["name"] for obj in out["selected"]] == ["Cube"]
+
+    out = dispatch_on_main(reg, "context.select_objects", {"objects": "Cube", "action": "TOGGLE"}, ctx)
+    assert out["selected"] == []
+
+
+def test_select_all_select_deselect_and_invert(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "context.select_all", {"action": "SELECT"}, ctx)
+    assert [obj["name"] for obj in out["selected"]] == ["Cube", "Sphere"]
+
+    out = dispatch_on_main(reg, "context.select_all", {"action": "INVERT"}, ctx)
+    assert out["selected"] == []
+
+    out = dispatch_on_main(reg, "context.select_all", {"action": "DESELECT"}, ctx)
+    assert out["selected"] == []
