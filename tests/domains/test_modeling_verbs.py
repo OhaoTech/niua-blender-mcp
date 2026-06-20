@@ -81,6 +81,8 @@ class _FakeBpy(types.ModuleType):
 
         class _MeshOps:
             select_all = _Op(log, "mesh.select_all")
+            edges_select_sharp = _Op(log, "mesh.edges_select_sharp")
+            bevel = _Op(log, "mesh.bevel")
             tris_convert_to_quads = _Op(log, "mesh.tris_convert_to_quads")
             normals_make_consistent = _Op(log, "mesh.normals_make_consistent")
             remove_doubles = _Op(log, "mesh.remove_doubles")
@@ -138,3 +140,29 @@ def test_retopo_quads_runs_the_pipeline(monkeypatch):
     ]
     assert bpy.mode_calls == ["EDIT", "OBJECT"]
     assert bpy.undo_pushes == ["niua:model.retopo_quads"]
+
+
+def test_bevel_edges_selects_sharp_edges_then_bevels(monkeypatch):
+    bpy = _make_bpy_with_object(monkeypatch)
+    reg = build_default_registry()
+    out = dispatch_on_main(
+        reg,
+        "model.bevel_edges",
+        {"object": "Cube", "angle": 45.0, "width": 0.03, "segments": 3},
+        Ctx(bpy),
+    )
+    assert out == {"object": "Cube", "applied": ["edges_select_sharp", "bevel"], "segments": 3}
+    assert _names(bpy.op_calls) == ["mesh.select_all", "mesh.edges_select_sharp", "mesh.bevel"]
+    assert bpy.op_calls[0][1] == {"action": "DESELECT"}
+    assert round(bpy.op_calls[1][1]["sharpness"], 6) == 0.785398
+    assert bpy.op_calls[2][1] == {"offset": 0.03, "segments": 3, "affect": "EDGES"}
+    assert bpy.mode_calls == ["EDIT", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:model.bevel_edges"]
+
+
+def test_bevel_edges_is_exposed_in_server_router():
+    from niua_blender_mcp.domains import build_router
+
+    specs = {s.name: s for s in build_router().specs()}
+    assert "model.bevel_edges" in specs
+    assert specs["model.bevel_edges"].tier == "curated"

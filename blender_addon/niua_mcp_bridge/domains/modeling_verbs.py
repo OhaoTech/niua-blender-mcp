@@ -34,6 +34,29 @@ def retopo_quads(ctx: Ctx, payload: dict) -> dict:
     }
 
 
+def bevel_edges(ctx: Ctx, payload: dict) -> dict:
+    obj_name = payload.get("object")
+    if not isinstance(obj_name, str) or not obj_name:
+        raise BridgeError(INVALID_PARAMS, "object is required")
+    obj = ctx.get_object(obj_name)
+    if getattr(obj, "type", None) != "MESH":
+        raise BridgeError(PRECONDITION, f"object is not a mesh: {obj_name}")
+
+    angle = math.radians(float(payload.get("angle", 30.0)))
+    width = float(payload.get("width", 0.02))
+    segments = int(payload.get("segments", 2))
+    ops = ctx.bpy.ops
+    with ctx.ensure(active=obj, mode="EDIT", select=[obj]):
+        ctx.check_poll(ops.mesh.select_all)
+        ops.mesh.select_all(action="DESELECT")
+        ctx.check_poll(ops.mesh.edges_select_sharp)
+        ops.mesh.edges_select_sharp(sharpness=angle)
+        ctx.check_poll(ops.mesh.bevel)
+        ops.mesh.bevel(offset=width, segments=segments, affect="EDGES")
+    return {"object": obj.name, "applied": ["edges_select_sharp", "bevel"], "segments": segments}
+
+
 COMMANDS = [
     Command("model.retopo_quads", retopo_quads, mutates=True, feedback="viewport"),
+    Command("model.bevel_edges", bevel_edges, mutates=True, feedback="viewport"),
 ]

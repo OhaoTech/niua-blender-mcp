@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..kernel import Float, Str, ToolSpec
+from ..kernel import Float, Int, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
@@ -18,6 +18,26 @@ SPECS = [
                 maximum=180.0,
                 summary="Max angle in degrees to merge tri pairs into quads",
             ),
+        },
+        mutates=True,
+        feedback="viewport",
+        tier="curated",
+    ),
+    ToolSpec(
+        name="model.bevel_edges",
+        category="modeling",
+        summary="Select sharp edges by angle and bevel them as a single hard-surface craft step",
+        command="model.bevel_edges",
+        params={
+            "object": Str(required=True, summary="Mesh object to bevel"),
+            "angle": Float(
+                default=30.0,
+                minimum=0.0,
+                maximum=180.0,
+                summary="Sharp-edge threshold in degrees",
+            ),
+            "width": Float(default=0.02, minimum=0.0, summary="Bevel width"),
+            "segments": Int(default=2, minimum=1, maximum=12, summary="Bevel segment count"),
         },
         mutates=True,
         feedback="viewport",
