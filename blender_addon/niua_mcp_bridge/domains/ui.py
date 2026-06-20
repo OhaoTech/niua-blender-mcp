@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
+from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
+from .rna_exec import _operator as _rna_operator
+from .rna_exec import _parse_json, _validate_operator_args
 
 
 def _iter(items: Any) -> list[Any]:
@@ -110,6 +114,116 @@ def _poll_capability(ctx: Ctx, idname: str) -> dict[str, Any]:
     return {"available": True}
 
 
+def _require_idname(payload: dict) -> str:
+    idname = payload.get("idname")
+    if not isinstance(idname, str) or not idname:
+        raise BridgeError(INVALID_PARAMS, "idname is required")
+    return idname
+
+
+def _target_summary(
+    override: bool,
+    window_index: int | None = None,
+    window: Any = None,
+    area_index: int | None = None,
+    area: Any = None,
+    region_index: int | None = None,
+    region: Any = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "override": bool(override),
+        "window": None
+        if window is None or window_index is None
+        else {"index": window_index, "screen": _name(getattr(window, "screen", None)), "workspace": _name(getattr(window, "workspace", None))},
+        "area": None if area is None or area_index is None else {"index": area_index, "type": str(getattr(area, "type", "") or "")},
+        "region": None
+        if region is None or region_index is None
+        else {"index": region_index, "type": str(getattr(region, "type", "") or "")},
+        "reason": reason,
+    }
+
+
+def _resolve_target(ctx: Ctx, payload: dict) -> tuple[dict[str, Any], dict[str, Any], str | None]:
+    area_type = str(payload.get("area", "VIEW_3D") or "VIEW_3D")
+    region_type = str(payload.get("region", "WINDOW") or "WINDOW")
+    window_index = int(payload.get("window_index", -1))
+    area_index = int(payload.get("area_index", -1))
+    bpy_ctx = getattr(ctx.bpy, "context", None)
+    wm = getattr(bpy_ctx, "window_manager", None)
+    windows = _iter(getattr(wm, "windows", []))
+    if not windows:
+        reason = "window not found: no Blender windows are available"
+        return _target_summary(False, reason=reason), {}, reason
+
+    candidates: list[tuple[int, Any]] = []
+    if window_index >= 0:
+        if window_index >= len(windows):
+            reason = f"window not found: {window_index}"
+            return _target_summary(False, reason=reason), {}, reason
+        candidates = [(window_index, windows[window_index])]
+    else:
+        candidates = list(enumerate(windows))
+
+    for w_index, window in candidates:
+        screen = getattr(window, "screen", None)
+        areas = _iter(getattr(screen, "areas", []))
+        area_candidates: list[tuple[int, Any]] = []
+        if area_index >= 0:
+            if area_index < len(areas):
+                area_candidates = [(area_index, areas[area_index])]
+        else:
+            area_candidates = list(enumerate(areas))
+        for a_index, area in area_candidates:
+            if area_type and str(getattr(area, "type", "") or "") != area_type:
+                continue
+            regions = _iter(getattr(area, "regions", []))
+            region_match = next(
+                (
+                    (r_index, region)
+                    for r_index, region in enumerate(regions)
+                    if str(getattr(region, "type", "") or "") == region_type
+                ),
+                (None, None),
+            )
+            r_index, region = region_match
+            override: dict[str, Any] = {"window": window, "area": area}
+            if region is not None:
+                override["region"] = region
+            summary = _target_summary(True, w_index, window, a_index, area, r_index, region)
+            return summary, override, None
+
+    reason = f"area not found: {area_type}"
+    return _target_summary(False, reason=reason), {}, reason
+
+
+def _override_cm(ctx: Ctx, override: dict[str, Any]):
+    if not override:
+        return nullcontext()
+    temp_override = getattr(getattr(ctx.bpy, "context", None), "temp_override", None)
+    if callable(temp_override):
+        return temp_override(**override)
+    return nullcontext()
+
+
+def _context_hints(payload: dict) -> tuple[str | None, str | None, list[Any] | None]:
+    obj = payload.get("object") if isinstance(payload.get("object"), str) and payload.get("object") else None
+    mode = payload.get("mode") if isinstance(payload.get("mode"), str) and payload.get("mode") else None
+    select = _parse_json(payload.get("select"), "select", expect=list)
+    return obj, mode, select
+
+
+def _poll_op(op: Any) -> tuple[bool, str | None]:
+    poll = getattr(op, "poll", None)
+    try:
+        available = bool(poll()) if callable(poll) else True
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+    if not available:
+        return False, "operator poll returned false"
+    return True, None
+
+
 def _has_area(windows: list[dict[str, Any]]) -> bool:
     return any(window["areas"] for window in windows)
 
@@ -153,7 +267,55 @@ def state(ctx: Ctx, payload: dict) -> dict:
     }
 
 
+def operator_poll(ctx: Ctx, payload: dict) -> dict:
+    idname = _require_idname(payload)
+    op = _rna_operator(ctx, idname)
+    target, override, target_reason = _resolve_target(ctx, payload)
+    if target_reason and bool(payload.get("require_area", False)):
+        return {"idname": idname, "available": False, "reason": target_reason, "ui_context": target}
+    obj, mode, select = _context_hints(payload)
+    try:
+        with ctx.ensure(active=obj, mode=mode, select=select, area=""):
+            with _override_cm(ctx, override):
+                available, reason = _poll_op(op)
+    except BridgeError as exc:
+        return {"idname": idname, "available": False, "reason": exc.message, "ui_context": target}
+    except Exception as exc:  # noqa: BLE001
+        return {"idname": idname, "available": False, "reason": str(exc), "ui_context": target}
+    if not available:
+        return {"idname": idname, "available": False, "reason": reason, "ui_context": target}
+    return {"idname": idname, "available": True, "ui_context": target}
+
+
+def operator_invoke(ctx: Ctx, payload: dict) -> dict:
+    idname = _require_idname(payload)
+    args = _parse_json(payload.get("args"), "args", expect=dict) or {}
+    select = _parse_json(payload.get("select"), "select", expect=list)
+    obj = payload.get("object") if isinstance(payload.get("object"), str) and payload.get("object") else None
+    mode = payload.get("mode") if isinstance(payload.get("mode"), str) and payload.get("mode") else None
+    op = _rna_operator(ctx, idname)
+    clean, dropped, ignored = _validate_operator_args(op, args)
+    target, override, target_reason = _resolve_target(ctx, payload)
+    if target_reason and bool(payload.get("require_area", False)):
+        raise BridgeError(PRECONDITION, target_reason, {"ui_context": target})
+    with ctx.ensure(active=obj, mode=mode, select=select, area=""):
+        with _override_cm(ctx, override):
+            available, reason = _poll_op(op)
+            if not available:
+                raise BridgeError(PRECONDITION, reason or "operator preconditions not met", {"ui_context": target})
+            op(**clean)
+    result: dict[str, Any] = {"operator": idname, "args": clean, "ui_context": target}
+    if dropped:
+        result["dropped_args"] = dropped
+    if ignored:
+        result["ignored_args"] = ignored
+        result["note"] = "POINTER/COLLECTION args are not yet supported and were ignored"
+    return result
+
+
 COMMANDS = [
     Command("ui.state", state, mutates=False),
     Command("ui.windows", windows, mutates=False),
+    Command("ui.operator_poll", operator_poll, mutates=False),
+    Command("ui.operator_invoke", operator_invoke, mutates=True, feedback="viewport"),
 ]
