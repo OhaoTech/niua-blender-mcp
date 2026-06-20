@@ -72,11 +72,13 @@ Read-only. Returns `seam_edges` as edge indices where `edge.use_seam` is true an
 Mutates `mesh.edges[i].use_seam`. `edges` is a comma-separated list of integer edge
 indices. `CLEAR` ignores `edges` and clears all seams. Returns the seam report.
 
-`uv.export_layout(object?, path, size=1024, opacity=0.25, export_all=True, modified=False)`
+`uv.export_layout(object?, path, size=1024, opacity=0.25, export_all=True, modified=False, format=AUTO|PNG|SVG|EPS)`
 
 Runs `bpy.ops.uv.export_layout(filepath=path, size=(size, size), opacity=opacity,
-export_all=export_all, modified=modified)` with the mesh active in edit mode and all
-faces selected. Returns path and file size.
+export_all=export_all, modified=modified, mode=format)` with the mesh active in edit
+mode and all faces selected. `AUTO` infers format from `.png`, `.svg`, or `.eps`.
+Returns path, format, and file size. PNG export requires Blender's GPU offscreen drawing,
+so headless background verification uses SVG.
 
 Existing unwrap/project/pack/report tools remain.
 
@@ -104,7 +106,7 @@ Real Blender smoke covers:
 2. create and activate a `Lightmap` UV layer
 3. mark two seam edges, read them back, remove one, clear all
 4. run smart unwrap and pack
-5. export UV layout PNG and assert the file exists and is non-empty
+5. export UV layout SVG and assert the file exists and is non-empty
 
 ## Deferred
 
