@@ -10,7 +10,7 @@ from typing import Any, Iterable
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import INVALID_PARAMS, NOT_FOUND, BridgeError
+from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 _ORPHAN_CATEGORIES = [
     "actions",
@@ -177,6 +177,18 @@ def _find_collection(ctx: Ctx, name: str):
     raise BridgeError(NOT_FOUND, f"collection not found: {name}", {"collection": name})
 
 
+def _is_scene_root(ctx: Ctx, collection: Any) -> bool:
+    return any(getattr(scene, "collection", None) is collection for scene in _iter(getattr(ctx.bpy.data, "scenes", [])))
+
+
+def _collection_parents(ctx: Ctx, child: Any) -> list[Any]:
+    parents = []
+    for collection in _all_collections(ctx):
+        if child in _iter(getattr(collection, "children", [])):
+            parents.append(collection)
+    return parents
+
+
 def _find_scene(ctx: Ctx, name: str):
     scene = _find_named(getattr(ctx.bpy.data, "scenes", []), name)
     if scene is None:
@@ -197,6 +209,11 @@ def _require_str(payload: dict, key: str) -> str:
     if not isinstance(value, str) or not value:
         raise BridgeError(INVALID_PARAMS, f"{key} is required")
     return value
+
+
+def _optional_str(payload: dict, key: str) -> str:
+    value = payload.get(key, "")
+    return value if isinstance(value, str) else ""
 
 
 def tree(ctx: Ctx, payload: dict) -> dict:
@@ -284,9 +301,77 @@ def orphans(ctx: Ctx, payload: dict) -> dict:
     return {"orphans": grouped, "count": total}
 
 
+def collection_create(ctx: Ctx, payload: dict) -> dict:
+    name = _require_str(payload, "name")
+    parent_name = _optional_str(payload, "parent")
+    scene = getattr(ctx.bpy.context, "scene", None)
+    parent = _find_collection(ctx, parent_name) if parent_name else getattr(scene, "collection", None)
+    if parent is None:
+        raise BridgeError(PRECONDITION, "active scene root collection is required")
+    collection = ctx.bpy.data.collections.new(name)
+    parent.children.link(collection)
+    return {"collection": _collection_flags(collection), "parent": _name(parent)}
+
+
+def collection_rename(ctx: Ctx, payload: dict) -> dict:
+    collection = _find_collection(ctx, _require_str(payload, "collection"))
+    collection.name = _require_str(payload, "name")
+    return {"collection": _collection_flags(collection)}
+
+
+def collection_delete(ctx: Ctx, payload: dict) -> dict:
+    name = _require_str(payload, "collection")
+    collection = _find_collection(ctx, name)
+    if _is_scene_root(ctx, collection):
+        raise BridgeError(PRECONDITION, "cannot delete a scene root collection")
+    has_contents = bool(_iter(getattr(collection, "objects", [])) or _iter(getattr(collection, "children", [])))
+    if has_contents and not bool(payload.get("force", False)):
+        raise BridgeError(PRECONDITION, "collection is not empty; pass force=true")
+    for parent in list(_collection_parents(ctx, collection)):
+        parent.children.unlink(collection)
+    ctx.bpy.data.collections.remove(collection)
+    return {"collection": name, "deleted": True}
+
+
+def object_link(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(_require_str(payload, "object"))
+    collection = _find_collection(ctx, _require_str(payload, "collection"))
+    if not _collection_contains(collection, obj):
+        collection.objects.link(obj)
+    return {"object": _object_summary(obj)}
+
+
+def object_unlink(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(_require_str(payload, "object"))
+    collection = _find_collection(ctx, _require_str(payload, "collection"))
+    users = _iter(getattr(obj, "users_collection", []))
+    if collection in users and len(users) <= 1 and not bool(payload.get("force", False)):
+        raise BridgeError(PRECONDITION, "object is only linked to this collection; pass force=true")
+    if _collection_contains(collection, obj):
+        collection.objects.unlink(obj)
+    return {"object": _object_summary(obj)}
+
+
+def object_move(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(_require_str(payload, "object"))
+    target = _find_collection(ctx, _require_str(payload, "collection"))
+    if not _collection_contains(target, obj):
+        target.objects.link(obj)
+    for collection in list(_iter(getattr(obj, "users_collection", []))):
+        if collection is not target and _collection_contains(collection, obj):
+            collection.objects.unlink(obj)
+    return {"object": _object_summary(obj)}
+
+
 COMMANDS = [
     Command("outliner.tree", tree, mutates=False),
     Command("outliner.describe", describe, mutates=False),
     Command("outliner.find", find, mutates=False),
     Command("outliner.orphans", orphans, mutates=False),
+    Command("outliner.collection_create", collection_create, mutates=True, feedback="viewport"),
+    Command("outliner.collection_rename", collection_rename, mutates=True, feedback="viewport"),
+    Command("outliner.collection_delete", collection_delete, mutates=True, feedback="viewport"),
+    Command("outliner.object_link", object_link, mutates=True, feedback="viewport"),
+    Command("outliner.object_unlink", object_unlink, mutates=True, feedback="viewport"),
+    Command("outliner.object_move", object_move, mutates=True, feedback="viewport"),
 ]

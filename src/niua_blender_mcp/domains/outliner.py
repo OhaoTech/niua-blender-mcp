@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..kernel import Enum, Int, Str, ToolSpec
+from ..kernel import Bool, Enum, Int, Str, ToolSpec
 
 KINDS = ["AUTO", "ANY", "OBJECT", "COLLECTION", "SCENE", "VIEW_LAYER"]
 
@@ -39,5 +39,78 @@ SPECS = [
         category="outliner",
         summary="List zero-user datablocks in high-value Outliner categories",
         command="outliner.orphans",
+    ),
+    ToolSpec(
+        name="outliner.collection_create",
+        category="outliner",
+        summary="Create a collection under the scene root or a named parent collection",
+        command="outliner.collection_create",
+        params={
+            "name": Str(required=True, summary="New collection name"),
+            "parent": Str(default="", summary="Parent collection; scene root when empty"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="outliner.collection_rename",
+        category="outliner",
+        summary="Rename a collection",
+        command="outliner.collection_rename",
+        params={
+            "collection": Str(required=True, summary="Collection to rename"),
+            "name": Str(required=True, summary="New collection name"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="outliner.collection_delete",
+        category="outliner",
+        summary="Delete a collection; force is required when it contains objects or child collections",
+        command="outliner.collection_delete",
+        params={
+            "collection": Str(required=True, summary="Collection to delete"),
+            "force": Bool(default=False, summary="Allow deleting a non-empty collection"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="outliner.object_link",
+        category="outliner",
+        summary="Link an object into a collection without removing existing collection membership",
+        command="outliner.object_link",
+        params={
+            "object": Str(required=True, summary="Object to link"),
+            "collection": Str(required=True, summary="Target collection"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="outliner.object_unlink",
+        category="outliner",
+        summary="Unlink an object from a collection; force is required if it is the final collection",
+        command="outliner.object_unlink",
+        params={
+            "object": Str(required=True, summary="Object to unlink"),
+            "collection": Str(required=True, summary="Collection to unlink from"),
+            "force": Bool(default=False, summary="Allow object to have no collection users"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="outliner.object_move",
+        category="outliner",
+        summary="Move an object to exactly one target collection",
+        command="outliner.object_move",
+        params={
+            "object": Str(required=True, summary="Object to move"),
+            "collection": Str(required=True, summary="Target collection"),
+        },
+        mutates=True,
+        feedback="viewport",
     ),
 ]

@@ -8,6 +8,7 @@ import pytest
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
+from niua_mcp_bridge.errors import PRECONDITION, BridgeError
 
 
 class _NamedList(list):
@@ -55,6 +56,19 @@ class _CollectionLinks(_NamedList):
             self.remove(collection)
         if self.owner in collection.parents:
             collection.parents.remove(self.owner)
+
+
+class _CollectionDatablocks(_NamedList):
+    def new(self, name: str):
+        collection = FakeCollection(name)
+        self.append(collection)
+        return collection
+
+    def remove(self, collection):
+        if collection in self:
+            list.remove(self, collection)
+        for parent in list(collection.parents):
+            parent.children.unlink(collection)
 
 
 class FakeMatrix:
@@ -139,7 +153,7 @@ class FakeScene:
 class FakeData:
     def __init__(self, scene: FakeScene, collections: _NamedList, objects: _NamedList) -> None:
         self.scenes = _NamedList([scene])
-        self.collections = collections
+        self.collections = _CollectionDatablocks(collections)
         self.objects = objects
         self.meshes = _NamedList([types.SimpleNamespace(name="UnusedMesh", users=0)])
         self.materials = _NamedList([types.SimpleNamespace(name="UsedMat", users=1)])
@@ -264,3 +278,62 @@ def test_orphans_lists_zero_user_datablocks(env):
         "objects": [],
     }
     assert out["count"] == 2
+
+
+def test_collection_create_rename_and_delete_guards(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    created = dispatch_on_main(reg, "outliner.collection_create", {"name": "Shots"}, ctx)
+    assert created["collection"]["name"] == "Shots"
+    assert [child.name for child in bpy.context.scene.collection.children][-1] == "Shots"
+
+    sub = dispatch_on_main(
+        reg, "outliner.collection_create", {"name": "Shot010", "parent": "Shots"}, ctx
+    )
+    assert sub["collection"]["name"] == "Shot010"
+    assert bpy.data.collections.get("Shots").children.get("Shot010") is not None
+
+    renamed = dispatch_on_main(
+        reg, "outliner.collection_rename", {"collection": "Shot010", "name": "Shot020"}, ctx
+    )
+    assert renamed["collection"]["name"] == "Shot020"
+    assert bpy.data.collections.get("Shot020") is not None
+
+    deleted = dispatch_on_main(reg, "outliner.collection_delete", {"collection": "Shot020"}, ctx)
+    assert deleted == {"collection": "Shot020", "deleted": True}
+    assert bpy.data.collections.get("Shot020") is None
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "outliner.collection_delete", {"collection": "Props"}, ctx)
+    assert exc.value.code == PRECONDITION
+
+    forced = dispatch_on_main(
+        reg, "outliner.collection_delete", {"collection": "Props", "force": True}, ctx
+    )
+    assert forced == {"collection": "Props", "deleted": True}
+    assert bpy.data.collections.get("Props") is None
+
+
+def test_object_link_unlink_and_move_use_actual_collection_membership(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    linked = dispatch_on_main(reg, "outliner.object_link", {"object": "Cube", "collection": "Nested"}, ctx)
+    assert linked["object"]["collections"] == ["Props", "Nested"]
+    assert bpy.data.collections.get("Nested").objects.get("Cube") is not None
+
+    unlinked = dispatch_on_main(
+        reg, "outliner.object_unlink", {"object": "Cube", "collection": "Props"}, ctx
+    )
+    assert unlinked["object"]["collections"] == ["Nested"]
+    assert bpy.data.collections.get("Props").objects.get("Cube") is None
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "outliner.object_unlink", {"object": "Cube", "collection": "Nested"}, ctx)
+    assert exc.value.code == PRECONDITION
+
+    moved = dispatch_on_main(reg, "outliner.object_move", {"object": "Rig", "collection": "Props"}, ctx)
+    assert moved["object"]["collections"] == ["Props"]
+    assert bpy.context.scene.collection.objects.get("Rig") is None
+    assert bpy.data.collections.get("Props").objects.get("Rig") is not None
