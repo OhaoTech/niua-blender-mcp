@@ -204,6 +204,17 @@ def _find_view_layer(ctx: Ctx, name: str):
     return view_layer
 
 
+def _find_layer_collection(layer_collection: Any, collection_name: str):
+    collection = getattr(layer_collection, "collection", None)
+    if _name(collection) == collection_name or _name(layer_collection) == collection_name:
+        return layer_collection
+    for child in _iter(getattr(layer_collection, "children", [])):
+        found = _find_layer_collection(child, collection_name)
+        if found is not None:
+            return found
+    return None
+
+
 def _require_str(payload: dict, key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
@@ -321,6 +332,10 @@ def orphans(ctx: Ctx, payload: dict) -> dict:
         grouped[category] = sorted(name for name in items if name)
         total += len(grouped[category])
     return {"orphans": grouped, "count": total}
+
+
+def _orphan_count(ctx: Ctx) -> int:
+    return int(orphans(ctx, {})["count"])
 
 
 def collection_create(ctx: Ctx, payload: dict) -> dict:
@@ -445,6 +460,92 @@ def collection_visibility_set(ctx: Ctx, payload: dict) -> dict:
     return {"collection": _collection_flags(collection)}
 
 
+def view_layers(ctx: Ctx, payload: dict) -> dict:
+    scene = getattr(ctx.bpy.context, "scene", None)
+    return {
+        "view_layers": [
+            _view_layer_summary(view_layer)
+            for view_layer in _iter(getattr(scene, "view_layers", []))
+        ]
+    }
+
+
+def view_layer_create(ctx: Ctx, payload: dict) -> dict:
+    scene = getattr(ctx.bpy.context, "scene", None)
+    name = _require_str(payload, "name")
+    new = getattr(getattr(scene, "view_layers", None), "new", None)
+    if not callable(new):
+        raise BridgeError(PRECONDITION, "scene view layers cannot be created in this context")
+    try:
+        new(name=name)
+    except TypeError:
+        new(name)
+    return view_layers(ctx, {})
+
+
+def view_layer_delete(ctx: Ctx, payload: dict) -> dict:
+    if not bool(payload.get("force", False)):
+        raise BridgeError(PRECONDITION, "view_layer_delete changes render organization; pass force=true")
+    scene = getattr(ctx.bpy.context, "scene", None)
+    layers = getattr(scene, "view_layers", None)
+    if len(_iter(layers)) <= 1:
+        raise BridgeError(PRECONDITION, "cannot delete the last view layer")
+    view_layer = _find_view_layer(ctx, _require_str(payload, "name"))
+    remove = getattr(layers, "remove", None)
+    if not callable(remove):
+        raise BridgeError(PRECONDITION, "scene view layers cannot be removed in this context")
+    remove(view_layer)
+    return view_layers(ctx, {})
+
+
+def layer_collection_set(ctx: Ctx, payload: dict) -> dict:
+    _require_any_flag(payload, ("exclude", "viewport", "holdout", "indirect_only"))
+    view_layer = _find_view_layer(ctx, _require_str(payload, "view_layer"))
+    collection_name = _require_str(payload, "collection")
+    _find_collection(ctx, collection_name)
+    layer_collection = _find_layer_collection(getattr(view_layer, "layer_collection", None), collection_name)
+    if layer_collection is None:
+        raise BridgeError(
+            NOT_FOUND,
+            f"collection not found in view layer: {collection_name}",
+            {"view_layer": _name(view_layer), "collection": collection_name},
+        )
+    if payload.get("exclude") is not None:
+        layer_collection.exclude = bool(payload["exclude"])
+    if payload.get("viewport") is not None:
+        layer_collection.hide_viewport = not bool(payload["viewport"])
+    if payload.get("holdout") is not None:
+        layer_collection.holdout = bool(payload["holdout"])
+    if payload.get("indirect_only") is not None:
+        layer_collection.indirect_only = bool(payload["indirect_only"])
+    return {"layer_collection": _layer_collection_summary(layer_collection)}
+
+
+def orphans_purge(ctx: Ctx, payload: dict) -> dict:
+    if not bool(payload.get("force", False)):
+        raise BridgeError(PRECONDITION, "orphans_purge deletes datablocks; pass force=true")
+    before = _orphan_count(ctx)
+    purge = getattr(getattr(ctx.bpy, "data", None), "orphans_purge", None)
+    removed: Any = None
+    if callable(purge):
+        try:
+            removed = purge(do_local_ids=True, do_linked_ids=False, do_recursive=True)
+        except TypeError:
+            removed = purge()
+    else:
+        op = getattr(getattr(getattr(ctx.bpy, "ops", None), "outliner", None), "orphans_purge", None)
+        if op is None:
+            raise BridgeError(PRECONDITION, "orphan purge API is unavailable")
+        op(do_local_ids=True, do_linked_ids=False, do_recursive=True)
+    after = _orphan_count(ctx)
+    return {
+        "purged": True,
+        "before": before,
+        "after": after,
+        "removed": int(removed) if isinstance(removed, int) else max(before - after, 0),
+    }
+
+
 COMMANDS = [
     Command("outliner.tree", tree, mutates=False),
     Command("outliner.describe", describe, mutates=False),
@@ -465,4 +566,9 @@ COMMANDS = [
         mutates=True,
         feedback="viewport",
     ),
+    Command("outliner.view_layers", view_layers, mutates=False),
+    Command("outliner.view_layer_create", view_layer_create, mutates=True, feedback="viewport"),
+    Command("outliner.view_layer_delete", view_layer_delete, mutates=True, feedback="viewport"),
+    Command("outliner.layer_collection_set", layer_collection_set, mutates=True, feedback="viewport"),
+    Command("outliner.orphans_purge", orphans_purge, mutates=True, feedback="viewport"),
 ]

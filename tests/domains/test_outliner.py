@@ -135,11 +135,32 @@ class FakeLayerCollection:
         self.indirect_only = False
 
 
+def _build_layer_collection(collection: FakeCollection) -> FakeLayerCollection:
+    layer = FakeLayerCollection(collection)
+    for child in collection.children:
+        layer.children.append(_build_layer_collection(child))
+    return layer
+
+
 class FakeViewLayer:
     def __init__(self, name: str, layer_collection: FakeLayerCollection) -> None:
         self.name = name
         self.layer_collection = layer_collection
         self.active_layer_collection = layer_collection
+
+
+class _ViewLayers(_NamedList):
+    def __init__(self, root: FakeCollection) -> None:
+        super().__init__([FakeViewLayer("ViewLayer", _build_layer_collection(root))])
+        self.root = root
+
+    def new(self, name: str):
+        view_layer = FakeViewLayer(name, _build_layer_collection(self.root))
+        self.append(view_layer)
+        return view_layer
+
+    def remove(self, view_layer):
+        list.remove(self, view_layer)
 
 
 class FakeScene:
@@ -162,6 +183,18 @@ class FakeData:
         self.cameras = _NamedList()
         self.lights = _NamedList()
         self.actions = _NamedList([types.SimpleNamespace(name="LooseAction", users=0)])
+        self.orphans_purge_calls = []
+
+    def orphans_purge(self, **kwargs):
+        self.orphans_purge_calls.append(kwargs)
+        removed = 0
+        for category in ("meshes", "materials", "images", "curves", "cameras", "lights", "actions", "collections", "objects"):
+            items = getattr(self, category)
+            for item in list(items):
+                if int(getattr(item, "users", 0) or 0) == 0:
+                    items.remove(item)
+                    removed += 1
+        return removed
 
 
 class FakeBpy(types.ModuleType):
@@ -181,12 +214,7 @@ class FakeBpy(types.ModuleType):
         props.objects.link(cube)
         objects = _NamedList([rig, cube])
 
-        root_layer = FakeLayerCollection(root)
-        props_layer = FakeLayerCollection(props)
-        nested_layer = FakeLayerCollection(nested)
-        root_layer.children.append(props_layer)
-        props_layer.children.append(nested_layer)
-        view_layers = _NamedList([FakeViewLayer("ViewLayer", root_layer)])
+        view_layers = _ViewLayers(root)
 
         scene = FakeScene(root, objects, view_layers)
         self.data = FakeData(scene, _NamedList([props, nested]), objects)
@@ -407,3 +435,79 @@ def test_collection_visibility_set_maps_to_collection_hide_flags(env):
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "outliner.collection_visibility_set", {"collection": "Props"}, ctx)
     assert exc.value.code == INVALID_PARAMS
+
+
+def test_view_layers_create_delete_and_guard_last_layer(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    listed = dispatch_on_main(reg, "outliner.view_layers", {}, ctx)
+    assert [layer["name"] for layer in listed["view_layers"]] == ["ViewLayer"]
+
+    created = dispatch_on_main(reg, "outliner.view_layer_create", {"name": "Beauty"}, ctx)
+    assert [layer["name"] for layer in created["view_layers"]] == ["ViewLayer", "Beauty"]
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "outliner.view_layer_delete", {"name": "Beauty"}, ctx)
+    assert exc.value.code == PRECONDITION
+
+    deleted = dispatch_on_main(
+        reg, "outliner.view_layer_delete", {"name": "Beauty", "force": True}, ctx
+    )
+    assert [layer["name"] for layer in deleted["view_layers"]] == ["ViewLayer"]
+    assert bpy.context.scene.view_layers.get("Beauty") is None
+
+    with pytest.raises(BridgeError) as exc2:
+        dispatch_on_main(
+            reg, "outliner.view_layer_delete", {"name": "ViewLayer", "force": True}, ctx
+        )
+    assert exc2.value.code == PRECONDITION
+
+
+def test_layer_collection_set_maps_restriction_flags(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "outliner.layer_collection_set",
+        {
+            "view_layer": "ViewLayer",
+            "collection": "Props",
+            "exclude": True,
+            "viewport": False,
+            "holdout": True,
+            "indirect_only": True,
+        },
+        ctx,
+    )
+    props_layer = bpy.context.scene.view_layers.get("ViewLayer").layer_collection.children.get("Props")
+    assert props_layer.exclude is True
+    assert props_layer.hide_viewport is True
+    assert props_layer.holdout is True
+    assert props_layer.indirect_only is True
+    assert out["layer_collection"]["collection"] == "Props"
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "outliner.layer_collection_set",
+            {"view_layer": "ViewLayer", "collection": "Props"},
+            ctx,
+        )
+    assert exc.value.code == INVALID_PARAMS
+
+
+def test_orphans_purge_requires_force_and_uses_data_api(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "outliner.orphans_purge", {}, ctx)
+    assert exc.value.code == PRECONDITION
+
+    out = dispatch_on_main(reg, "outliner.orphans_purge", {"force": True}, ctx)
+    assert out == {"purged": True, "before": 2, "after": 0, "removed": 2}
+    assert bpy.data.orphans_purge_calls == [
+        {"do_local_ids": True, "do_linked_ids": False, "do_recursive": True}
+    ]
