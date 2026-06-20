@@ -72,6 +72,11 @@ def _make_node(ntype: str) -> FakeNode:
         return FakeNode("TEX_IMAGE", ["Vector"], ["Color", "Alpha"])
     if ntype == "ShaderNodeNormalMap":
         return FakeNode("NORMAL_MAP", ["Color"], ["Normal"])
+    if ntype == "ShaderNodeTexNoise":
+        node = FakeNode("TEX_NOISE", ["Scale"], ["Fac", "Color"])
+        node.bl_idname = "ShaderNodeTexNoise"
+        node.inputs["Scale"].default_value = 5.0
+        return node
     return FakeNode(ntype, [], [])
 
 
@@ -81,13 +86,16 @@ class FakeNodes(list):
         self.append(node)
         return node
 
+    def get(self, name: str):
+        return next((node for node in self if getattr(node, "name", None) == name), None)
+
 
 class FakeLinks:
     def __init__(self) -> None:
         self.created = []
         self._links = []
 
-    def new(self, output_socket, input_socket):
+    def new(self, input_socket, output_socket):
         self.created.append((output_socket, input_socket))
         link = FakeLink(output_socket, input_socket)
         self._links.append(link)
@@ -121,7 +129,7 @@ class FakeMaterial:
             # A fresh node-based material ships with Principled + Output, like Blender.
             principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
             output = tree.nodes.new("ShaderNodeOutputMaterial")
-            tree.links.new(principled.outputs["BSDF"], output.inputs["Surface"])
+            tree.links.new(output.inputs["Surface"], principled.outputs["BSDF"])
             self.node_tree = tree
 
 
@@ -514,3 +522,93 @@ def test_report_object_material_slots(env) -> None:
     assert out["material"] == "Gold"
     assert out["active_material_index"] == 0
     assert out["slots"] == [{"index": 0, "material": "Gold"}]
+
+
+# -- generic node editing --------------------------------------------------------
+
+
+def test_router_contains_shader_node_edit_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"shading.add_node", "shading.link_nodes", "shading.set_node_input"} <= names
+
+
+def test_add_node_creates_shader_node_by_bl_idname(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    dispatch_on_main(reg, "shading.create_material", {"name": "M"}, ctx)
+
+    out = dispatch_on_main(
+        reg,
+        "shading.add_node",
+        {"material": "M", "type": "ShaderNodeTexNoise", "name": "Noise"},
+        ctx,
+    )
+
+    assert out["node"]["name"] == "Noise"
+    assert out["node"]["bl_idname"] == "ShaderNodeTexNoise"
+    assert bpy.materials["M"].node_tree.nodes.get("Noise") is not None
+
+
+def test_set_node_input_parses_json_value(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    dispatch_on_main(reg, "shading.create_material", {"name": "M"}, ctx)
+    dispatch_on_main(reg, "shading.add_node", {"material": "M", "type": "ShaderNodeTexNoise", "name": "Noise"}, ctx)
+
+    out = dispatch_on_main(
+        reg,
+        "shading.set_node_input",
+        {"material": "M", "node": "Noise", "input": "Scale", "value": "12.5"},
+        ctx,
+    )
+
+    assert out["input"]["default_value"] == 12.5
+    assert bpy.materials["M"].node_tree.nodes.get("Noise").inputs["Scale"].default_value == 12.5
+
+
+def test_link_nodes_resolves_node_and_socket_names(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    dispatch_on_main(reg, "shading.create_material", {"name": "M"}, ctx)
+    dispatch_on_main(reg, "shading.add_node", {"material": "M", "type": "ShaderNodeTexNoise", "name": "Noise"}, ctx)
+
+    out = dispatch_on_main(
+        reg,
+        "shading.link_nodes",
+        {
+            "material": "M",
+            "from_node": "Noise",
+            "from_socket": "Fac",
+            "to_node": "BSDF_PRINCIPLED",
+            "to_socket": "Roughness",
+        },
+        ctx,
+    )
+
+    assert out["link"] == {
+        "from_node": "Noise",
+        "from_socket": "Fac",
+        "to_node": "BSDF_PRINCIPLED",
+        "to_socket": "Roughness",
+    }
+
+
+def test_link_nodes_missing_socket_raises_invalid_params(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    dispatch_on_main(reg, "shading.create_material", {"name": "M"}, ctx)
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "shading.link_nodes",
+            {
+                "material": "M",
+                "from_node": "BSDF_PRINCIPLED",
+                "from_socket": "Missing",
+                "to_node": "OUTPUT_MATERIAL",
+                "to_socket": "Surface",
+            },
+            ctx,
+        )
+    assert exc.value.code == INVALID_PARAMS

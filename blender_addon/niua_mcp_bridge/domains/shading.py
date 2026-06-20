@@ -14,6 +14,7 @@ colorspace for data textures).
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -44,6 +45,10 @@ def _ensure_nodes(mat: Any) -> Any:
     return mat.node_tree
 
 
+def _link_sockets(node_tree: Any, output_socket: Any, input_socket: Any) -> Any:
+    return node_tree.links.new(input_socket, output_socket)
+
+
 def _principled(node_tree: Any) -> Any:
     """Find (or create) the Principled BSDF node in a material node tree."""
     for node in node_tree.nodes:
@@ -56,7 +61,7 @@ def _principled(node_tree: Any) -> Any:
         None,
     )
     if output is not None:
-        node_tree.links.new(node.outputs["BSDF"], output.inputs["Surface"])
+        _link_sockets(node_tree, node.outputs["BSDF"], output.inputs["Surface"])
     return node
 
 
@@ -136,6 +141,66 @@ def _link_report(link: Any) -> dict:
         "to_node": getattr(getattr(link, "to_node", None), "name", ""),
         "to_socket": getattr(getattr(link, "to_socket", None), "name", ""),
     }
+
+
+def _resolve_node(node_tree: Any, name: str) -> Any:
+    nodes = getattr(node_tree, "nodes", None)
+    getter = getattr(nodes, "get", None)
+    node = getter(name) if callable(getter) else None
+    if node is None:
+        node = next((candidate for candidate in list(nodes or []) if getattr(candidate, "name", None) == name), None)
+    if node is None:
+        raise BridgeError(INVALID_PARAMS, f"node not found: {name}")
+    return node
+
+
+def _resolve_socket(sockets: Any, ref: str, *, node_name: str, direction: str) -> Any:
+    items = _socket_items(sockets)
+    if ref.isdigit():
+        index = int(ref)
+        if 0 <= index < len(items):
+            return items[index]
+        raise BridgeError(INVALID_PARAMS, f"{direction} socket index out of range: {node_name}[{index}]")
+    getter = getattr(sockets, "get", None)
+    socket = getter(ref) if callable(getter) else None
+    if socket is None:
+        socket = next(
+            (
+                candidate
+                for candidate in items
+                if getattr(candidate, "name", None) == ref or getattr(candidate, "identifier", None) == ref
+            ),
+            None,
+        )
+    if socket is None:
+        raise BridgeError(INVALID_PARAMS, f"{direction} socket not found: {node_name}.{ref}")
+    return socket
+
+
+def _parse_json_value(raw: Any) -> Any:
+    if not isinstance(raw, str):
+        return raw
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise BridgeError(INVALID_PARAMS, f"value must be valid JSON: {exc}") from exc
+
+
+def _coerce_socket_default(current: Any, value: Any) -> Any:
+    if current is None:
+        return value
+    if isinstance(current, bool):
+        return bool(value)
+    if isinstance(current, int) and not isinstance(current, bool):
+        return int(value)
+    if isinstance(current, float):
+        return float(value)
+    if isinstance(current, str):
+        return str(value)
+    try:
+        return tuple(float(item) for item in value)
+    except Exception:  # noqa: BLE001 - let Blender validate unusual socket types
+        return value
 
 
 def _slot_report(obj: Any) -> list[dict]:
@@ -256,10 +321,10 @@ def add_image_texture(ctx: Ctx, payload: dict) -> dict:
 
     if target == "NORMAL":
         normal_map = node_tree.nodes.new("ShaderNodeNormalMap")
-        node_tree.links.new(tex.outputs["Color"], normal_map.inputs["Color"])
-        node_tree.links.new(normal_map.outputs["Normal"], principled.inputs[input_name])
+        _link_sockets(node_tree, tex.outputs["Color"], normal_map.inputs["Color"])
+        _link_sockets(node_tree, normal_map.outputs["Normal"], principled.inputs[input_name])
     else:
-        node_tree.links.new(tex.outputs["Color"], principled.inputs[input_name])
+        _link_sockets(node_tree, tex.outputs["Color"], principled.inputs[input_name])
 
     return {
         "material": mat.name,
@@ -281,6 +346,66 @@ def report(ctx: Ctx, payload: dict) -> dict:
     return _material_report(mat, obj)
 
 
+def add_node(ctx: Ctx, payload: dict) -> dict:
+    mat = _get_material(ctx, str(payload.get("material", "")))
+    node_tree = _ensure_nodes(mat)
+    node_type = str(payload.get("type", ""))
+    try:
+        node = node_tree.nodes.new(node_type)
+    except Exception as exc:  # noqa: BLE001 - Blender raises RuntimeError for unknown node ids
+        raise BridgeError(INVALID_PARAMS, f"could not add node type {node_type}: {exc}") from exc
+    name = payload.get("name")
+    if isinstance(name, str) and name:
+        node.name = name
+    return {"material": mat.name, "node": _node_report(node)}
+
+
+def link_nodes(ctx: Ctx, payload: dict) -> dict:
+    mat = _get_material(ctx, str(payload.get("material", "")))
+    node_tree = _ensure_nodes(mat)
+    from_node = _resolve_node(node_tree, str(payload.get("from_node", "")))
+    to_node = _resolve_node(node_tree, str(payload.get("to_node", "")))
+    from_socket = _resolve_socket(
+        getattr(from_node, "outputs", []),
+        str(payload.get("from_socket", "")),
+        node_name=getattr(from_node, "name", ""),
+        direction="output",
+    )
+    to_socket = _resolve_socket(
+        getattr(to_node, "inputs", []),
+        str(payload.get("to_socket", "")),
+        node_name=getattr(to_node, "name", ""),
+        direction="input",
+    )
+    try:
+        created = _link_sockets(node_tree, from_socket, to_socket)
+    except Exception as exc:  # noqa: BLE001
+        raise BridgeError(INVALID_PARAMS, f"could not link sockets: {exc}") from exc
+    return {
+        "material": mat.name,
+        "link": _link_report(created),
+        "links": [_link_report(link) for link in list(getattr(node_tree, "links", []) or [])],
+    }
+
+
+def set_node_input(ctx: Ctx, payload: dict) -> dict:
+    mat = _get_material(ctx, str(payload.get("material", "")))
+    node_tree = _ensure_nodes(mat)
+    node = _resolve_node(node_tree, str(payload.get("node", "")))
+    socket = _resolve_socket(
+        getattr(node, "inputs", []),
+        str(payload.get("input", "")),
+        node_name=getattr(node, "name", ""),
+        direction="input",
+    )
+    value = _parse_json_value(payload.get("value"))
+    try:
+        socket.default_value = _coerce_socket_default(getattr(socket, "default_value", None), value)
+    except Exception as exc:  # noqa: BLE001
+        raise BridgeError(INVALID_PARAMS, f"could not set socket default: {exc}") from exc
+    return {"material": mat.name, "node": getattr(node, "name", ""), "input": _socket_report(socket)}
+
+
 def list_materials(ctx: Ctx, payload: dict) -> dict:
     obj_name = payload.get("object")
     if isinstance(obj_name, str) and obj_name:
@@ -300,5 +425,8 @@ COMMANDS = [
     Command("shading.assign_material", assign_material, mutates=True, feedback="viewport"),
     Command("shading.add_image_texture", add_image_texture, mutates=True, feedback="viewport"),
     Command("shading.report", report, mutates=False),
+    Command("shading.add_node", add_node, mutates=True, feedback="viewport"),
+    Command("shading.link_nodes", link_nodes, mutates=True, feedback="viewport"),
+    Command("shading.set_node_input", set_node_input, mutates=True, feedback="viewport"),
     Command("shading.list_materials", list_materials, mutates=False),
 ]
