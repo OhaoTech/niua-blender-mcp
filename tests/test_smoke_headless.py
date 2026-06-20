@@ -1372,3 +1372,49 @@ def test_io_prepare_asset_applies_transforms_and_exports(bridge: BlenderBridge) 
     finally:
         if os.path.exists(path):
             os.unlink(path)
+
+
+def test_ui_automation_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    state = bridge.call("ui.state", {})
+    assert state["background"] is True
+    assert state["window_count"] >= 1
+    assert state["active_window"] is not None
+    assert state["capabilities"]["keyboard_events"]["available"] is False
+    assert state["capabilities"]["mouse_events"]["available"] is False
+
+    windows = bridge.call("ui.windows", {})
+    assert windows["windows"]
+    assert any(
+        area["type"] == "VIEW_3D"
+        for window in windows["windows"]
+        for area in window["areas"]
+    )
+
+    poll = bridge.call(
+        "ui.operator_poll",
+        {"idname": "mesh.primitive_cube_add", "area": "VIEW_3D", "region": "WINDOW", "require_area": True},
+    )
+    assert poll["available"] is True
+    assert poll["ui_context"]["override"] is True
+    assert poll["ui_context"]["area"]["type"] == "VIEW_3D"
+
+    before = {obj["name"] for obj in bridge.call("scene.info", {})["objects"]}
+    bridge.call(
+        "ui.operator_invoke",
+        {
+            "idname": "mesh.primitive_cube_add",
+            "args": json.dumps({"size": 1.0}),
+            "area": "VIEW_3D",
+            "region": "WINDOW",
+            "require_area": True,
+        },
+    )
+    after = {obj["name"] for obj in bridge.call("scene.info", {})["objects"]}
+    created = after - before
+    assert created
+    assert any(name.startswith("Cube") for name in created)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        shot = bridge.call("ui.screenshot", {"path": os.path.join(tmp, "ui.png")})
+    assert shot["available"] is False
+    assert "screen.screenshot" in shot["reason"]

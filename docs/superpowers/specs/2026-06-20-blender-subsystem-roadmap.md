@@ -106,4 +106,12 @@ compositor node-tree enable/report/add/link. Viewport camera/light gizmos, rende
 dragging, compositor editor gestures, and production lighting/render artistry remain
 deferred to subsystem 12 and Layer 2.
 
-Next: implement Subsystem 12, UI Automation / GUI Parity Layer.
+Subsystem 12 is implemented as `ui.*`. It covers UI state and capability reporting,
+window/screen/workspace/area/region topology with geometry, explicit area-aware operator
+poll and invocation, UI screenshot availability, and redraw availability. Literal
+OS-level keyboard/mouse injection remains intentionally deferred to a separate foreground
+desktop automation adapter because Blender Python does not provide a portable
+background-safe event injector.
+
+Layer 1 subsystem pass is implemented. Next: completion audit, then Layer 2 craft verbs
+and senior-artist judgment loops.
