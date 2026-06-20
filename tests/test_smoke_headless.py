@@ -592,6 +592,78 @@ def test_modifiers_add_and_list(bridge: BlenderBridge) -> None:
     assert "SUBSURF" in types
 
 
+def test_modifiers_geometry_nodes_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("object.create", {"type": "CUBE", "name": "ModNodeHero"})
+
+    modifier_types = bridge.call("modifiers.types", {})
+    type_ids = {item["identifier"] for item in modifier_types["types"]}
+    assert {"BEVEL", "TRIANGULATE", "NODES"} <= type_ids
+
+    bridge.call("modifiers.add", {"object": "ModNodeHero", "type": "TRIANGULATE", "name": "Triangulate"})
+    visibility = bridge.call(
+        "modifiers.set_visibility",
+        {"object": "ModNodeHero", "name": "Triangulate", "viewport": False, "render": True, "expanded": False},
+    )
+    assert visibility["modifier"]["show_viewport"] is False
+    assert visibility["modifier"]["show_render"] is True
+    assert visibility["modifier"]["show_expanded"] is False
+
+    copied = bridge.call(
+        "modifiers.copy",
+        {"object": "ModNodeHero", "name": "Triangulate", "new_name": "TriCopy"},
+    )
+    assert copied["modifier"]["name"] == "TriCopy"
+    moved = bridge.call("modifiers.move", {"object": "ModNodeHero", "name": "TriCopy", "index": 0})
+    assert moved["modifier"]["index"] == 0
+
+    listed = bridge.call("modifiers.list", {"object": "ModNodeHero"})
+    stack = listed["modifiers"]
+    assert stack[0]["name"] == "TriCopy"
+    assert all("properties" in mod for mod in stack)
+
+    created_nodes = bridge.call(
+        "geometry_nodes.create_modifier",
+        {"object": "ModNodeHero", "name": "Procedural"},
+    )
+    assert created_nodes["modifier"] == "Procedural"
+    node_names = {node["name"] for node in created_nodes["nodes"]}
+    assert {"Group Input", "Group Output"} <= node_names
+    assert created_nodes["links"]
+
+    node = bridge.call(
+        "geometry_nodes.add_node",
+        {
+            "object": "ModNodeHero",
+            "modifier": "Procedural",
+            "type": "GeometryNodeTransform",
+            "name": "Transform",
+        },
+    )
+    assert node["node"]["name"] == "Transform"
+    assert node["node"]["bl_idname"] == "GeometryNodeTransform"
+
+    linked = bridge.call(
+        "geometry_nodes.link",
+        {
+            "object": "ModNodeHero",
+            "modifier": "Procedural",
+            "from_node": "Group Input",
+            "from_socket": "Geometry",
+            "to_node": "Transform",
+            "to_socket": "Geometry",
+        },
+    )
+    assert linked["link"] == {
+        "from_node": "Group Input",
+        "from_socket": "Geometry",
+        "to_node": "Transform",
+        "to_socket": "Geometry",
+    }
+
+    report = bridge.call("geometry_nodes.report", {"object": "ModNodeHero", "modifier": "Procedural"})
+    assert "Transform" in {item["name"] for item in report["nodes"]}
+
+
 def test_shading_create_and_assign(bridge: BlenderBridge) -> None:
     # Create a material, set Principled inputs (verifies 5.x socket names), assign it.
     bridge.call("scene.create_object", {"type": "CUBE", "name": "ShadeHero"})

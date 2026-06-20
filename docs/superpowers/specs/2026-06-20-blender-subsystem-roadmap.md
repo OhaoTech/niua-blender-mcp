@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 6: Curves / Text / Grease Pencil / Non-Mesh Geometry.
+Subsystem 7: Modifiers / Geometry Nodes.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -69,4 +69,11 @@ data setters; text setters; and conversion to mesh through Blender's object conv
 operator. Fine-grained curve point editing, text cursor editing, grease pencil stroke
 authoring, and GUI event parity remain deferred to later focused work and subsystem 12.
 
-Next after verification: Subsystem 7, Modifiers / Geometry Nodes.
+Subsystem 7 is implemented as `modifiers.*` plus `geometry_nodes.*`. It covers live
+modifier type discovery, unrestricted modifier creation through Blender's own type
+validation, rich stack reports, common visibility flags, stack move/copy/apply/remove,
+default Geometry Nodes modifier creation, node group reporting, generic node creation,
+and socket linking. GUI node editor gestures and advanced node group interface/bake
+panels remain deferred to subsystem 12 and later focused Geometry Nodes work.
+
+Next after verification: Subsystem 8, Materials / Shading / Nodes / Textures.
