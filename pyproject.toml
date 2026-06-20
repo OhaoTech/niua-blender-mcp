@@ -18,6 +18,9 @@ niua-blender-mcp = "niua_blender_mcp.__main__:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"niua_blender_mcp.manifest" = ["*.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src", "blender_addon"]
 testpaths = ["tests"]
