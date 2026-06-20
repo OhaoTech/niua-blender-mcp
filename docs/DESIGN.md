@@ -195,6 +195,29 @@ with ctx.ensure(active=obj, mode='EDIT', area='VIEW_3D', select=selection):
 
 All three dispatch through the same pipeline (validation, main-thread, undo, feedback).
 
+### 8.1 Three-tier capability surface (Layer 1)
+
+The current Layer 1 surface turns Blender's broad API into a small always-visible
+front door plus a complete validated floor:
+
+1. **Craft verbs (`tier="curated"`)** — hand-written, high-signal tools for common
+   technical-artist workflows. These win on name collision and are always exposed.
+2. **Domain catalogs (`tier="generated"`)** — typed `ToolSpec`s generated from the
+   committed manifest for allowlisted high-frequency native operators. Generated
+   tools are callable by name, but hidden from `tools/list` by default to avoid
+   flooding the context window. Set `NIUA_BLENDER_MCP_LIST_ALL=1` to list them.
+3. **Reflection floor (`tier="reflection"`)** — `capabilities.domains`,
+   `capabilities.search`, `capabilities.describe`, and `capabilities.invoke`.
+   This is always exposed and is the agent's F3-style search/describe/invoke path
+   for the full live Blender operator surface.
+
+The unifying artifact is `src/niua_blender_mcp/manifest/blender_5_1.json`,
+generated inside Blender by `scripts/gen_manifest.py` and committed. The manifest
+is version-stamped, read offline by `niua_blender_mcp.manifest`, and consumed by
+`niua_blender_mcp.codegen` to emit tier-2 specs. Runtime `capabilities.search` and
+`capabilities.describe` delegate to live RNA in the add-on so results match the
+running Blender; the manifest drives code generation and drift checks.
+
 ## 9. RNA introspection engine ("built on the source")
 
 Blender exposes its whole API at runtime via RNA, with the same metadata it uses for its

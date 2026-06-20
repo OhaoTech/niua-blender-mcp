@@ -4,6 +4,12 @@ An **agentic Blender**: a Model Context Protocol server that drives a live, visi
 Blender the way a technical artist does. Built on a small kernel + pluggable domain
 packs, with an RNA-introspection engine so coverage isn't capped by hand-written tools.
 
+The capability surface has three tiers: curated craft tools, generated typed tools
+from a committed Blender manifest, and the always-visible `capabilities.search ->
+describe -> invoke` reflection floor. Generated tools stay hidden from `tools/list`
+by default to keep the MCP surface small, but are callable by name; set
+`NIUA_BLENDER_MCP_LIST_ALL=1` to list them all.
+
 Standalone and decoupled from niua (it just reads/writes asset files). See
 [`docs/DESIGN.md`](docs/DESIGN.md) for the full architecture and
 [`docs/PLAN.md`](docs/PLAN.md) for the build plan.
@@ -22,6 +28,7 @@ blender_addon/niua_mcp_bridge/   the in-Blender half (Python add-on)
   domains/                 scene, system, introspection, feedback handlers
   ui.py                    N-panel (Start/Stop)
 scripts/blender_serve.py   headless launcher
+scripts/gen_manifest.py    regenerate the committed Blender capability manifest
 tests/                     fake-bpy unit tests + a real-Blender smoke test
 ```
 
@@ -60,4 +67,10 @@ local session with `NIUA_BLENDER_MCP_ALLOW_PYTHON=1` (server) and the N-panel to
 ```bash
 python -m pytest            # unit + smoke (smoke auto-skips without a blender binary)
 NIUA_SKIP_BLENDER=1 python -m pytest   # unit only
+```
+
+Regenerate the capability manifest after a Blender upgrade:
+
+```bash
+blender --background --python scripts/gen_manifest.py
 ```

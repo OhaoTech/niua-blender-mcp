@@ -219,6 +219,33 @@ mesh; non-mesh → clean precondition error.
       `test_feedback_critique_bundle_includes_quality_subdict`, `test_prompts_list_is_non_empty`,
       `test_prompts_get_refine_mesh_scaffolds_the_loop`.)
 
+## Layer 1 capability surface  ✅ DONE
+
+The complete discoverability foundation is now in place: a committed Blender 5.1
+manifest, the `capabilities` front door, generated tier-2 typed catalogs, and
+live drift checks. This makes every reachable Blender operator findable and
+invokable through a small default tool surface, while keeping curated tools first.
+
+- [x] **Manifest.** `scripts/gen_manifest.py` runs inside Blender and writes
+      `src/niua_blender_mcp/manifest/blender_5_1.json`; the offline loader supports
+      search/describe and ships the JSON as package data.
+- [x] **Tiered router.** `ToolSpec.tier` distinguishes curated/generated/reflection;
+      router precedence keeps curated specs ahead of generated/reflection entries and
+      exposes a lightweight index.
+- [x] **Capabilities front door.** `capabilities.domains/search/describe/invoke`
+      is registered on both server and add-on sides. Runtime search/describe uses
+      live RNA; invoke delegates through the same undo-safe `rna.call_operator` path.
+- [x] **Tier-2 generator.** Manifest allowlists emit generated typed specs such as
+      `modeling.subdivide`, hidden from `tools/list` by default but callable by name
+      and routed through `capabilities.invoke`.
+- [x] **Coverage/drift smoke.** The real-Blender smoke test verifies
+      `capabilities.search` finds `mesh.bevel` and sampled manifest operators still
+      describe through live RNA.
+
+Remaining layer-1 fill is additive: expand the manifest domain allowlists over time.
+Layer 2 remains a separate spec: senior craft verbs, judgment playbooks, deeper
+eyes, and game-pipeline conventions.
+
 ## Project status — 7-phase plan COMPLETE  ✅
 
 All seven phases (0–6) are shipped and verified end to end against **real Blender 5.1.1
