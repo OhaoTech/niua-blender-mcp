@@ -36,6 +36,46 @@ def _current_frame(ctx: Ctx) -> int:
     return int(getattr(scene, "frame_current", 0) or 0)
 
 
+def _timeline_report(ctx: Ctx) -> dict:
+    scene = getattr(ctx.bpy.context, "scene", None)
+    if scene is None:
+        raise BridgeError(PRECONDITION, "no active scene")
+    render = getattr(scene, "render", None)
+    return {
+        "scene": getattr(scene, "name", None),
+        "frame_current": int(getattr(scene, "frame_current", 0) or 0),
+        "frame_start": int(getattr(scene, "frame_start", 0) or 0),
+        "frame_end": int(getattr(scene, "frame_end", 0) or 0),
+        "use_preview_range": bool(getattr(scene, "use_preview_range", False)),
+        "frame_preview_start": int(getattr(scene, "frame_preview_start", 0) or 0),
+        "frame_preview_end": int(getattr(scene, "frame_preview_end", 0) or 0),
+        "fps": int(getattr(render, "fps", 0) or 0) if render is not None else None,
+        "fps_base": float(getattr(render, "fps_base", 1.0) or 1.0) if render is not None else None,
+    }
+
+
+def timeline(ctx: Ctx, payload: dict) -> dict:
+    return _timeline_report(ctx)
+
+
+def set_timeline(ctx: Ctx, payload: dict) -> dict:
+    scene = getattr(ctx.bpy.context, "scene", None)
+    if scene is None:
+        raise BridgeError(PRECONDITION, "no active scene")
+    render = getattr(scene, "render", None)
+    if payload.get("frame_start") is not None:
+        scene.frame_start = int(payload["frame_start"])
+    if payload.get("frame_end") is not None:
+        scene.frame_end = int(payload["frame_end"])
+    if payload.get("fps") is not None:
+        if render is None:
+            raise BridgeError(PRECONDITION, "active scene has no render settings")
+        render.fps = int(payload["fps"])
+    if payload.get("frame_current") is not None:
+        scene.frame_set(int(payload["frame_current"]))
+    return _timeline_report(ctx)
+
+
 def set_frame(ctx: Ctx, payload: dict) -> dict:
     frame = int(payload.get("frame", 0))
     scene = getattr(ctx.bpy.context, "scene", None)
@@ -176,11 +216,55 @@ def report(ctx: Ctx, payload: dict) -> dict:
     }
 
 
+def keyframes(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_object(ctx, payload)
+    fcurves = _fcurves(obj)
+    anim = getattr(obj, "animation_data", None)
+    action = getattr(anim, "action", None) if anim is not None else None
+    frame_range = getattr(action, "frame_range", None) if action is not None else None
+
+    fcurve_entries = []
+    keyframe_count = 0
+    for fcurve in fcurves:
+        points = []
+        for point in getattr(fcurve, "keyframe_points", []) or []:
+            co = getattr(point, "co", None)
+            frame = float(co[0]) if co is not None else None
+            value = float(co[1]) if co is not None else None
+            points.append(
+                {
+                    "frame": frame,
+                    "value": value,
+                    "interpolation": getattr(point, "interpolation", None),
+                }
+            )
+            keyframe_count += 1
+        fcurve_entries.append(
+            {
+                "data_path": getattr(fcurve, "data_path", None),
+                "array_index": int(getattr(fcurve, "array_index", -1)),
+                "keyframes": points,
+            }
+        )
+
+    return {
+        "object": obj.name,
+        "action": getattr(action, "name", None) if action is not None else None,
+        "frame_range": [float(v) for v in frame_range] if frame_range is not None else None,
+        "fcurve_count": len(fcurves),
+        "keyframe_count": keyframe_count,
+        "fcurves": fcurve_entries,
+    }
+
+
 COMMANDS = [
+    Command("anim.timeline", timeline, mutates=False),
+    Command("anim.set_timeline", set_timeline, mutates=True, feedback="viewport"),
     Command("anim.set_frame", set_frame, mutates=True, feedback="viewport"),
     Command("anim.insert_keyframe", insert_keyframe, mutates=True, feedback="viewport"),
     Command("anim.delete_keyframe", delete_keyframe, mutates=True, feedback="viewport"),
     Command("anim.set_interpolation", set_interpolation, mutates=True, feedback="viewport"),
     Command("anim.list_actions", list_actions, mutates=False),
     Command("anim.report", report, mutates=False),
+    Command("anim.keyframes", keyframes, mutates=False),
 ]

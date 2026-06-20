@@ -14,6 +14,27 @@ from ..kernel import Enum, Int, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
+        name="anim.timeline",
+        category="animation",
+        summary="Report scene timeline range, current frame, and frame rate",
+        command="anim.timeline",
+        params={},
+    ),
+    ToolSpec(
+        name="anim.set_timeline",
+        category="animation",
+        summary="Set scene timeline range, current frame, and frame rate",
+        command="anim.set_timeline",
+        params={
+            "frame_current": Int(summary="Current playhead frame to set"),
+            "frame_start": Int(summary="Scene start frame to set"),
+            "frame_end": Int(summary="Scene end frame to set"),
+            "fps": Int(minimum=1, summary="Render frame rate to set"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
         name="anim.set_frame",
         category="animation",
         summary="Set the current scene frame (playhead)",
@@ -88,6 +109,15 @@ SPECS = [
         category="animation",
         summary="Animation report for an object: frame range, f-curve count (read-only)",
         command="anim.report",
+        params={
+            "object": Str(summary="Object to inspect (defaults to active)"),
+        },
+    ),
+    ToolSpec(
+        name="anim.keyframes",
+        category="animation",
+        summary="Detailed f-curve and keyframe report for an object",
+        command="anim.keyframes",
         params={
             "object": Str(summary="Object to inspect (defaults to active)"),
         },

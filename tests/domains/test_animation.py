@@ -16,6 +16,7 @@ from contextlib import contextmanager
 
 import pytest
 
+from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
@@ -23,8 +24,8 @@ from niua_mcp_bridge.errors import NOT_FOUND, PRECONDITION, BridgeError
 
 
 class FakeKeyframePoint:
-    def __init__(self, frame: float, interpolation: str = "BEZIER") -> None:
-        self.co = [float(frame), 0.0]
+    def __init__(self, frame: float, value: float = 0.0, interpolation: str = "BEZIER") -> None:
+        self.co = [float(frame), float(value)]
         self.interpolation = interpolation
 
 
@@ -32,7 +33,9 @@ class FakeFCurve:
     def __init__(self, data_path: str, index: int = 0, frames=()) -> None:
         self.data_path = data_path
         self.array_index = index
-        self.keyframe_points = [FakeKeyframePoint(f) for f in frames]
+        self.keyframe_points = [
+            FakeKeyframePoint(f[0], f[1]) if isinstance(f, tuple) else FakeKeyframePoint(f) for f in frames
+        ]
         self.updated = False
 
     def update(self) -> None:
@@ -100,12 +103,19 @@ class FakeBpy(types.ModuleType):
                 self_inner.objects = []
                 self_inner.name = "Scene"
                 self_inner.frame_current = 0
+                self_inner.frame_start = 1
+                self_inner.frame_end = 250
+                self_inner.use_preview_range = False
+                self_inner.frame_preview_start = 1
+                self_inner.frame_preview_end = 250
 
             def frame_set(self_inner, frame, **kw):
                 bpy.frame_set_calls.append(frame)
                 self_inner.frame_current = frame
 
         self.scene = _SceneNS()
+        self.render = types.SimpleNamespace(fps=24, fps_base=1.0)
+        self.scene.render = self.render
 
         class _Objects:
             @property
@@ -178,6 +188,61 @@ def env(monkeypatch):
 
 
 # -- set_frame ---------------------------------------------------------------------
+
+
+def test_router_contains_animation_timeline_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"anim.timeline", "anim.set_timeline", "anim.keyframes"} <= names
+
+
+def test_timeline_reports_scene_range(env) -> None:
+    ctx, bpy = env
+    bpy.scene.frame_current = 12
+    bpy.scene.frame_start = 3
+    bpy.scene.frame_end = 48
+    bpy.scene.use_preview_range = True
+    bpy.scene.frame_preview_start = 6
+    bpy.scene.frame_preview_end = 18
+    bpy.render.fps = 30
+    bpy.render.fps_base = 1.001
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "anim.timeline", {}, ctx)
+
+    assert result == {
+        "scene": "Scene",
+        "frame_current": 12,
+        "frame_start": 3,
+        "frame_end": 48,
+        "use_preview_range": True,
+        "frame_preview_start": 6,
+        "frame_preview_end": 18,
+        "fps": 30,
+        "fps_base": 1.001,
+    }
+    assert bpy.undo_pushes == []
+
+
+def test_set_timeline_updates_provided_fields(env) -> None:
+    ctx, bpy = env
+    bpy.scene.frame_start = 1
+    bpy.scene.frame_end = 250
+    bpy.render.fps = 24
+    reg = build_default_registry()
+
+    result = dispatch_on_main(
+        reg,
+        "anim.set_timeline",
+        {"frame_start": 10, "frame_end": 120, "frame_current": 42, "fps": 60},
+        ctx,
+    )
+
+    assert result["frame_start"] == 10
+    assert result["frame_end"] == 120
+    assert result["frame_current"] == 42
+    assert result["fps"] == 60
+    assert bpy.frame_set_calls == [42]
+    assert bpy.undo_pushes == ["niua:anim.set_timeline"]
 
 
 def test_set_frame_sets_scene_frame_and_pushes_undo(env) -> None:
@@ -364,6 +429,47 @@ def test_report_object_without_animation(env) -> None:
     assert rep["frame_range"] is None
     assert rep["fcurves"] == 0
     assert rep["keyframes"] == 0
+
+
+def test_keyframes_reports_fcurve_points(env) -> None:
+    ctx, bpy = env
+    fc1 = FakeFCurve("location", index=0, frames=[(1, 0.0), (10, 4.5)])
+    fc1.keyframe_points[1].interpolation = "LINEAR"
+    fc2 = FakeFCurve("rotation_euler", index=2, frames=[(5, 1.25)])
+    obj = FakeObj(
+        "Cube",
+        animation_data=FakeAnimData(FakeAction("Act", fcurves=[fc1, fc2], frame_range=(1.0, 10.0))),
+    )
+    bpy.add(obj)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "anim.keyframes", {"object": "Cube"}, ctx)
+
+    assert result == {
+        "object": "Cube",
+        "action": "Act",
+        "frame_range": [1.0, 10.0],
+        "fcurve_count": 2,
+        "keyframe_count": 3,
+        "fcurves": [
+            {
+                "data_path": "location",
+                "array_index": 0,
+                "keyframes": [
+                    {"frame": 1.0, "value": 0.0, "interpolation": "BEZIER"},
+                    {"frame": 10.0, "value": 4.5, "interpolation": "LINEAR"},
+                ],
+            },
+            {
+                "data_path": "rotation_euler",
+                "array_index": 2,
+                "keyframes": [
+                    {"frame": 5.0, "value": 1.25, "interpolation": "BEZIER"},
+                ],
+            },
+        ],
+    }
+    assert bpy.undo_pushes == []
 
 
 # -- precondition / not-found handling ---------------------------------------------
