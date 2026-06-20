@@ -6,7 +6,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import NOT_FOUND, PRECONDITION, BridgeError
+from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
 def _modifiers(obj: Any) -> list[Any]:
@@ -97,6 +97,40 @@ def _group_report(obj: Any, mod: Any) -> dict:
     }
 
 
+def _resolve_node(group: Any, name: str) -> Any:
+    nodes = getattr(group, "nodes", None)
+    getter = getattr(nodes, "get", None)
+    node = getter(name) if callable(getter) else None
+    if node is None:
+        node = next((candidate for candidate in list(nodes or []) if getattr(candidate, "name", None) == name), None)
+    if node is None:
+        raise BridgeError(INVALID_PARAMS, f"node not found: {name}")
+    return node
+
+
+def _resolve_socket(sockets: Any, ref: str, *, node_name: str, direction: str) -> Any:
+    items = list(sockets or [])
+    if ref.isdigit():
+        index = int(ref)
+        if 0 <= index < len(items):
+            return items[index]
+        raise BridgeError(INVALID_PARAMS, f"{direction} socket index out of range: {node_name}[{index}]")
+    getter = getattr(sockets, "get", None)
+    socket = getter(ref) if callable(getter) else None
+    if socket is None:
+        socket = next(
+            (
+                candidate
+                for candidate in items
+                if getattr(candidate, "name", None) == ref or getattr(candidate, "identifier", None) == ref
+            ),
+            None,
+        )
+    if socket is None:
+        raise BridgeError(INVALID_PARAMS, f"{direction} socket not found: {node_name}.{ref}")
+    return socket
+
+
 def _new_nodes_modifier(obj: Any, before_names: set[str]) -> Any:
     created = [
         mod
@@ -131,7 +165,61 @@ def report(ctx: Ctx, payload: dict) -> dict:
     return _group_report(obj, mod)
 
 
+def add_node(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    mod = _find_node_modifier(obj, str(payload.get("modifier", "")))
+    group = mod.node_group
+    node_type = str(payload.get("type", ""))
+    try:
+        node = group.nodes.new(type=node_type)
+    except Exception as exc:  # noqa: BLE001 - Blender raises RuntimeError for unknown node ids
+        raise BridgeError(INVALID_PARAMS, f"could not add node type {node_type}: {exc}") from exc
+    name = payload.get("name")
+    if isinstance(name, str) and name:
+        node.name = name
+    return {
+        "object": getattr(obj, "name", ""),
+        "modifier": getattr(mod, "name", ""),
+        "node_group": getattr(group, "name", ""),
+        "node": _node_report(node),
+    }
+
+
+def link(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    mod = _find_node_modifier(obj, str(payload.get("modifier", "")))
+    group = mod.node_group
+    from_node = _resolve_node(group, str(payload.get("from_node", "")))
+    to_node = _resolve_node(group, str(payload.get("to_node", "")))
+    from_socket = _resolve_socket(
+        getattr(from_node, "outputs", []),
+        str(payload.get("from_socket", "")),
+        node_name=getattr(from_node, "name", ""),
+        direction="output",
+    )
+    to_socket = _resolve_socket(
+        getattr(to_node, "inputs", []),
+        str(payload.get("to_socket", "")),
+        node_name=getattr(to_node, "name", ""),
+        direction="input",
+    )
+    try:
+        created = group.links.new(to_socket, from_socket)
+    except Exception as exc:  # noqa: BLE001 - invalid socket type or link limit
+        raise BridgeError(INVALID_PARAMS, f"could not link sockets: {exc}") from exc
+    link_report = _link_report(created)
+    return {
+        "object": getattr(obj, "name", ""),
+        "modifier": getattr(mod, "name", ""),
+        "node_group": getattr(group, "name", ""),
+        "link": link_report,
+        "links": [_link_report(item) for item in list(getattr(group, "links", []) or [])],
+    }
+
+
 COMMANDS = [
     Command("geometry_nodes.create_modifier", create_modifier, mutates=True, feedback="viewport"),
     Command("geometry_nodes.report", report, mutates=False),
+    Command("geometry_nodes.add_node", add_node, mutates=True, feedback="viewport"),
+    Command("geometry_nodes.link", link, mutates=True, feedback="viewport"),
 ]
