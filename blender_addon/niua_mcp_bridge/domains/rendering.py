@@ -348,6 +348,152 @@ def world_set(ctx: Ctx, payload: dict) -> dict:
     return world_report(ctx, {})
 
 
+def _socket_items(sockets: Any) -> list[Any]:
+    values = getattr(sockets, "values", None)
+    if callable(values):
+        return list(values())
+    return list(sockets or [])
+
+
+def _socket_report(socket: Any) -> dict:
+    return {
+        "name": getattr(socket, "name", ""),
+        "identifier": getattr(socket, "identifier", ""),
+        "type": getattr(socket, "type", ""),
+        "enabled": bool(getattr(socket, "enabled", True)),
+        "is_linked": bool(getattr(socket, "is_linked", False)),
+    }
+
+
+def _node_location(node: Any) -> list[float]:
+    try:
+        return [float(node.location[0]), float(node.location[1])]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _node_report(node: Any) -> dict:
+    return {
+        "name": getattr(node, "name", ""),
+        "label": getattr(node, "label", ""),
+        "type": getattr(node, "type", ""),
+        "bl_idname": getattr(node, "bl_idname", ""),
+        "location": _node_location(node),
+        "inputs": [_socket_report(socket) for socket in _socket_items(getattr(node, "inputs", []))],
+        "outputs": [_socket_report(socket) for socket in _socket_items(getattr(node, "outputs", []))],
+    }
+
+
+def _link_report(link: Any) -> dict:
+    return {
+        "from_node": getattr(getattr(link, "from_node", None), "name", ""),
+        "from_socket": getattr(getattr(link, "from_socket", None), "name", ""),
+        "to_node": getattr(getattr(link, "to_node", None), "name", ""),
+        "to_socket": getattr(getattr(link, "to_socket", None), "name", ""),
+    }
+
+
+def _compositor_tree(ctx: Ctx, *, ensure: bool = False) -> Any:
+    scene = ctx.bpy.context.scene
+    if ensure:
+        scene.use_nodes = True
+    tree = getattr(scene, "node_tree", None)
+    if tree is None:
+        raise BridgeError(PRECONDITION, "scene has no compositor node tree")
+    return tree
+
+
+def compositor_report(ctx: Ctx, payload: dict) -> dict:
+    scene = ctx.bpy.context.scene
+    tree = getattr(scene, "node_tree", None)
+    nodes = list(getattr(tree, "nodes", []) or []) if tree is not None else []
+    links = list(getattr(tree, "links", []) or []) if tree is not None else []
+    return {
+        "use_nodes": bool(getattr(scene, "use_nodes", False)),
+        "nodes": [_node_report(node) for node in nodes],
+        "links": [_link_report(link) for link in links],
+    }
+
+
+def compositor_enable(ctx: Ctx, payload: dict) -> dict:
+    ctx.bpy.context.scene.use_nodes = bool(payload.get("enable", True))
+    return compositor_report(ctx, {})
+
+
+def _resolve_node(tree: Any, name: str) -> Any:
+    nodes = getattr(tree, "nodes", None)
+    getter = getattr(nodes, "get", None)
+    node = getter(name) if callable(getter) else None
+    if node is None:
+        node = next((candidate for candidate in list(nodes or []) if getattr(candidate, "name", None) == name), None)
+    if node is None:
+        raise BridgeError(INVALID_PARAMS, f"node not found: {name}")
+    return node
+
+
+def _resolve_socket(sockets: Any, ref: str, *, node_name: str, direction: str) -> Any:
+    items = _socket_items(sockets)
+    if ref.isdigit():
+        index = int(ref)
+        if 0 <= index < len(items):
+            return items[index]
+        raise BridgeError(INVALID_PARAMS, f"{direction} socket index out of range: {node_name}[{index}]")
+    getter = getattr(sockets, "get", None)
+    socket = getter(ref) if callable(getter) else None
+    if socket is None:
+        socket = next(
+            (
+                candidate
+                for candidate in items
+                if getattr(candidate, "name", None) == ref or getattr(candidate, "identifier", None) == ref
+            ),
+            None,
+        )
+    if socket is None:
+        raise BridgeError(INVALID_PARAMS, f"{direction} socket not found: {node_name}.{ref}")
+    return socket
+
+
+def compositor_add_node(ctx: Ctx, payload: dict) -> dict:
+    tree = _compositor_tree(ctx, ensure=True)
+    node_type = str(payload.get("type", ""))
+    try:
+        node = tree.nodes.new(type=node_type)
+    except Exception as exc:  # noqa: BLE001 - Blender raises for unknown node ids
+        raise BridgeError(INVALID_PARAMS, f"could not add compositor node type {node_type}: {exc}") from exc
+    name = payload.get("name")
+    if isinstance(name, str) and name:
+        node.name = name
+    out = compositor_report(ctx, {})
+    out["node"] = _node_report(node)
+    return out
+
+
+def compositor_link(ctx: Ctx, payload: dict) -> dict:
+    tree = _compositor_tree(ctx, ensure=True)
+    from_node = _resolve_node(tree, str(payload.get("from_node", "")))
+    to_node = _resolve_node(tree, str(payload.get("to_node", "")))
+    from_socket = _resolve_socket(
+        getattr(from_node, "outputs", []),
+        str(payload.get("from_socket", "")),
+        node_name=getattr(from_node, "name", ""),
+        direction="output",
+    )
+    to_socket = _resolve_socket(
+        getattr(to_node, "inputs", []),
+        str(payload.get("to_socket", "")),
+        node_name=getattr(to_node, "name", ""),
+        direction="input",
+    )
+    try:
+        link = tree.links.new(to_socket, from_socket)
+    except Exception as exc:  # noqa: BLE001
+        raise BridgeError(INVALID_PARAMS, f"could not link compositor sockets: {exc}") from exc
+    out = compositor_report(ctx, {})
+    out["link"] = _link_report(link)
+    return out
+
+
 COMMANDS = [
     Command("camera.create", camera_create, mutates=True, feedback="viewport"),
     Command("camera.list", camera_list, mutates=False),
@@ -363,4 +509,8 @@ COMMANDS = [
     Command("render.still", render_still, mutates=False),
     Command("world.report", world_report, mutates=False),
     Command("world.set", world_set, mutates=True, feedback="viewport"),
+    Command("compositor.enable", compositor_enable, mutates=True, feedback="viewport"),
+    Command("compositor.report", compositor_report, mutates=False),
+    Command("compositor.add_node", compositor_add_node, mutates=True, feedback="viewport"),
+    Command("compositor.link", compositor_link, mutates=True, feedback="viewport"),
 ]

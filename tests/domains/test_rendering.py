@@ -18,6 +18,7 @@ from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
+from niua_mcp_bridge.errors import INVALID_PARAMS, BridgeError
 
 
 class FakeCameraData:
@@ -68,6 +69,15 @@ class FakeInput:
         self.default_value = default_value
 
 
+class FakeSocket(FakeInput):
+    pass
+
+
+class FakeSocketList(list):
+    def get(self, name: str):
+        return next((socket for socket in self if socket.name == name or socket.identifier == name), None)
+
+
 class FakeNode:
     def __init__(self, name: str, type: str = "BACKGROUND") -> None:
         self.name = name
@@ -77,6 +87,64 @@ class FakeNode:
         self.location = [0.0, 0.0]
         self.inputs = {"Color": FakeInput("Color", [0.05, 0.05, 0.05]), "Strength": FakeInput("Strength", 1.0)}
         self.outputs = {}
+
+
+class FakeCompositorNode:
+    def __init__(self, name: str, bl_idname: str) -> None:
+        self.name = name
+        self.label = ""
+        self.type = bl_idname.replace("CompositorNode", "").upper() or bl_idname
+        self.bl_idname = bl_idname
+        self.location = [0.0, 0.0]
+        self.inputs = FakeSocketList([FakeSocket("Image")])
+        self.outputs = FakeSocketList([FakeSocket("Image")])
+
+
+class FakeCompositorNodes(list):
+    def __init__(self) -> None:
+        super().__init__(
+            [
+                FakeCompositorNode("Render Layers", "CompositorNodeRLayers"),
+                FakeCompositorNode("Composite", "CompositorNodeComposite"),
+            ]
+        )
+
+    def get(self, name: str):
+        return next((node for node in self if node.name == name), None)
+
+    def new(self, type: str):
+        node = FakeCompositorNode(type.replace("CompositorNode", "") or type, type)
+        self.append(node)
+        return node
+
+
+class FakeLink:
+    def __init__(self, from_node, from_socket, to_node, to_socket) -> None:
+        self.from_node = from_node
+        self.from_socket = from_socket
+        self.to_node = to_node
+        self.to_socket = to_socket
+
+
+class FakeLinks(list):
+    def __init__(self, nodes: FakeCompositorNodes) -> None:
+        super().__init__()
+        self._nodes = nodes
+
+    def new(self, input_socket, output_socket):
+        from_node = next(node for node in self._nodes if output_socket in node.outputs)
+        to_node = next(node for node in self._nodes if input_socket in node.inputs)
+        link = FakeLink(from_node, output_socket, to_node, input_socket)
+        input_socket.is_linked = True
+        output_socket.is_linked = True
+        self.append(link)
+        return link
+
+
+class FakeCompositorTree:
+    def __init__(self) -> None:
+        self.nodes = FakeCompositorNodes()
+        self.links = FakeLinks(self.nodes)
 
 
 class FakeNodes(list):
@@ -143,6 +211,8 @@ class FakeBpy(types.ModuleType):
                 self_inner.camera = None
                 self_inner.render = FakeRenderSettings()
                 self_inner.world = FakeWorld()
+                self_inner.use_nodes = False
+                self_inner.node_tree = FakeCompositorTree()
 
         self.scene = _Scene()
 
@@ -442,3 +512,85 @@ def test_world_report_and_set_color_strength(env) -> None:
     assert after["strength"] == 2.5
     assert bpy.scene.world.node_tree.nodes.get("Background").inputs["Strength"].default_value == 2.5
     assert bpy.undo_pushes == ["niua:world.set"]
+
+
+def test_router_contains_compositor_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"compositor.enable", "compositor.report", "compositor.add_node", "compositor.link"} <= names
+
+
+def test_compositor_enable_and_report(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    enabled = dispatch_on_main(reg, "compositor.enable", {"enable": True}, ctx)
+
+    assert enabled["use_nodes"] is True
+    assert {node["name"] for node in enabled["nodes"]} == {"Render Layers", "Composite"}
+    assert bpy.scene.use_nodes is True
+    assert bpy.undo_pushes == ["niua:compositor.enable"]
+
+    reported = dispatch_on_main(reg, "compositor.report", {}, ctx)
+    assert reported["use_nodes"] is True
+    assert reported["links"] == []
+
+
+def test_compositor_add_node(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "compositor.add_node", {"type": "CompositorNodeBlur", "name": "SoftBlur"}, ctx)
+
+    assert out["use_nodes"] is True
+    assert out["node"]["name"] == "SoftBlur"
+    assert out["node"]["bl_idname"] == "CompositorNodeBlur"
+    assert bpy.scene.node_tree.nodes.get("SoftBlur") is not None
+    assert bpy.undo_pushes == ["niua:compositor.add_node"]
+
+
+def test_compositor_link(env) -> None:
+    ctx, bpy = env
+    bpy.scene.use_nodes = True
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "compositor.link",
+        {
+            "from_node": "Render Layers",
+            "from_socket": "Image",
+            "to_node": "Composite",
+            "to_socket": "Image",
+        },
+        ctx,
+    )
+
+    assert out["link"] == {
+        "from_node": "Render Layers",
+        "from_socket": "Image",
+        "to_node": "Composite",
+        "to_socket": "Image",
+    }
+    assert len(bpy.scene.node_tree.links) == 1
+    assert bpy.undo_pushes == ["niua:compositor.link"]
+
+
+def test_compositor_link_missing_socket_is_invalid_params(env) -> None:
+    ctx, bpy = env
+    bpy.scene.use_nodes = True
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "compositor.link",
+            {
+                "from_node": "Render Layers",
+                "from_socket": "Missing",
+                "to_node": "Composite",
+                "to_socket": "Image",
+            },
+            ctx,
+        )
+    assert exc.value.code == INVALID_PARAMS
+    assert bpy.undo_pushes == []
