@@ -12,20 +12,16 @@ applying a modifier on a multi-user mesh).
 
 from __future__ import annotations
 
-from ..kernel import Enum, Str, ToolSpec
-
-_MODIFIER_TYPES = (
-    "SUBSURF",
-    "BEVEL",
-    "SOLIDIFY",
-    "MIRROR",
-    "ARRAY",
-    "BOOLEAN",
-    "DECIMATE",
-    "WIREFRAME",
-)
+from ..kernel import Str, ToolSpec
 
 SPECS = [
+    ToolSpec(
+        name="modifiers.types",
+        category="modifiers",
+        summary="List modifier types supported by the running Blender",
+        command="modifiers.types",
+        params={},
+    ),
     ToolSpec(
         name="modifiers.add",
         category="modifiers",
@@ -33,11 +29,7 @@ SPECS = [
         command="modifiers.add",
         params={
             "object": Str(summary="Object to modify (defaults to active)"),
-            "type": Enum(
-                _MODIFIER_TYPES,
-                required=True,
-                summary="Modifier type to add",
-            ),
+            "type": Str(required=True, summary="Modifier type to add, e.g. SUBSURF or NODES"),
             "name": Str(summary="Name for the new modifier (defaults to the type label)"),
         },
         mutates=True,

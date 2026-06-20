@@ -16,6 +16,7 @@ from contextlib import contextmanager
 
 import pytest
 
+from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
@@ -29,6 +30,13 @@ class FakeModifier:
         self.name = name
         self.type = type
         self.show_viewport = True
+        self.show_render = True
+        self.show_in_editmode = False
+        self.show_on_cage = False
+        self.show_expanded = True
+        self.is_active = False
+        self.execution_time = 0.0
+        self.node_group = None
         # A spread of property types so _coerce_value has something to coerce.
         self.levels = 1  # int (SUBSURF)
         self.thickness = 0.01  # float (SOLIDIFY)
@@ -108,6 +116,21 @@ class FakeBpy(types.ModuleType):
         self.op_calls: list = []
         self.undo_pushes: list[str] = []
         self.mode_calls: list[str] = []
+        self.types = types.SimpleNamespace(
+            Modifier=types.SimpleNamespace(
+                bl_rna=types.SimpleNamespace(
+                    properties={
+                        "type": types.SimpleNamespace(
+                            enum_items=[
+                                types.SimpleNamespace(identifier="SUBSURF", name="Subdivision Surface"),
+                                types.SimpleNamespace(identifier="TRIANGULATE", name="Triangulate"),
+                                types.SimpleNamespace(identifier="NODES", name="Geometry Nodes"),
+                            ]
+                        )
+                    }
+                )
+            )
+        )
 
         bpy = self
 
@@ -190,6 +213,28 @@ def _names(log):
 # -- add ---------------------------------------------------------------------------
 
 
+def test_router_contains_modifier_type_tool() -> None:
+    router = build_router()
+    names = {spec.name for spec in router.specs()}
+    assert "modifiers.types" in names
+    assert router.get("modifiers.add").params["type"].kind == "string"
+
+
+def test_types_reports_live_modifier_enum(env) -> None:
+    ctx, _bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "modifiers.types", {}, ctx)
+
+    assert out == {
+        "types": [
+            {"identifier": "SUBSURF", "name": "Subdivision Surface"},
+            {"identifier": "TRIANGULATE", "name": "Triangulate"},
+            {"identifier": "NODES", "name": "Geometry Nodes"},
+        ]
+    }
+
+
 def test_add_creates_modifier_and_pushes_one_undo(env) -> None:
     ctx, bpy = env
     bpy.add(FakeObj("Cube"))
@@ -209,6 +254,17 @@ def test_add_uses_custom_name(env) -> None:
     )
     assert result["modifier"] == "MyBevel"
     assert bpy.objects_by_name["Cube"].modifiers.get("MyBevel") is not None
+
+
+def test_add_accepts_live_modifier_type_not_static_allowlist(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube"))
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "modifiers.add", {"object": "Cube", "type": "TRIANGULATE"}, ctx)
+
+    assert result == {"object": "Cube", "modifier": "TRIANGULATE", "type": "TRIANGULATE"}
+    assert bpy.objects_by_name["Cube"].modifiers.get("TRIANGULATE") is not None
 
 
 def test_add_defaults_to_active_object(env) -> None:
@@ -401,6 +457,32 @@ def test_list_returns_stack(env) -> None:
     assert result["object"] == "Cube"
     assert [m["name"] for m in result["modifiers"]] == ["Subsurf", "Bev"]
     assert [m["type"] for m in result["modifiers"]] == ["SUBSURF", "BEVEL"]
+
+
+def test_list_returns_rich_stack_report(env) -> None:
+    ctx, bpy = env
+    obj = FakeObj("Cube")
+    subsurf = obj.modifiers.new(name="Subsurf", type="SUBSURF")
+    subsurf.show_render = False
+    nodes = obj.modifiers.new(name="Nodes", type="NODES")
+    nodes.node_group = types.SimpleNamespace(name="GeoNodes")
+    bpy.add(obj)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "modifiers.list", {"object": "Cube"}, ctx)
+
+    first, second = result["modifiers"]
+    assert first["index"] == 0
+    assert first["show_viewport"] is True
+    assert first["show_render"] is False
+    assert first["show_in_editmode"] is False
+    assert first["show_on_cage"] is False
+    assert first["show_expanded"] is True
+    assert first["execution_time"] == 0.0
+    assert first["properties"]["levels"] == 1
+    assert first["properties"]["use_clip"] is False
+    assert second["index"] == 1
+    assert second["node_group"] == "GeoNodes"
 
 
 def test_list_is_read_only_no_undo(env) -> None:

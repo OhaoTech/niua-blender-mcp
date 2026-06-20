@@ -16,6 +16,8 @@ from ..context import Ctx
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
+_SCALAR_RNA_TYPES = {"BOOLEAN", "INT", "FLOAT", "STRING", "ENUM"}
+
 
 def _resolve_object(ctx: Ctx, payload: dict) -> Any:
     """Return the target object (named, else active); fail cleanly otherwise."""
@@ -45,6 +47,79 @@ def _get_modifier(obj: Any, name: str) -> Any:
     return mod
 
 
+def _modifier_type_items(ctx: Ctx) -> list[Any]:
+    modifier_type = getattr(getattr(ctx.bpy, "types", None), "Modifier", None)
+    bl_rna = getattr(modifier_type, "bl_rna", None)
+    properties = getattr(bl_rna, "properties", None)
+    prop = None
+    if properties is not None:
+        try:
+            prop = properties["type"]
+        except (KeyError, TypeError, AttributeError):
+            getter = getattr(properties, "get", None)
+            prop = getter("type") if callable(getter) else None
+    return list(getattr(prop, "enum_items", []) or [])
+
+
+def _scalar_value(value: Any) -> Any:
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _modifier_properties(mod: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    bl_rna = getattr(mod, "bl_rna", None)
+    properties = getattr(bl_rna, "properties", None)
+    if properties is not None:
+        for prop in list(properties):
+            ident = getattr(prop, "identifier", "")
+            if ident in {"rna_type"} or not ident:
+                continue
+            if getattr(prop, "type", None) not in _SCALAR_RNA_TYPES:
+                continue
+            try:
+                value = getattr(mod, ident)
+            except Exception:  # noqa: BLE001 - some RNA properties can raise on access
+                continue
+            scalar = _scalar_value(value)
+            if scalar is not None:
+                out[ident] = scalar
+        return out
+
+    for ident, value in vars(mod).items():
+        if ident.startswith("_") or ident in {"node_group"}:
+            continue
+        scalar = _scalar_value(value)
+        if scalar is not None:
+            out[ident] = scalar
+    return out
+
+
+def _modifier_report(mod: Any, index: int) -> dict[str, Any]:
+    node_group = getattr(mod, "node_group", None)
+    return {
+        "index": index,
+        "name": getattr(mod, "name", ""),
+        "type": getattr(mod, "type", ""),
+        "show_viewport": bool(getattr(mod, "show_viewport", True)),
+        "show_render": bool(getattr(mod, "show_render", True)),
+        "show_in_editmode": bool(getattr(mod, "show_in_editmode", False)),
+        "show_on_cage": bool(getattr(mod, "show_on_cage", False)),
+        "show_expanded": bool(getattr(mod, "show_expanded", True)),
+        "is_active": bool(getattr(mod, "is_active", False)),
+        "execution_time": float(getattr(mod, "execution_time", 0.0) or 0.0),
+        "node_group": getattr(node_group, "name", None) if node_group is not None else None,
+        "properties": _modifier_properties(mod),
+    }
+
+
 def _coerce_value(current: Any, value: Any) -> Any:
     """Coerce an incoming string value toward the existing property's type."""
     if not isinstance(value, str):
@@ -67,6 +142,18 @@ def _coerce_value(current: Any, value: Any) -> Any:
         except ValueError as exc:
             raise BridgeError(INVALID_PARAMS, f"expected a number, got: {value!r}") from exc
     return value
+
+
+def types_list(ctx: Ctx, payload: dict) -> dict:
+    return {
+        "types": [
+            {
+                "identifier": getattr(item, "identifier", ""),
+                "name": getattr(item, "name", ""),
+            }
+            for item in _modifier_type_items(ctx)
+        ]
+    }
 
 
 def add(ctx: Ctx, payload: dict) -> dict:
@@ -141,18 +228,12 @@ def list_modifiers(ctx: Ctx, payload: dict) -> dict:
     modifiers = getattr(obj, "modifiers", []) or []
     return {
         "object": obj.name,
-        "modifiers": [
-            {
-                "name": getattr(m, "name", ""),
-                "type": getattr(m, "type", ""),
-                "show_viewport": bool(getattr(m, "show_viewport", True)),
-            }
-            for m in modifiers
-        ],
+        "modifiers": [_modifier_report(m, index) for index, m in enumerate(modifiers)],
     }
 
 
 COMMANDS = [
+    Command("modifiers.types", types_list, mutates=False),
     Command("modifiers.add", add, mutates=True, feedback="viewport"),
     Command("modifiers.set", set_property, mutates=True, feedback="viewport"),
     Command("modifiers.apply", apply, mutates=True, feedback="viewport"),
