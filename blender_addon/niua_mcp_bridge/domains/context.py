@@ -8,6 +8,16 @@ from ..context import Ctx
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
 
+_MESH_SELECT_MODES = {
+    "VERT": [True, False, False],
+    "EDGE": [False, True, False],
+    "FACE": [False, False, True],
+    "VERT_EDGE": [True, True, False],
+    "VERT_FACE": [True, False, True],
+    "EDGE_FACE": [False, True, True],
+    "VERT_EDGE_FACE": [True, True, True],
+}
+
 
 def _name(item: Any) -> str | None:
     if item is None:
@@ -193,10 +203,37 @@ def select_all(ctx: Ctx, payload: dict) -> dict:
     return _context_summary(ctx)
 
 
+def mode_set(ctx: Ctx, payload: dict) -> dict:
+    obj_name = payload.get("object")
+    if isinstance(obj_name, str) and obj_name:
+        _set_active(ctx, _get_object(ctx, obj_name), bool(payload.get("select", True)))
+    mode = str(payload.get("mode", "") or "").upper()
+    if not mode:
+        raise BridgeError(INVALID_PARAMS, "mode is required")
+    op = ctx.bpy.ops.object.mode_set
+    ctx.check_poll(op)
+    try:
+        op(mode=mode)
+    except Exception as exc:  # noqa: BLE001
+        raise BridgeError(PRECONDITION, f"cannot set mode {mode}: {exc}", {"error": str(exc)}) from exc
+    return _context_summary(ctx)
+
+
+def mesh_select_mode(ctx: Ctx, payload: dict) -> dict:
+    mode = str(payload.get("mode", "") or "").upper()
+    values = _MESH_SELECT_MODES.get(mode)
+    if values is None:
+        raise BridgeError(INVALID_PARAMS, f"unsupported mesh select mode: {mode}")
+    ctx.bpy.context.tool_settings.mesh_select_mode = list(values)
+    return _context_summary(ctx)
+
+
 COMMANDS = [
     Command("context.info", info, mutates=False),
     Command("context.areas", areas, mutates=False),
     Command("context.set_active", set_active, mutates=True, feedback="viewport"),
     Command("context.select_objects", select_objects, mutates=True, feedback="viewport"),
     Command("context.select_all", select_all, mutates=True, feedback="viewport"),
+    Command("context.mode_set", mode_set, mutates=True, feedback="viewport"),
+    Command("context.mesh_select_mode", mesh_select_mode, mutates=True, feedback="viewport"),
 ]

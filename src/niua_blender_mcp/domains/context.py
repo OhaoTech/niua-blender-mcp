@@ -4,6 +4,25 @@ from __future__ import annotations
 
 from ..kernel import Bool, Enum, Str, ToolSpec
 
+MODES = [
+    "OBJECT",
+    "EDIT",
+    "POSE",
+    "SCULPT",
+    "VERTEX_PAINT",
+    "WEIGHT_PAINT",
+    "TEXTURE_PAINT",
+    "PARTICLE_EDIT",
+    "EDIT_GPENCIL",
+    "SCULPT_GREASE_PENCIL",
+    "PAINT_GREASE_PENCIL",
+    "WEIGHT_GREASE_PENCIL",
+    "VERTEX_GREASE_PENCIL",
+    "SCULPT_CURVES",
+]
+
+MESH_SELECT_MODES = ["VERT", "EDGE", "FACE", "VERT_EDGE", "VERT_FACE", "EDGE_FACE", "VERT_EDGE_FACE"]
+
 SPECS = [
     ToolSpec(
         name="context.info",
@@ -48,6 +67,28 @@ SPECS = [
         summary="Select, deselect, or invert selection for all scene objects",
         command="context.select_all",
         params={"action": Enum(["SELECT", "DESELECT", "INVERT"], default="DESELECT")},
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="context.mode_set",
+        category="context",
+        summary="Switch Blender interaction mode, optionally activating an object first",
+        command="context.mode_set",
+        params={
+            "mode": Enum(MODES, required=True, summary="Interaction mode"),
+            "object": Str(default="", summary="Optional object to make active first"),
+            "select": Bool(default=True, summary="Select the object before switching mode"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="context.mesh_select_mode",
+        category="context",
+        summary="Set mesh edit selection mode",
+        command="context.mesh_select_mode",
+        params={"mode": Enum(MESH_SELECT_MODES, required=True, summary="Mesh select mode")},
         mutates=True,
         feedback="viewport",
     ),

@@ -65,6 +65,9 @@ class FakeBpy(types.ModuleType):
         self.workspace = types.SimpleNamespace(name="Layout")
         self.tool_settings = types.SimpleNamespace(mesh_select_mode=[True, False, False])
         self.scene = scene
+        self.mode_calls: list[str] = []
+        self.mode_poll_ok = True
+        self.mode_raise = False
 
         class _Context:
             scene = self.scene
@@ -91,7 +94,21 @@ class FakeBpy(types.ModuleType):
 
         self.context = _Context()
         self.data = types.SimpleNamespace(objects=self.objects)
-        self.ops = types.SimpleNamespace(ed=types.SimpleNamespace(undo_push=lambda message="", **kw: None))
+        class _ModeSet:
+            def poll(self_inner):
+                return bpy.mode_poll_ok
+
+            def __call__(self_inner, mode="OBJECT", **kw):
+                if bpy.mode_raise:
+                    raise RuntimeError("mode context incorrect")
+                bpy.mode_calls.append(mode)
+                if bpy._active_obj is not None:
+                    bpy._active_obj.mode = mode
+
+        self.ops = types.SimpleNamespace(
+            ed=types.SimpleNamespace(undo_push=lambda message="", **kw: None),
+            object=types.SimpleNamespace(mode_set=_ModeSet()),
+        )
 
     def add_area(self, area_type: str = "VIEW_3D") -> None:
         region = types.SimpleNamespace(type="WINDOW")
@@ -199,3 +216,48 @@ def test_select_all_select_deselect_and_invert(env):
 
     out = dispatch_on_main(reg, "context.select_all", {"action": "DESELECT"}, ctx)
     assert out["selected"] == []
+
+
+def test_mode_set_switches_mode_with_optional_object_activation(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+    sphere = bpy.data.objects.get("Sphere")
+
+    out = dispatch_on_main(
+        reg,
+        "context.mode_set",
+        {"mode": "EDIT", "object": "Sphere", "select": True},
+        ctx,
+    )
+
+    assert bpy.view_layer.objects.active is sphere
+    assert sphere.select_get() is True
+    assert bpy.mode_calls == ["EDIT"]
+    assert out["object_mode"] == "EDIT"
+    assert out["active"]["name"] == "Sphere"
+
+
+def test_mode_set_poll_and_runtime_failures_are_preconditions(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    bpy.mode_poll_ok = False
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "context.mode_set", {"mode": "EDIT"}, ctx)
+    assert exc.value.code == PRECONDITION
+
+    bpy.mode_poll_ok = True
+    bpy.mode_raise = True
+    with pytest.raises(BridgeError) as exc2:
+        dispatch_on_main(reg, "context.mode_set", {"mode": "EDIT"}, ctx)
+    assert exc2.value.code == PRECONDITION
+
+
+def test_mesh_select_mode_maps_named_modes(env):
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "context.mesh_select_mode", {"mode": "EDGE_FACE"}, ctx)
+
+    assert bpy.tool_settings.mesh_select_mode == [False, True, True]
+    assert out["mesh_select_mode"] == {"vertex": False, "edge": True, "face": True}
