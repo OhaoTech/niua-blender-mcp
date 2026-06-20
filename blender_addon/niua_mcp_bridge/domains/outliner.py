@@ -430,7 +430,6 @@ def parent_clear(ctx: Ctx, payload: dict) -> dict:
     if old_parent is not None:
         _remove_child(old_parent, obj)
     obj.parent = None
-    obj.matrix_parent_inverse = None
     if keep_transform and world is not None:
         obj.matrix_world = world
     return {"object": _object_summary(obj)}

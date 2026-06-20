@@ -152,6 +152,74 @@ def test_app_undo_redo_keep_bridge_alive(bridge: BlenderBridge) -> None:
     assert "objects" in bridge.call("scene.info", {})
 
 
+def test_outliner_scene_tree_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "EMPTY", "name": "OutlinerParent"})
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "OutlinerChild"})
+
+    created = bridge.call("outliner.collection_create", {"name": "OutlinerProps"})
+    assert created["collection"]["name"] == "OutlinerProps"
+
+    moved = bridge.call(
+        "outliner.object_move",
+        {"object": "OutlinerChild", "collection": "OutlinerProps"},
+    )
+    assert moved["object"]["collections"] == ["OutlinerProps"]
+
+    parented = bridge.call(
+        "outliner.parent_set",
+        {"object": "OutlinerChild", "parent": "OutlinerParent"},
+    )
+    assert parented["object"]["parent"] == "OutlinerParent"
+
+    cleared = bridge.call("outliner.parent_clear", {"object": "OutlinerChild"})
+    assert cleared["object"]["parent"] is None
+
+    obj_vis = bridge.call(
+        "outliner.visibility_set",
+        {"object": "OutlinerChild", "viewport": False, "render": False, "selectable": False},
+    )
+    assert obj_vis["object"]["visible"] is False
+    assert obj_vis["object"]["renderable"] is False
+    assert obj_vis["object"]["selectable"] is False
+
+    col_vis = bridge.call(
+        "outliner.collection_visibility_set",
+        {"collection": "OutlinerProps", "viewport": False, "render": False, "selectable": False},
+    )
+    assert col_vis["collection"]["visible"] is False
+    assert col_vis["collection"]["renderable"] is False
+    assert col_vis["collection"]["selectable"] is False
+
+    layers = bridge.call("outliner.view_layer_create", {"name": "OutlinerBeauty"})
+    assert "OutlinerBeauty" in {layer["name"] for layer in layers["view_layers"]}
+
+    restricted = bridge.call(
+        "outliner.layer_collection_set",
+        {
+            "view_layer": "OutlinerBeauty",
+            "collection": "OutlinerProps",
+            "exclude": True,
+            "viewport": False,
+            "holdout": True,
+            "indirect_only": True,
+        },
+    )
+    assert restricted["layer_collection"]["collection"] == "OutlinerProps"
+    assert restricted["layer_collection"]["exclude"] is True
+    assert restricted["layer_collection"]["hide_viewport"] is True
+    assert restricted["layer_collection"]["holdout"] is True
+    assert restricted["layer_collection"]["indirect_only"] is True
+
+    deleted = bridge.call("outliner.view_layer_delete", {"name": "OutlinerBeauty", "force": True})
+    assert "OutlinerBeauty" not in {layer["name"] for layer in deleted["view_layers"]}
+
+    tree = bridge.call("outliner.tree", {})
+    child_collections = {child["name"] for child in tree["root"]["children"]}
+    assert "OutlinerProps" in child_collections
+    props = next(child for child in tree["root"]["children"] if child["name"] == "OutlinerProps")
+    assert any(obj["name"] == "OutlinerChild" for obj in props["objects"])
+
+
 def test_rna_describe_reads_live_api(bridge: BlenderBridge) -> None:
     described = bridge.call("rna.describe", {"path": "op:mesh.primitive_cube_add"})
     assert described["kind"] == "operator"

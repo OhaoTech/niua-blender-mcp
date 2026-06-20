@@ -35,8 +35,15 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 1: App / Session / Files.
+Subsystem 2: Scene Tree / Outliner.
 
-The file/export surface must be engine-neutral. Blender MCP tools should not encode
-consumer names such as game engines or orchestrators. Export format is a parameter,
-not a separate product-specific tool.
+Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
+format is a parameter rather than a product-specific tool.
+
+Subsystem 2 is implemented as a data-backed `outliner.*` surface. It covers logical
+scene tree reads, collection organization, object collection membership, parent
+hierarchy, object/collection restriction flags, view layers, layer-collection
+restrictions, and orphan listing/purge. GUI mouse/keyboard Outliner parity remains
+deferred to subsystem 12.
+
+Next after verification: Subsystem 3, Context / Selection / Modes.
