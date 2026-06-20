@@ -112,7 +112,9 @@ def _curve_data_report(data: Any) -> dict:
     for key in keys:
         if hasattr(data, key):
             value = getattr(data, key)
-            if isinstance(value, (int, float)):
+            if isinstance(value, bool):
+                value = bool(value)
+            elif isinstance(value, (int, float)):
                 value = float(value) if isinstance(value, float) else int(value)
             out[key] = value
     return out

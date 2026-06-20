@@ -420,6 +420,7 @@ def test_set_curve_updates_only_provided_fields(monkeypatch) -> None:
     assert data.use_fill_caps is True
     assert data.bevel_resolution == 7
     assert out["curve"]["bevel_depth"] == 0.25
+    assert out["curve"]["use_fill_caps"] is True
 
 
 def test_set_curve_rejects_unsupported_object_type(monkeypatch) -> None:
