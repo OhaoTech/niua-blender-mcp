@@ -9,6 +9,7 @@ failing ``poll()`` is surfaced as a clean ``precondition_failed`` via ``ctx.chec
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from ..context import Ctx
@@ -220,6 +221,62 @@ def dissolve(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "dissolved": dissolve_type}
 
 
+def merge(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    merge_type = str(payload.get("type", "CENTER"))
+    uvs = bool(payload.get("uvs", True))
+    _edit(ctx, obj, ctx.bpy.ops.mesh.merge, type=merge_type, uvs=uvs)
+    return {"object": obj.name, "applied": "merge"}
+
+
+def remove_doubles(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    threshold = float(payload.get("threshold", 0.0001))
+    _edit(ctx, obj, ctx.bpy.ops.mesh.remove_doubles, threshold=threshold)
+    return {"object": obj.name, "applied": "remove_doubles", "threshold": threshold}
+
+
+def tris_to_quads(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    face_threshold = math.radians(float(payload.get("face_threshold", 40.0)))
+    shape_threshold = math.radians(float(payload.get("shape_threshold", 40.0)))
+    _edit(
+        ctx,
+        obj,
+        ctx.bpy.ops.mesh.tris_convert_to_quads,
+        face_threshold=face_threshold,
+        shape_threshold=shape_threshold,
+    )
+    return {"object": obj.name, "applied": "tris_to_quads"}
+
+
+def quads_to_tris(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    quad_method = str(payload.get("quad_method", "BEAUTY"))
+    ngon_method = str(payload.get("ngon_method", "BEAUTY"))
+    _edit(
+        ctx,
+        obj,
+        ctx.bpy.ops.mesh.quads_convert_to_tris,
+        quad_method=quad_method,
+        ngon_method=ngon_method,
+    )
+    return {"object": obj.name, "applied": "quads_to_tris"}
+
+
+def fill(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    beauty = bool(payload.get("beauty", True))
+    _edit(ctx, obj, ctx.bpy.ops.mesh.fill, use_beauty=beauty)
+    return {"object": obj.name, "applied": "fill"}
+
+
+def edge_face_add(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    _edit(ctx, obj, ctx.bpy.ops.mesh.edge_face_add)
+    return {"object": obj.name, "applied": "edge_face_add"}
+
+
 def shade_smooth(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_mesh(ctx, payload)
     smooth = bool(payload.get("smooth", True))
@@ -351,6 +408,12 @@ COMMANDS = [
     Command("mesh.select_by_index", select_by_index, mutates=True, feedback="viewport"),
     Command("mesh.delete", delete, mutates=True, feedback="viewport"),
     Command("mesh.dissolve", dissolve, mutates=True, feedback="viewport"),
+    Command("mesh.merge", merge, mutates=True, feedback="viewport"),
+    Command("mesh.remove_doubles", remove_doubles, mutates=True, feedback="viewport"),
+    Command("mesh.tris_to_quads", tris_to_quads, mutates=True, feedback="viewport"),
+    Command("mesh.quads_to_tris", quads_to_tris, mutates=True, feedback="viewport"),
+    Command("mesh.fill", fill, mutates=True, feedback="viewport"),
+    Command("mesh.edge_face_add", edge_face_add, mutates=True, feedback="viewport"),
     Command("mesh.shade_smooth", shade_smooth, mutates=True, feedback="viewport"),
     Command("mesh.report", report, mutates=False),
 ]

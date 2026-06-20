@@ -133,6 +133,12 @@ class FakeBpy(types.ModuleType):
             dissolve_edges = _Op(log, "mesh.dissolve_edges")
             dissolve_faces = _Op(log, "mesh.dissolve_faces")
             dissolve_limited = _Op(log, "mesh.dissolve_limited")
+            merge = _Op(log, "mesh.merge")
+            remove_doubles = _Op(log, "mesh.remove_doubles")
+            tris_convert_to_quads = _Op(log, "mesh.tris_convert_to_quads")
+            quads_convert_to_tris = _Op(log, "mesh.quads_convert_to_tris")
+            fill = _Op(log, "mesh.fill")
+            edge_face_add = _Op(log, "mesh.edge_face_add")
             normals_make_consistent = _Op(log, "mesh.normals_make_consistent")
 
         class _ObjectOps:
@@ -406,6 +412,66 @@ def test_mesh_delete_dissolve_tools_are_exposed_in_router() -> None:
 
     names = {s.name for s in build_router().specs()}
     assert {"mesh.delete", "mesh.dissolve"} <= names
+
+
+def test_merge_remove_doubles_convert_fill_and_edge_face_add(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube"))
+    reg = build_default_registry()
+
+    assert dispatch_on_main(
+        reg, "mesh.merge", {"object": "Cube", "type": "CENTER", "uvs": False}, ctx
+    ) == {"object": "Cube", "applied": "merge"}
+    assert ("mesh.merge", {"type": "CENTER", "uvs": False}) in bpy.op_calls
+
+    assert dispatch_on_main(
+        reg, "mesh.remove_doubles", {"object": "Cube", "threshold": 0.02}, ctx
+    ) == {"object": "Cube", "applied": "remove_doubles", "threshold": 0.02}
+    assert ("mesh.remove_doubles", {"threshold": 0.02}) in bpy.op_calls
+
+    assert dispatch_on_main(
+        reg,
+        "mesh.tris_to_quads",
+        {"object": "Cube", "face_threshold": 30.0, "shape_threshold": 45.0},
+        ctx,
+    ) == {"object": "Cube", "applied": "tris_to_quads"}
+    _, tri_kwargs = next(c for c in bpy.op_calls if c[0] == "mesh.tris_convert_to_quads")
+    assert round(tri_kwargs["face_threshold"], 6) == 0.523599
+    assert round(tri_kwargs["shape_threshold"], 6) == 0.785398
+
+    assert dispatch_on_main(
+        reg,
+        "mesh.quads_to_tris",
+        {"object": "Cube", "quad_method": "FIXED", "ngon_method": "CLIP"},
+        ctx,
+    ) == {"object": "Cube", "applied": "quads_to_tris"}
+    assert ("mesh.quads_convert_to_tris", {"quad_method": "FIXED", "ngon_method": "CLIP"}) in bpy.op_calls
+
+    assert dispatch_on_main(reg, "mesh.fill", {"object": "Cube", "beauty": False}, ctx) == {
+        "object": "Cube",
+        "applied": "fill",
+    }
+    assert ("mesh.fill", {"use_beauty": False}) in bpy.op_calls
+
+    assert dispatch_on_main(reg, "mesh.edge_face_add", {"object": "Cube"}, ctx) == {
+        "object": "Cube",
+        "applied": "edge_face_add",
+    }
+    assert ("mesh.edge_face_add", {}) in bpy.op_calls
+
+
+def test_mesh_topology_edit_tools_are_exposed_in_router() -> None:
+    from niua_blender_mcp.domains import build_router
+
+    names = {s.name for s in build_router().specs()}
+    assert {
+        "mesh.merge",
+        "mesh.remove_doubles",
+        "mesh.tris_to_quads",
+        "mesh.quads_to_tris",
+        "mesh.fill",
+        "mesh.edge_face_add",
+    } <= names
 
 
 # -- shading (object mode) ---------------------------------------------------------

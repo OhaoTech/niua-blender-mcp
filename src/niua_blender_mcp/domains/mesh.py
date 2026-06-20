@@ -16,6 +16,9 @@ MESH_ELEMENT_MODES = ["VERT", "EDGE", "FACE"]
 MESH_SELECTION_ACTIONS = ["REPLACE", "ADD", "REMOVE", "TOGGLE"]
 MESH_DELETE_TYPES = ["VERT", "EDGE", "FACE", "EDGE_FACE", "ONLY_FACE"]
 MESH_DISSOLVE_TYPES = ["VERTS", "EDGES", "FACES", "LIMITED"]
+MESH_MERGE_TYPES = ["CENTER", "CURSOR", "COLLAPSE", "FIRST", "LAST"]
+QUAD_METHODS = ["BEAUTY", "FIXED", "FIXED_ALTERNATE", "SHORTEST_DIAGONAL", "LONGEST_DIAGONAL"]
+NGON_METHODS = ["BEAUTY", "CLIP"]
 
 SPECS = [
     ToolSpec(
@@ -137,6 +140,80 @@ SPECS = [
             "use_verts": Bool(default=False, summary="Dissolve connected vertices for edges/faces"),
             "angle_limit": Float(default=0.0872665, minimum=0.0, summary="Limited dissolve angle in radians"),
             "use_dissolve_boundaries": Bool(default=False, summary="Dissolve boundaries in limited mode"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.merge",
+        category="mesh",
+        summary="Merge selected vertices",
+        command="mesh.merge",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "type": Enum(MESH_MERGE_TYPES, default="CENTER", summary="Merge mode"),
+            "uvs": Bool(default=True, summary="Merge UVs"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.remove_doubles",
+        category="mesh",
+        summary="Merge duplicate vertices",
+        command="mesh.remove_doubles",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "threshold": Float(default=0.0001, minimum=0.0, summary="Merge distance threshold"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.tris_to_quads",
+        category="mesh",
+        summary="Convert selected triangles to quads",
+        command="mesh.tris_to_quads",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "face_threshold": Float(default=40.0, minimum=0.0, maximum=180.0, summary="Face angle in degrees"),
+            "shape_threshold": Float(default=40.0, minimum=0.0, maximum=180.0, summary="Shape angle in degrees"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.quads_to_tris",
+        category="mesh",
+        summary="Convert selected faces to triangles",
+        command="mesh.quads_to_tris",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "quad_method": Enum(QUAD_METHODS, default="BEAUTY", summary="Quad split method"),
+            "ngon_method": Enum(NGON_METHODS, default="BEAUTY", summary="N-gon triangulation method"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.fill",
+        category="mesh",
+        summary="Fill selected edges",
+        command="mesh.fill",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "beauty": Bool(default=True, summary="Use beauty fill"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.edge_face_add",
+        category="mesh",
+        summary="Create an edge or face from selected elements",
+        command="mesh.edge_face_add",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
         },
         mutates=True,
         feedback="viewport",
