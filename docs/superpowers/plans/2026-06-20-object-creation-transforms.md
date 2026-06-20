@@ -41,15 +41,15 @@
 - Create: `blender_addon/niua_mcp_bridge/domains/objects.py`
 
 **Interfaces:**
-- Produces server specs for all nine `object.*` tools.
+- Produces server specs for `object.transform_get` and `object.bounds`.
 - Produces add-on read handlers for `object.transform_get` and `object.bounds`.
 - Add-on helper `_object_state(obj) -> dict` returns name, type, transforms, rotation mode, dimensions, parent, collections, and matrix world.
 - Add-on helper `_bounds_state(obj) -> dict` returns object, dimensions, local corners, world corners, and center.
 
-- [ ] Write fake-bpy tests that assert `build_router().specs()` contains all nine `object.*` tool names.
+- [ ] Write fake-bpy tests that assert `build_router().specs()` contains `object.transform_get` and `object.bounds`.
 - [ ] Write fake-bpy tests for `object.transform_get` and `object.bounds`.
 - [ ] Run `pytest tests/domains/test_objects.py -v` and verify failures are missing module/spec/unknown command failures.
-- [ ] Add `src/niua_blender_mcp/domains/objects.py` with the nine `ToolSpec` definitions and exact parameter constraints from this plan.
+- [ ] Add `src/niua_blender_mcp/domains/objects.py` with the read `ToolSpec` definitions.
 - [ ] Add `blender_addon/niua_mcp_bridge/domains/objects.py` with read helpers and read commands only.
 - [ ] Run `pytest tests/domains/test_objects.py tests/test_parity.py -v` and verify the read tests pass.
 - [ ] Commit with `git commit -m "feat: add object read specs"`.
@@ -62,6 +62,7 @@
 
 **Interfaces:**
 - Implements `object.create`.
+- Adds the `object.create` server spec.
 - Supported types: `CUBE`, `SPHERE`, `PLANE`, `CYLINDER`, `CONE`, `TORUS`, `MONKEY`, `EMPTY`.
 - Creation dispatch uses Blender operators and returns `_object_state(created_object)`.
 
@@ -80,6 +81,7 @@
 
 **Interfaces:**
 - Implements `object.duplicate`, `object.delete`, and `object.rename`.
+- Adds the `object.duplicate`, `object.delete`, and `object.rename` server specs.
 - `_parse_objects(ctx, raw) -> list[Any]` parses comma-separated names and rejects empty lists.
 - `object.duplicate` copies object data when `linked=False`, shares data when `linked=True`, links into source collections or the scene root collection, applies offset to location, and returns `_object_state(new_object)`.
 - `object.delete` removes each object via `bpy.data.objects.remove(obj, do_unlink=True)` and returns `{"deleted": names, "count": len(names)}`.
@@ -102,6 +104,7 @@
 
 **Interfaces:**
 - Implements `object.transform_set`, `object.transform_apply`, and `object.origin_set`.
+- Adds the `object.transform_set`, `object.transform_apply`, and `object.origin_set` server specs.
 - Euler rotation modes: `XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX`.
 - `object.transform_apply` and `object.origin_set` use `ctx.ensure(active=obj, mode="OBJECT", select=[obj])`, call `ctx.check_poll`, then run the Blender operator.
 
