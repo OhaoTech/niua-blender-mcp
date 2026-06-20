@@ -26,15 +26,23 @@ def _identity() -> list[list[float]]:
 
 
 class FakePoly:
-    def __init__(self, vert_indices) -> None:
+    def __init__(self, vert_indices, index: int = 0) -> None:
+        self.index = index
         self.vertices = list(vert_indices)
+        self.select = False
+
+
+class FakeElem:
+    def __init__(self, index: int) -> None:
+        self.index = index
+        self.select = False
 
 
 class FakeMesh:
     def __init__(self, *, verts=0, edges=0, polys=None, uv_layers=0, materials=0) -> None:
-        self.vertices = [object() for _ in range(verts)]
-        self.edges = [object() for _ in range(edges)]
-        self.polygons = [FakePoly(p) for p in (polys or [])]
+        self.vertices = [FakeElem(i) for i in range(verts)]
+        self.edges = [FakeElem(i) for i in range(edges)]
+        self.polygons = [FakePoly(p, i) for i, p in enumerate(polys or [])]
         self.uv_layers = [object() for _ in range(uv_layers)]
         self.materials = [object() for _ in range(materials)]
 
@@ -97,6 +105,7 @@ class FakeBpy(types.ModuleType):
         class _Context:
             scene = self.scene
             view_layer = self.view_layer
+            tool_settings = types.SimpleNamespace(mesh_select_mode=(True, False, False))
 
             @property
             def object(self_inner):
@@ -235,6 +244,46 @@ def test_extrude_defaults_to_active_object(env) -> None:
     reg = build_default_registry()
     result = dispatch_on_main(reg, "mesh.extrude", {}, ctx)
     assert result["object"] == "Cube"
+
+
+def test_selection_report_returns_selected_element_indices(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(verts=3, edges=2, polys=[[0, 1, 2]])
+    mesh.vertices[1].select = True
+    mesh.edges[0].select = True
+    mesh.polygons[0].select = True
+    bpy.add(FakeObj("Cube", data=mesh))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "mesh.selection_report", {"object": "Cube"}, ctx)
+
+    assert out == {
+        "object": "Cube",
+        "vertices": [1],
+        "edges": [0],
+        "faces": [0],
+        "counts": {"vertices": 1, "edges": 1, "faces": 1},
+    }
+
+
+def test_select_all_runs_edit_operator_and_pushes_undo(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube"))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "mesh.select_all", {"object": "Cube", "action": "DESELECT"}, ctx)
+
+    assert out == {"object": "Cube", "action": "DESELECT"}
+    assert ("mesh.select_all", {"action": "DESELECT"}) in bpy.op_calls
+    assert bpy.mode_calls == ["EDIT", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:mesh.select_all"]
+
+
+def test_mesh_selection_tools_are_exposed_in_router() -> None:
+    from niua_blender_mcp.domains import build_router
+
+    names = {s.name for s in build_router().specs()}
+    assert {"mesh.selection_report", "mesh.select_all"} <= names
 
 
 # -- shading (object mode) ---------------------------------------------------------

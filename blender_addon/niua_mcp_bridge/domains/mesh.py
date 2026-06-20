@@ -90,6 +90,41 @@ def recalc_normals(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "inside": inside}
 
 
+def _selected_indices(items: Any) -> list[int]:
+    out: list[int] = []
+    for fallback, item in enumerate(list(items or [])):
+        if bool(getattr(item, "select", False)):
+            out.append(int(getattr(item, "index", fallback)))
+    return out
+
+
+def _selection_report(obj: Any) -> dict:
+    mesh = getattr(obj, "data", None)
+    vertices = _selected_indices(getattr(mesh, "vertices", []))
+    edges = _selected_indices(getattr(mesh, "edges", []))
+    faces = _selected_indices(getattr(mesh, "polygons", []))
+    return {
+        "object": getattr(obj, "name", ""),
+        "vertices": vertices,
+        "edges": edges,
+        "faces": faces,
+        "counts": {"vertices": len(vertices), "edges": len(edges), "faces": len(faces)},
+    }
+
+
+def selection_report(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        return _selection_report(obj)
+
+
+def select_all(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    action = str(payload.get("action", "SELECT"))
+    _edit(ctx, obj, ctx.bpy.ops.mesh.select_all, action=action)
+    return {"object": obj.name, "action": action}
+
+
 def shade_smooth(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_mesh(ctx, payload)
     smooth = bool(payload.get("smooth", True))
@@ -216,6 +251,8 @@ COMMANDS = [
     Command("mesh.inset", inset, mutates=True, feedback="viewport"),
     Command("mesh.subdivide", subdivide, mutates=True, feedback="viewport"),
     Command("mesh.recalc_normals", recalc_normals, mutates=True, feedback="viewport"),
+    Command("mesh.selection_report", selection_report, mutates=False),
+    Command("mesh.select_all", select_all, mutates=True, feedback="viewport"),
     Command("mesh.shade_smooth", shade_smooth, mutates=True, feedback="viewport"),
     Command("mesh.report", report, mutates=False),
 ]

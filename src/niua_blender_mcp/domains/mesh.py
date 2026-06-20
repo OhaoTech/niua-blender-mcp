@@ -9,7 +9,9 @@ counts, n-gons, non-manifold edges, bbox dimensions, UV/material counts.
 
 from __future__ import annotations
 
-from ..kernel import Bool, Float, Int, Str, ToolSpec, Vec3
+from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec, Vec3
+
+SELECT_ALL_ACTIONS = ["TOGGLE", "SELECT", "DESELECT", "INVERT"]
 
 SPECS = [
     ToolSpec(
@@ -69,6 +71,27 @@ SPECS = [
         params={
             "object": Str(summary="Mesh object to edit (defaults to active)"),
             "inside": Bool(default=False, summary="Point normals inside instead of outside"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="mesh.selection_report",
+        category="mesh",
+        summary="Report selected vertices, edges, and faces",
+        command="mesh.selection_report",
+        params={
+            "object": Str(summary="Mesh object to inspect (defaults to active)"),
+        },
+    ),
+    ToolSpec(
+        name="mesh.select_all",
+        category="mesh",
+        summary="Select, deselect, invert, or toggle all mesh elements",
+        command="mesh.select_all",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "action": Enum(SELECT_ALL_ACTIONS, default="SELECT", summary="Select-all action"),
         },
         mutates=True,
         feedback="viewport",
