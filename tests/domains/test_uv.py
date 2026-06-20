@@ -20,7 +20,7 @@ from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import NOT_FOUND, PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
 class FakeUVLayers(list):
@@ -50,9 +50,15 @@ class FakeUVLayers(list):
             self.active = self[min(index, len(self) - 1)] if self else None
 
 
+class FakeEdge:
+    def __init__(self) -> None:
+        self.use_seam = False
+
+
 class FakeMesh:
-    def __init__(self, *, uv_layer_names=None) -> None:
+    def __init__(self, *, uv_layer_names=None, edge_count: int = 6) -> None:
         self.uv_layers = FakeUVLayers(uv_layer_names)
+        self.edges = [FakeEdge() for _ in range(edge_count)]
 
 
 class FakeObj:
@@ -417,3 +423,56 @@ def test_layer_delete_by_name(env) -> None:
 
     assert out["layers"] == ["UVMap"]
     assert out["active"] == "UVMap"
+
+
+# -- seam controls ----------------------------------------------------------------
+
+
+def test_router_contains_uv_seam_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"uv.seams", "uv.set_seams"} <= names
+
+
+def test_seams_reports_edge_indices(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(edge_count=4)
+    mesh.edges[1].use_seam = True
+    mesh.edges[3].use_seam = True
+    bpy.add(FakeObj("Cube", data=mesh))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "uv.seams", {"object": "Cube"}, ctx)
+
+    assert out == {"object": "Cube", "edge_count": 4, "seam_edges": [1, 3]}
+
+
+def test_set_seams_set_add_remove_clear(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(edge_count=5)
+    bpy.add(FakeObj("Cube", data=mesh))
+    reg = build_default_registry()
+
+    set_out = dispatch_on_main(reg, "uv.set_seams", {"object": "Cube", "edges": "1,3", "action": "SET"}, ctx)
+    assert set_out["seam_edges"] == [1, 3]
+    add_out = dispatch_on_main(reg, "uv.set_seams", {"object": "Cube", "edges": "4", "action": "ADD"}, ctx)
+    assert add_out["seam_edges"] == [1, 3, 4]
+    remove_out = dispatch_on_main(reg, "uv.set_seams", {"object": "Cube", "edges": "3", "action": "REMOVE"}, ctx)
+    assert remove_out["seam_edges"] == [1, 4]
+    clear_out = dispatch_on_main(reg, "uv.set_seams", {"object": "Cube", "action": "CLEAR"}, ctx)
+    assert clear_out["seam_edges"] == []
+    assert bpy.undo_pushes == [
+        "niua:uv.set_seams",
+        "niua:uv.set_seams",
+        "niua:uv.set_seams",
+        "niua:uv.set_seams",
+    ]
+
+
+def test_set_seams_invalid_edge_index(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(edge_count=2)))
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "uv.set_seams", {"object": "Cube", "edges": "8", "action": "SET"}, ctx)
+    assert exc.value.code == INVALID_PARAMS

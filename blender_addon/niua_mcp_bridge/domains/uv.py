@@ -15,7 +15,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import NOT_FOUND, PRECONDITION, BridgeError
+from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
 def _resolve_mesh(ctx: Ctx, payload: dict) -> Any:
@@ -105,6 +105,65 @@ def layer_delete(ctx: Ctx, payload: dict) -> dict:
     layer = _get_uv_layer(obj, str(payload.get("name", "")))
     _uv_layers(obj).remove(layer)
     return _layer_report(obj)
+
+
+def _edge_report(obj: Any) -> dict:
+    edges = list(getattr(getattr(obj, "data", None), "edges", []) or [])
+    return {
+        "object": obj.name,
+        "edge_count": len(edges),
+        "seam_edges": [index for index, edge in enumerate(edges) if bool(getattr(edge, "use_seam", False))],
+    }
+
+
+def _parse_edge_indices(obj: Any, raw: Any) -> list[int]:
+    edges = list(getattr(getattr(obj, "data", None), "edges", []) or [])
+    if raw is None or raw == "":
+        return []
+    if not isinstance(raw, str):
+        raise BridgeError(INVALID_PARAMS, "edges must be a comma-separated string")
+    out: list[int] = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            index = int(item)
+        except ValueError as exc:
+            raise BridgeError(INVALID_PARAMS, f"invalid edge index: {item}") from exc
+        if index < 0 or index >= len(edges):
+            raise BridgeError(INVALID_PARAMS, f"edge index out of range: {index}", {"edge_count": len(edges)})
+        out.append(index)
+    return out
+
+
+def seams(ctx: Ctx, payload: dict) -> dict:
+    return _edge_report(_resolve_mesh(ctx, payload))
+
+
+def set_seams(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_mesh(ctx, payload)
+    edges = list(getattr(obj.data, "edges", []) or [])
+    action = str(payload.get("action", "SET")).upper()
+    indices = _parse_edge_indices(obj, payload.get("edges", ""))
+    if action == "CLEAR":
+        for edge in edges:
+            edge.use_seam = False
+        return _edge_report(obj)
+    if action == "SET":
+        for edge in edges:
+            edge.use_seam = False
+        for index in indices:
+            edges[index].use_seam = True
+    elif action == "ADD":
+        for index in indices:
+            edges[index].use_seam = True
+    elif action == "REMOVE":
+        for index in indices:
+            edges[index].use_seam = False
+    else:
+        raise BridgeError(INVALID_PARAMS, f"unsupported seam action: {action}")
+    return _edge_report(obj)
 
 
 def smart_unwrap(ctx: Ctx, payload: dict) -> dict:
@@ -236,6 +295,8 @@ COMMANDS = [
     Command("uv.layer_create", layer_create, mutates=True, feedback="viewport"),
     Command("uv.layer_set_active", layer_set_active, mutates=True, feedback="viewport"),
     Command("uv.layer_delete", layer_delete, mutates=True, feedback="viewport"),
+    Command("uv.seams", seams, mutates=False),
+    Command("uv.set_seams", set_seams, mutates=True, feedback="viewport"),
     Command("uv.smart_unwrap", smart_unwrap, mutates=True, feedback="viewport"),
     Command("uv.unwrap", unwrap, mutates=True, feedback="viewport"),
     Command("uv.cube_project", cube_project, mutates=True, feedback="viewport"),

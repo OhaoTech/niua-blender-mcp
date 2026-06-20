@@ -57,6 +57,26 @@ SPECS = [
         feedback="viewport",
     ),
     ToolSpec(
+        name="uv.seams",
+        category="uv",
+        summary="Report seam edge indices",
+        command="uv.seams",
+        params={"object": Str(summary="Mesh object to inspect (defaults to active)")},
+    ),
+    ToolSpec(
+        name="uv.set_seams",
+        category="uv",
+        summary="Set, add, remove, or clear seam edge flags",
+        command="uv.set_seams",
+        params={
+            "object": Str(summary="Mesh object to edit (defaults to active)"),
+            "edges": Str(default="", summary="Comma-separated edge indices"),
+            "action": Enum(["SET", "ADD", "REMOVE", "CLEAR"], default="SET", summary="Seam mutation action"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
         name="uv.smart_unwrap",
         category="uv",
         summary="Smart UV project the selected faces (angle-based auto seams)",
