@@ -7,6 +7,7 @@ available or NIUA_SKIP_BLENDER is set.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -678,6 +679,67 @@ def test_shading_create_and_assign(bridge: BlenderBridge) -> None:
 
     mats = bridge.call("shading.list_materials", {"object": "ShadeHero"})
     assert "SmokeMat" in mats["materials"]
+
+
+def test_materials_shading_textures_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("object.create", {"type": "CUBE", "name": "ShadeNodeHero"})
+    bridge.call("shading.create_material", {"name": "Subsystem8Mat"})
+    bridge.call("shading.assign_material", {"object": "ShadeNodeHero", "material": "Subsystem8Mat"})
+    bridge.call(
+        "shading.set_principled",
+        {"material": "Subsystem8Mat", "base_color": [0.2, 0.4, 0.8], "metallic": 0.25, "roughness": 0.6},
+    )
+
+    report = bridge.call("shading.report", {"object": "ShadeNodeHero"})
+    assert report["material"] == "Subsystem8Mat"
+    assert report["object"] == "ShadeNodeHero"
+    principled = next(node for node in report["nodes"] if node["type"] == "BSDF_PRINCIPLED")
+    assert any(socket["name"] == "Roughness" for socket in principled["inputs"])
+
+    noise = bridge.call(
+        "shading.add_node",
+        {"material": "Subsystem8Mat", "type": "ShaderNodeTexNoise", "name": "NoiseDriver"},
+    )
+    assert noise["node"]["name"] == "NoiseDriver"
+    scaled = bridge.call(
+        "shading.set_node_input",
+        {"material": "Subsystem8Mat", "node": "NoiseDriver", "input": "Scale", "value": "12.0"},
+    )
+    assert scaled["input"]["default_value"] == pytest.approx(12.0)
+    linked = bridge.call(
+        "shading.link_nodes",
+        {
+            "material": "Subsystem8Mat",
+            "from_node": "NoiseDriver",
+            "from_socket": "Fac",
+            "to_node": principled["name"],
+            "to_socket": "Roughness",
+        },
+    )
+    assert linked["link"]["from_node"] == "NoiseDriver"
+    assert linked["link"]["to_socket"] == "Roughness"
+
+    tiny_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        image_path = os.path.join(tmp, "tiny.png")
+        Path(image_path).write_bytes(tiny_png)
+        image = bridge.call("textures.load", {"path": image_path, "name": "TinyTexture"})
+        assert image["name"] == "TinyTexture"
+        assert image["size"] == [1, 1]
+        listed = bridge.call("textures.list", {})
+        assert "TinyTexture" in {item["name"] for item in listed["images"]}
+        assert bridge.call("textures.report", {"name": "TinyTexture"})["filepath"] == image_path
+
+        wired = bridge.call(
+            "shading.add_image_texture",
+            {"material": "Subsystem8Mat", "image_path": image_path, "target": "BASE_COLOR"},
+        )
+        assert wired["target"] == "BASE_COLOR"
+
+    final_report = bridge.call("shading.report", {"material": "Subsystem8Mat"})
+    assert any(node["type"] == "TEX_IMAGE" for node in final_report["nodes"])
 
 
 def test_anim_keyframe_and_report(bridge: BlenderBridge) -> None:

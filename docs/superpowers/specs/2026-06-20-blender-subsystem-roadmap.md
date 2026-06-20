@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 7: Modifiers / Geometry Nodes.
+Subsystem 8: Materials / Shading / Nodes / Textures.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -76,4 +76,11 @@ default Geometry Nodes modifier creation, node group reporting, generic node cre
 and socket linking. GUI node editor gestures and advanced node group interface/bake
 panels remain deferred to subsystem 12 and later focused Geometry Nodes work.
 
-Next after verification: Subsystem 8, Materials / Shading / Nodes / Textures.
+Subsystem 8 is implemented as expanded `shading.*` plus `textures.*`. It covers
+material creation/assignment, Principled BSDF editing, material and shader node-tree
+reporting, generic shader node creation, shader socket linking, node input default
+editing from JSON, image texture wiring, image datablock load/list/report, and live
+smoke coverage for shader graph plus texture wiring. UV layout/editing, texture
+painting, and baking remain deferred to subsystem 9 and later Layer 2 work.
+
+Next after verification: Subsystem 9, UV / Images.
