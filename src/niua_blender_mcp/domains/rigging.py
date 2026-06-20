@@ -10,7 +10,7 @@ the armature with automatic weights (object-mode ``parent_set`` type=ARMATURE_AU
 
 from __future__ import annotations
 
-from ..kernel import Enum, Str, ToolSpec, Vec3
+from ..kernel import Enum, Float, Str, ToolSpec, Vec3
 
 SPECS = [
     ToolSpec(
@@ -119,6 +119,46 @@ SPECS = [
         command="rig.clear_pose",
         params={
             "armature": Str(required=True, summary="Armature object whose pose to clear"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="rig.constraints",
+        category="rigging",
+        summary="List pose bone constraints on one bone or the whole armature",
+        command="rig.constraints",
+        params={
+            "armature": Str(required=True, summary="Armature object to inspect"),
+            "bone": Str(summary="Optional pose bone name to inspect"),
+        },
+    ),
+    ToolSpec(
+        name="rig.constraint_add",
+        category="rigging",
+        summary="Add a pose bone constraint",
+        command="rig.constraint_add",
+        params={
+            "armature": Str(required=True, summary="Armature object owning the pose bone"),
+            "bone": Str(required=True, summary="Pose bone to edit"),
+            "type": Str(required=True, summary="Blender constraint type, e.g. COPY_LOCATION or IK"),
+            "name": Str(summary="Optional constraint name"),
+            "target": Str(summary="Optional target object name"),
+            "subtarget": Str(summary="Optional target bone/subtarget name"),
+            "influence": Float(default=1.0, minimum=0.0, maximum=1.0, summary="Constraint influence"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="rig.constraint_remove",
+        category="rigging",
+        summary="Remove a named pose bone constraint",
+        command="rig.constraint_remove",
+        params={
+            "armature": Str(required=True, summary="Armature object owning the pose bone"),
+            "bone": Str(required=True, summary="Pose bone to edit"),
+            "name": Str(required=True, summary="Constraint name to remove"),
         },
         mutates=True,
         feedback="viewport",

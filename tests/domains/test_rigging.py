@@ -21,7 +21,7 @@ from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import NOT_FOUND, PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
 class FakeEditBone:
@@ -81,6 +81,16 @@ class FakePoseConstraint:
 class FakePoseConstraints(list):
     def get(self, name: str):
         return next((constraint for constraint in self if constraint.name == name), None)
+
+    def new(self, type: str):
+        if type == "NOPE":
+            raise TypeError("unsupported constraint")
+        constraint = FakePoseConstraint(type, type)
+        self.append(constraint)
+        return constraint
+
+    def remove(self, constraint) -> None:
+        super().remove(constraint)
 
 
 class FakePoseBone:
@@ -575,3 +585,110 @@ def test_rig_report_includes_rest_pose_and_child_meshes(env) -> None:
     assert report["child_meshes"] == ["Body"]
     tip_pose = next(bone for bone in report["pose_bones"] if bone["name"] == "Tip")
     assert tip_pose["constraints"][0]["name"] == "CopyLoc"
+
+
+# -- pose constraints --------------------------------------------------------------
+
+
+def test_router_contains_rig_constraint_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"rig.constraints", "rig.constraint_add", "rig.constraint_remove"} <= names
+
+
+def test_constraints_reports_all_and_named_bone(env) -> None:
+    ctx, bpy = env
+    rig = FakeObj("Rig")
+    rig.data.edit_bones.new("Root")
+    rig.data.edit_bones.new("Tip")
+    rig.pose.bones.get("Root").constraints.append(FakePoseConstraint("CopyRoot", "COPY_LOCATION"))
+    rig.pose.bones.get("Tip").constraints.append(FakePoseConstraint("CopyTip", "COPY_ROTATION"))
+    bpy.add(rig)
+    reg = build_default_registry()
+
+    all_constraints = dispatch_on_main(reg, "rig.constraints", {"armature": "Rig"}, ctx)
+    tip_constraints = dispatch_on_main(reg, "rig.constraints", {"armature": "Rig", "bone": "Tip"}, ctx)
+
+    assert all_constraints["constraint_count"] == 2
+    assert {constraint["bone"] for constraint in all_constraints["constraints"]} == {"Root", "Tip"}
+    assert tip_constraints == {
+        "armature": "Rig",
+        "bone": "Tip",
+        "constraint_count": 1,
+        "constraints": [
+            {
+                "bone": "Tip",
+                "name": "CopyTip",
+                "type": "COPY_ROTATION",
+                "influence": 1.0,
+                "target": None,
+                "subtarget": "",
+                "mute": False,
+            }
+        ],
+    }
+    assert bpy.undo_pushes == []
+
+
+def test_constraint_add_sets_name_influence_target_and_subtarget(env) -> None:
+    ctx, bpy = env
+    rig = FakeObj("Rig")
+    rig.data.edit_bones.new("Tip")
+    target = FakeObj("Target", type="EMPTY")
+    bpy.add(rig)
+    bpy.add(target)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(
+        reg,
+        "rig.constraint_add",
+        {
+            "armature": "Rig",
+            "bone": "Tip",
+            "type": "COPY_LOCATION",
+            "name": "CopyTarget",
+            "target": "Target",
+            "subtarget": "Socket",
+            "influence": 0.75,
+        },
+        ctx,
+    )
+
+    constraint = rig.pose.bones.get("Tip").constraints.get("CopyTarget")
+    assert constraint is not None
+    assert constraint.type == "COPY_LOCATION"
+    assert constraint.target is target
+    assert constraint.subtarget == "Socket"
+    assert constraint.influence == 0.75
+    assert result["constraint"]["name"] == "CopyTarget"
+    assert result["constraint"]["target"] == "Target"
+    assert bpy.undo_pushes == ["niua:rig.constraint_add"]
+
+
+def test_constraint_remove_by_name(env) -> None:
+    ctx, bpy = env
+    rig = FakeObj("Rig")
+    rig.data.edit_bones.new("Tip")
+    rig.pose.bones.get("Tip").constraints.append(FakePoseConstraint("CopyTarget"))
+    bpy.add(rig)
+    reg = build_default_registry()
+
+    result = dispatch_on_main(
+        reg, "rig.constraint_remove", {"armature": "Rig", "bone": "Tip", "name": "CopyTarget"}, ctx
+    )
+
+    assert result["constraint_count"] == 0
+    assert rig.pose.bones.get("Tip").constraints == []
+    assert bpy.undo_pushes == ["niua:rig.constraint_remove"]
+
+
+def test_constraint_add_unsupported_type_raises_invalid_params(env) -> None:
+    ctx, bpy = env
+    rig = FakeObj("Rig")
+    rig.data.edit_bones.new("Tip")
+    bpy.add(rig)
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "rig.constraint_add", {"armature": "Rig", "bone": "Tip", "type": "NOPE"}, ctx)
+    assert exc.value.code == INVALID_PARAMS
+    assert bpy.undo_pushes == []

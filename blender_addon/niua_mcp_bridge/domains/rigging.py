@@ -14,7 +14,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import NOT_FOUND, PRECONDITION, BridgeError
+from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
 def _resolve_armature(ctx: Ctx, name: Any) -> Any:
@@ -168,6 +168,21 @@ def _constraint_entries(pose_bone: Any) -> list[dict]:
     return out
 
 
+def _constraint_report(armature: Any, bone_name: Any = None) -> dict:
+    if isinstance(bone_name, str) and bone_name:
+        pose_bones = [_get_pose_bone(armature, bone_name)]
+    else:
+        pose_bones = _pose_bones(armature)
+    entries = []
+    for pose_bone in pose_bones:
+        for constraint in _constraint_entries(pose_bone):
+            entries.append({"bone": getattr(pose_bone, "name", "?"), **constraint})
+    out = {"armature": armature.name, "constraint_count": len(entries), "constraints": entries}
+    if isinstance(bone_name, str) and bone_name:
+        out["bone"] = bone_name
+    return out
+
+
 def _pose_bones(armature: Any) -> list[Any]:
     pose = getattr(armature, "pose", None)
     return list(getattr(pose, "bones", []) or [])
@@ -208,6 +223,11 @@ def _pose_report(armature: Any, bone_name: Any = None) -> dict:
 def pose_report(ctx: Ctx, payload: dict) -> dict:
     armature = _resolve_armature(ctx, payload.get("armature"))
     return _pose_report(armature, payload.get("bone"))
+
+
+def constraints(ctx: Ctx, payload: dict) -> dict:
+    armature = _resolve_armature(ctx, payload.get("armature"))
+    return _constraint_report(armature, payload.get("bone"))
 
 
 def set_pose_bone(ctx: Ctx, payload: dict) -> dict:
@@ -266,6 +286,55 @@ def report(ctx: Ctx, payload: dict) -> dict:
     }
 
 
+def _get_constraint(pose_bone: Any, name: Any) -> Any:
+    if not isinstance(name, str) or not name:
+        raise BridgeError(PRECONDITION, "constraint name is required")
+    constraints = getattr(pose_bone, "constraints", None)
+    getter = getattr(constraints, "get", None)
+    constraint = getter(name) if callable(getter) else None
+    if constraint is None:
+        constraint = next((candidate for candidate in list(constraints or []) if getattr(candidate, "name", None) == name), None)
+    if constraint is None:
+        raise BridgeError(NOT_FOUND, f"constraint not found: {name}", {"bone": getattr(pose_bone, "name", "?")})
+    return constraint
+
+
+def constraint_add(ctx: Ctx, payload: dict) -> dict:
+    armature = _resolve_armature(ctx, payload.get("armature"))
+    pose_bone = _get_pose_bone(armature, payload.get("bone"))
+    constraint_type = str(payload.get("type", "")).upper()
+    if not constraint_type:
+        raise BridgeError(PRECONDITION, "constraint type is required")
+    with ctx.ensure(active=armature, mode="POSE", select=[armature]):
+        try:
+            constraint = pose_bone.constraints.new(type=constraint_type)
+        except Exception as exc:  # noqa: BLE001 - Blender raises TypeError for bad constraint types
+            raise BridgeError(
+                INVALID_PARAMS,
+                f"unsupported constraint type: {constraint_type}",
+                {"type": constraint_type},
+            ) from exc
+        name = payload.get("name")
+        if isinstance(name, str) and name:
+            constraint.name = name
+        if payload.get("target"):
+            constraint.target = ctx.get_object(str(payload["target"]))
+        if payload.get("subtarget") is not None:
+            constraint.subtarget = str(payload.get("subtarget", ""))
+        constraint.influence = float(payload.get("influence", 1.0))
+    entry = _constraint_entries(pose_bone)[-1]
+    return {"armature": armature.name, "bone": pose_bone.name, "constraint": {"bone": pose_bone.name, **entry}}
+
+
+def constraint_remove(ctx: Ctx, payload: dict) -> dict:
+    armature = _resolve_armature(ctx, payload.get("armature"))
+    pose_bone = _get_pose_bone(armature, payload.get("bone"))
+    constraint = _get_constraint(pose_bone, payload.get("name"))
+    with ctx.ensure(active=armature, mode="POSE", select=[armature]):
+        pose_bone.constraints.remove(constraint)
+    return _constraint_report(armature, pose_bone.name)
+
+
 COMMANDS = [
     Command("rig.add_armature", add_armature, mutates=True, feedback="viewport"),
     Command("rig.add_bone", add_bone, mutates=True, feedback="viewport"),
@@ -276,4 +345,7 @@ COMMANDS = [
     Command("rig.pose_report", pose_report, mutates=False),
     Command("rig.set_pose_bone", set_pose_bone, mutates=True, feedback="viewport"),
     Command("rig.clear_pose", clear_pose, mutates=True, feedback="viewport"),
+    Command("rig.constraints", constraints, mutates=False),
+    Command("rig.constraint_add", constraint_add, mutates=True, feedback="viewport"),
+    Command("rig.constraint_remove", constraint_remove, mutates=True, feedback="viewport"),
 ]
