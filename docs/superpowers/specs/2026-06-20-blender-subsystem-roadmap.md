@@ -35,7 +35,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 11: Rendering / Cameras / Lighting / Compositor.
+Subsystem 12: UI Automation / GUI Parity Layer.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -106,4 +106,4 @@ compositor node-tree enable/report/add/link. Viewport camera/light gizmos, rende
 dragging, compositor editor gestures, and production lighting/render artistry remain
 deferred to subsystem 12 and Layer 2.
 
-Next after verification: Subsystem 12, UI Automation / GUI Parity Layer.
+Next: implement Subsystem 12, UI Automation / GUI Parity Layer.
