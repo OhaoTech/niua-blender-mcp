@@ -438,13 +438,13 @@ def test_rna_call_operator_unknown_is_clean_error(bridge: BlenderBridge) -> None
     assert "objects" in bridge.call("scene.info", {})
 
 
-# --- Phase 5 io smoke: the niua -> Blender -> Godot file seam, end to end --------------
+# --- IO smoke: generic import/export file seam, end to end ---------------------------
 # glTF export/import needs no GPU, so the whole seam is verifiable headless. Each test
 # uses a tempfile and cleans up. Together they prove export, round-trip import (export +
-# import wired correctly), and the prepare_godot apply-transforms-then-export convenience.
+# import wired correctly), and the prepare_asset apply-transforms-then-export convenience.
 
 
-def test_io_export_gltf_writes_nonempty_glb(bridge: BlenderBridge) -> None:
+def test_io_export_writes_nonempty_glb(bridge: BlenderBridge) -> None:
     # Create a cube, export the whole scene to a .glb, assert the file is real and non-empty.
     bridge.call("scene.create_object", {"type": "CUBE", "name": "ExportHero"})
 
@@ -452,11 +452,11 @@ def test_io_export_gltf_writes_nonempty_glb(bridge: BlenderBridge) -> None:
     os.close(fd)
     os.unlink(path)  # let Blender create it; we only wanted a unique name
     try:
-        res = bridge.call("io.export_gltf", {"path": path, "objects": "ExportHero"})
+        res = bridge.call("io.export", {"path": path, "format": "GLB", "objects": "ExportHero"})
         assert res["path"] == path
         assert res["format"] == "GLB"
         assert res["object_count"] == 1
-        assert os.path.exists(path), "io.export_gltf did not write the file"
+        assert os.path.exists(path), "io.export did not write the file"
         assert os.path.getsize(path) > 0, "exported .glb is empty"
         # A real GLB starts with the 'glTF' magic; cheap proof it is a true container.
         with open(path, "rb") as fh:
@@ -475,7 +475,7 @@ def test_io_export_then_import_round_trips(bridge: BlenderBridge) -> None:
     os.close(fd)
     os.unlink(path)
     try:
-        bridge.call("io.export_gltf", {"path": path, "objects": "RoundTripHero"})
+        bridge.call("io.export", {"path": path, "format": "GLB", "objects": "RoundTripHero"})
         assert os.path.getsize(path) > 0
 
         imported = bridge.call("io.import", {"path": path})  # AUTO infers GLB from .glb
@@ -702,30 +702,31 @@ def test_prompts_get_refine_mesh_scaffolds_the_loop() -> None:
     assert "revert" in text
 
 
-def test_io_prepare_godot_applies_transforms_and_exports(bridge: BlenderBridge) -> None:
-    # prepare_godot on a translated + rotated cube: applies transforms, exports one object
-    # to GLB (+Y up), reports applied:true. After apply, the object's transform is identity.
-    bridge.call("scene.create_object", {"type": "CUBE", "name": "GodotHero"})
+def test_io_prepare_asset_applies_transforms_and_exports(bridge: BlenderBridge) -> None:
+    # prepare_asset on a translated + rotated cube: applies transforms, exports one object
+    # to GLB, reports transform_applied:true. After apply, the object's transform is identity.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "AssetHero"})
     bridge.call(
         "scene.set_transform",
-        {"object": "GodotHero", "location": [3, 1, 2], "rotation": [0.5, 0.0, 0.3]},
+        {"object": "AssetHero", "location": [3, 1, 2], "rotation": [0.5, 0.0, 0.3]},
     )
 
     fd, path = tempfile.mkstemp(suffix=".glb")
     os.close(fd)
     os.unlink(path)
     try:
-        res = bridge.call("io.prepare_godot", {"object": "GodotHero", "path": path})
-        assert res["applied"] is True
-        assert res["object"] == "GodotHero"
+        res = bridge.call("io.prepare_asset", {"object": "AssetHero", "path": path, "format": "GLB"})
+        assert res["transform_applied"] is True
+        assert res["object"] == "AssetHero"
         assert res["path"] == path
-        assert os.path.exists(path) and os.path.getsize(path) > 0, "prepare_godot wrote no GLB"
+        assert res["format"] == "GLB"
+        assert os.path.exists(path) and os.path.getsize(path) > 0, "prepare_asset wrote no GLB"
         with open(path, "rb") as fh:
             assert fh.read(4) == b"glTF"
 
         # transform_apply zeroes location/rotation and unit-izes scale on the object.
-        loc = bridge.call("rna.get_property", {"path": "objects.GodotHero.location"})["value"]
-        scale = bridge.call("rna.get_property", {"path": "objects.GodotHero.scale"})["value"]
+        loc = bridge.call("rna.get_property", {"path": "objects.AssetHero.location"})["value"]
+        scale = bridge.call("rna.get_property", {"path": "objects.AssetHero.scale"})["value"]
         assert loc == [0.0, 0.0, 0.0], f"location not applied: {loc}"
         assert scale == [1.0, 1.0, 1.0], f"scale not applied: {scale}"
     finally:

@@ -1,17 +1,13 @@
-"""IO domain manifest: the niua -> Blender -> Godot asset seam.
+"""IO domain manifest: import/export ordinary Blender asset files.
 
-Fully decoupled from niua: niua's generated assets are ordinary files consumed
-through ``io.import``; Blender's output is an ordinary file consumed by niua-godot.
-This domain knows nothing about either -- it just moves files in and out.
+This domain knows nothing about consumers or game engines. It moves files in and
+out of Blender. Format is always data, not a product-specific tool name.
 
-- ``io.import`` (mutates): import any supported file, format inferred from the
-  extension by default; returns the names of the objects the import created
-  (computed by diffing the scene before/after).
-- ``io.export_gltf`` (read-only): Godot-ready glTF export with the knobs that
-  matter for game pipelines (selection, GLB vs separate, apply modifiers, +Y up).
-- ``io.export`` (read-only): generic export that routes to the right exporter.
-- ``io.prepare_godot`` (mutates): apply transforms on one object then export it to
-  GLB -- a convenience for "make this game-ready and hand it to Godot".
+- ``io.import`` (mutates): import any supported file, format inferred from extension
+  by default; returns the names of imported objects.
+- ``io.export`` (read-only): generic export with format, selection, and common flags.
+- ``io.prepare_asset`` (mutates): optionally apply transforms on one object, then
+  export just that object.
 
 Operator ids (verified against Blender 5.1.1):
   GLTF/GLB: import_scene.gltf / export_scene.gltf
@@ -32,11 +28,8 @@ from ..kernel import Bool, Enum, Str, ToolSpec
 #: add-on handler). The rest force a specific importer.
 IMPORT_FORMATS = ["AUTO", "GLTF", "GLB", "OBJ", "FBX", "STL", "USD", "PLY", "DAE", "ABC"]
 
-#: glTF container variants accepted by export_scene.gltf's ``export_format``.
-GLTF_FORMATS = ["GLB", "GLTF_SEPARATE"]
-
 #: Generic-export targets routed by io.export.
-EXPORT_FORMATS = ["GLB", "FBX", "OBJ"]
+EXPORT_FORMATS = ["AUTO", "GLB", "GLTF_SEPARATE", "FBX", "OBJ"]
 
 SPECS = [
     ToolSpec(
@@ -56,49 +49,40 @@ SPECS = [
         feedback="viewport",
     ),
     ToolSpec(
-        name="io.export_gltf",
-        category="io",
-        summary="Export Godot-ready glTF (GLB or separate); optionally just a selection",
-        command="io.export_gltf",
-        params={
-            "path": Str(required=True, summary="Output path (.glb or .gltf)"),
-            "objects": Str(
-                summary="Comma-separated object names to export; default = whole scene",
-            ),
-            "format": Enum(
-                GLTF_FORMATS,
-                default="GLB",
-                summary="GLB (single binary) or GLTF_SEPARATE (.gltf + .bin + textures)",
-            ),
-            "apply_modifiers": Bool(default=True, summary="Apply modifiers on export"),
-            "y_up": Bool(default=True, summary="+Y up axis (Godot/glTF convention)"),
-        },
-    ),
-    ToolSpec(
         name="io.export",
         category="io",
-        summary="Generic export: route to the right exporter for the chosen format",
+        summary="Export the scene or selected objects; format can be inferred from the path",
         command="io.export",
         params={
             "path": Str(required=True, summary="Output path"),
             "format": Enum(
                 EXPORT_FORMATS,
-                default="GLB",
-                summary="Export format; routes to glTF/FBX/OBJ",
+                default="AUTO",
+                summary="AUTO infers from extension; otherwise GLB, GLTF_SEPARATE, FBX, or OBJ",
             ),
             "objects": Str(
                 summary="Comma-separated object names to export; default = whole scene",
             ),
+            "apply_modifiers": Bool(default=True, summary="Apply modifiers where supported"),
+            "y_up": Bool(default=True, summary="+Y up axis for formats that support it"),
         },
     ),
     ToolSpec(
-        name="io.prepare_godot",
+        name="io.prepare_asset",
         category="io",
-        summary="Apply transforms on an object, then export just it to Godot-ready GLB",
-        command="io.prepare_godot",
+        summary="Optionally apply transforms on one object, then export just that object",
+        command="io.prepare_asset",
         params={
-            "object": Str(required=True, summary="Object to prepare and export"),
-            "path": Str(required=True, summary="Output GLB path"),
+            "object": Str(required=True, summary="Object to prepare"),
+            "path": Str(required=True, summary="Output path"),
+            "format": Enum(
+                EXPORT_FORMATS,
+                default="AUTO",
+                summary="AUTO infers from extension; otherwise GLB, GLTF_SEPARATE, FBX, or OBJ",
+            ),
+            "apply_transforms": Bool(default=True, summary="Apply location/rotation/scale before export"),
+            "apply_modifiers": Bool(default=True, summary="Apply modifiers where supported"),
+            "y_up": Bool(default=True, summary="+Y up axis for formats that support it"),
         },
         mutates=True,
         feedback="viewport",

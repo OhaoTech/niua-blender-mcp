@@ -7,7 +7,7 @@ report. ``bpy`` is injected into sys.modules so the lazily-imported context reso
 
 Coverage: extension -> format inference, the before/after object diff on import,
 selection wiring on export (use_selection + the right objects selected), generic-export
-routing, transform-apply on prepare_godot, and the error paths (missing file, missing
+routing, transform-apply on prepare_asset, and the error paths (missing file, missing
 path, unknown extension, missing export object).
 """
 
@@ -253,16 +253,16 @@ def test_import_missing_path_raises_invalid_params(env) -> None:
     assert exc.value.code == INVALID_PARAMS
 
 
-# -- export_gltf: selection wiring + whole-scene -----------------------------------
+# -- export: selection wiring + whole-scene ----------------------------------------
 
 
-def test_export_gltf_whole_scene_no_selection(env, tmp_path) -> None:
+def test_export_glb_whole_scene_no_selection(env, tmp_path) -> None:
     ctx, bpy = env
     bpy.add(FakeObj("A"))
     bpy.add(FakeObj("B"))
     path = str(tmp_path / "out.glb")
     reg = build_default_registry()
-    result = dispatch_on_main(reg, "io.export_gltf", {"path": path}, ctx)
+    result = dispatch_on_main(reg, "io.export", {"path": path, "format": "GLB"}, ctx)
     k = _kwargs(bpy.op_calls, "export_scene.gltf")
     assert k["use_selection"] is False
     assert k["export_format"] == "GLB"
@@ -272,14 +272,14 @@ def test_export_gltf_whole_scene_no_selection(env, tmp_path) -> None:
     assert bpy.undo_pushes == []  # read-only export
 
 
-def test_export_gltf_with_objects_selects_them(env, tmp_path) -> None:
+def test_export_glb_with_objects_selects_them(env, tmp_path) -> None:
     ctx, bpy = env
     a = bpy.add(FakeObj("A"))
     b = bpy.add(FakeObj("B"))
     c = bpy.add(FakeObj("C"))
     path = str(tmp_path / "out.glb")
     reg = build_default_registry()
-    result = dispatch_on_main(reg, "io.export_gltf", {"path": path, "objects": "A, C"}, ctx)
+    result = dispatch_on_main(reg, "io.export", {"path": path, "format": "GLB", "objects": "A, C"}, ctx)
     k = _kwargs(bpy.op_calls, "export_scene.gltf")
     assert k["use_selection"] is True
     assert result["object_count"] == 2
@@ -297,7 +297,7 @@ def test_export_gltf_separate_and_flags(env, tmp_path) -> None:
     reg = build_default_registry()
     dispatch_on_main(
         reg,
-        "io.export_gltf",
+        "io.export",
         {"path": path, "format": "GLTF_SEPARATE", "apply_modifiers": False, "y_up": False},
         ctx,
     )
@@ -307,13 +307,13 @@ def test_export_gltf_separate_and_flags(env, tmp_path) -> None:
     assert k["export_yup"] is False
 
 
-def test_export_gltf_unknown_object_raises_not_found(env, tmp_path) -> None:
+def test_export_unknown_object_raises_not_found(env, tmp_path) -> None:
     ctx, bpy = env
     bpy.add(FakeObj("A"))
     path = str(tmp_path / "out.glb")
     reg = build_default_registry()
     with pytest.raises(BridgeError) as exc:
-        dispatch_on_main(reg, "io.export_gltf", {"path": path, "objects": "Ghost"}, ctx)
+        dispatch_on_main(reg, "io.export", {"path": path, "format": "GLB", "objects": "Ghost"}, ctx)
     assert exc.value.code == NOT_FOUND
 
 
@@ -352,6 +352,15 @@ def test_export_routes_obj_with_selection(env, tmp_path) -> None:
     assert result["object_count"] == 1
 
 
+def test_export_auto_infers_from_extension(env, tmp_path) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("A"))
+    reg = build_default_registry()
+    result = dispatch_on_main(reg, "io.export", {"path": str(tmp_path / "o.fbx"), "format": "AUTO"}, ctx)
+    assert result["format"] == "FBX"
+    assert "export_scene.fbx" in _names(bpy.op_calls)
+
+
 def test_export_unsupported_format_raises_invalid_params(env, tmp_path) -> None:
     ctx, bpy = env
     bpy.add(FakeObj("A"))
@@ -361,16 +370,16 @@ def test_export_unsupported_format_raises_invalid_params(env, tmp_path) -> None:
     assert exc.value.code == INVALID_PARAMS
 
 
-# -- prepare_godot -----------------------------------------------------------------
+# -- prepare_asset -----------------------------------------------------------------
 
 
-def test_prepare_godot_applies_transform_then_exports(env, tmp_path) -> None:
+def test_prepare_asset_applies_transform_then_exports(env, tmp_path) -> None:
     ctx, bpy = env
     bpy.add(FakeObj("Hero"))
     path = str(tmp_path / "hero.glb")
     reg = build_default_registry()
-    result = dispatch_on_main(reg, "io.prepare_godot", {"object": "Hero", "path": path}, ctx)
-    assert result == {"object": "Hero", "path": path, "applied": True}
+    result = dispatch_on_main(reg, "io.prepare_asset", {"object": "Hero", "path": path, "format": "GLB"}, ctx)
+    assert result == {"object": "Hero", "path": path, "format": "GLB", "transform_applied": True}
     names = _names(bpy.op_calls)
     assert "object.transform_apply" in names
     assert "export_scene.gltf" in names
@@ -380,13 +389,38 @@ def test_prepare_godot_applies_transform_then_exports(env, tmp_path) -> None:
     assert ta == {"location": True, "rotation": True, "scale": True}
     k = _kwargs(bpy.op_calls, "export_scene.gltf")
     assert k["use_selection"] is True and k["export_yup"] is True
-    assert bpy.undo_pushes == ["niua:io.prepare_godot"]  # mutating -> one undo step
+    assert bpy.undo_pushes == ["niua:io.prepare_asset"]  # mutating -> one undo step
 
 
-def test_prepare_godot_unknown_object_raises_not_found(env, tmp_path) -> None:
+def test_prepare_asset_can_skip_transform_apply(env, tmp_path) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Hero"))
+    path = str(tmp_path / "hero.obj")
+    reg = build_default_registry()
+    result = dispatch_on_main(
+        reg,
+        "io.prepare_asset",
+        {"object": "Hero", "path": path, "format": "OBJ", "apply_transforms": False},
+        ctx,
+    )
+    assert result == {"object": "Hero", "path": path, "format": "OBJ", "transform_applied": False}
+    assert "object.transform_apply" not in _names(bpy.op_calls)
+    assert "wm.obj_export" in _names(bpy.op_calls)
+
+
+def test_prepare_asset_unknown_object_raises_not_found(env, tmp_path) -> None:
     ctx, bpy = env
     reg = build_default_registry()
     with pytest.raises(BridgeError) as exc:
-        dispatch_on_main(reg, "io.prepare_godot", {"object": "Ghost", "path": str(tmp_path / "g.glb")}, ctx)
+        dispatch_on_main(reg, "io.prepare_asset", {"object": "Ghost", "path": str(tmp_path / "asset.glb")}, ctx)
     assert exc.value.code == NOT_FOUND
     assert bpy.undo_pushes == []
+
+
+def test_engine_specific_io_tools_are_not_registered() -> None:
+    from niua_blender_mcp.domains import build_router
+
+    names = {spec.name for spec in build_router().specs()}
+    assert "io.export_gltf" not in names
+    assert "io.prepare_godot" not in names
+    assert "io.prepare_asset" in names
