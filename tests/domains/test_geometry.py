@@ -80,6 +80,13 @@ class FakeGreaseData:
         self.layers = [FakeLayer("Layer")]
 
 
+class FakeMeshData:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.materials = []
+        self.vertices = [object() for _ in range(8)]
+
+
 class FakeObject:
     def __init__(self, name: str, obj_type: str = "CURVE", data=None) -> None:
         self.name = name
@@ -185,6 +192,22 @@ class FakeBpy(types.ModuleType):
                 obj.scale = list(kwargs.get("scale", [1, 1, 1]))
                 obj.show_in_front = bool(kwargs.get("use_in_front", False))
                 bpy.add(obj)
+
+            def convert(self, target="MESH", keep_original=False, **kwargs):
+                bpy.op_calls.append(("object.convert", {"target": target, "keep_original": keep_original, **kwargs}))
+                active = bpy.context.view_layer.objects.active or bpy.context.object
+                if active is None:
+                    return
+                if keep_original:
+                    converted = FakeObject(f"{active.name}.Mesh", obj_type=target, data=FakeMeshData(f"{active.name}MeshData"))
+                    converted.location = list(active.location)
+                    converted.rotation_euler = list(active.rotation_euler)
+                    converted.scale = list(active.scale)
+                    bpy.add(converted)
+                    return
+                active.type = target
+                active.data = FakeMeshData(f"{active.name}MeshData")
+                bpy.context.object = active
 
             def mode_set(self, mode="OBJECT", **kwargs):
                 bpy.mode_calls.append(mode)
@@ -445,3 +468,46 @@ def test_set_text_rejects_non_text_object(monkeypatch) -> None:
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "geometry.set_text", {"object": "CurveHero", "body": "Nope"}, ctx)
     assert exc.value.code == PRECONDITION
+
+
+def test_router_contains_geometry_convert_to_mesh() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert "geometry.convert_to_mesh" in names
+
+
+def test_convert_to_mesh_uses_object_context_and_renames(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    curve = bpy.add(FakeObject("CurveHero", data=FakeData("CurveData")))
+    curve.mode = "EDIT"
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "geometry.convert_to_mesh",
+        {"object": "CurveHero", "name": "CurveMesh", "keep_original": False},
+        ctx,
+    )
+
+    assert out["name"] == "CurveMesh"
+    assert out["type"] == "MESH"
+    assert bpy.data.objects.get("CurveMesh").data.name == "CurveHeroMeshData"
+    assert ("object.convert", {"target": "MESH", "keep_original": False}) in bpy.op_calls
+    assert bpy.mode_calls == ["OBJECT", "EDIT"]
+
+
+def test_convert_to_mesh_can_keep_original(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("CurveHero", data=FakeData("CurveData")))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "geometry.convert_to_mesh",
+        {"object": "CurveHero", "name": "CurveMeshCopy", "keep_original": True},
+        ctx,
+    )
+
+    assert out["name"] == "CurveMeshCopy"
+    assert out["type"] == "MESH"
+    assert bpy.data.objects.get("CurveHero").type == "CURVE"
+    assert bpy.data.objects.get("CurveMeshCopy").type == "MESH"

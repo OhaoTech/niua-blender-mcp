@@ -141,4 +141,17 @@ SPECS = [
         mutates=True,
         feedback="viewport",
     ),
+    ToolSpec(
+        name="geometry.convert_to_mesh",
+        category="geometry",
+        summary="Convert a non-mesh geometry object to a mesh",
+        command="geometry.convert_to_mesh",
+        params={
+            "object": Str(required=True, summary="Object name"),
+            "name": Str(default="", summary="Optional converted mesh name"),
+            "keep_original": Bool(default=False, summary="Keep the source object and create a mesh copy"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
 ]

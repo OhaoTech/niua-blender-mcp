@@ -264,6 +264,30 @@ def set_text(ctx: Ctx, payload: dict) -> dict:
     return _object_report(obj)
 
 
+def convert_to_mesh(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    keep_original = bool(payload.get("keep_original", False))
+
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        ctx.check_poll(ctx.bpy.ops.object.convert, "object cannot be converted to mesh")
+        ctx.bpy.ops.object.convert(target="MESH", keep_original=keep_original)
+        converted = getattr(ctx.bpy.context, "object", None)
+        if converted is None:
+            converted = getattr(getattr(ctx.bpy.context, "view_layer", None), "objects", None)
+            converted = getattr(converted, "active", None)
+
+    if converted is None:
+        raise BridgeError(HANDLER_ERROR, "conversion did not produce an active object")
+    if getattr(converted, "type", None) != "MESH":
+        raise BridgeError(
+            PRECONDITION,
+            f"conversion did not produce a mesh: {getattr(converted, 'name', '?')}",
+            {"type": getattr(converted, "type", None)},
+        )
+    _rename(converted, payload)
+    return _object_report(converted)
+
+
 COMMANDS = [
     Command("geometry.create_curve", create_curve, mutates=True, feedback="viewport"),
     Command("geometry.create_text", create_text, mutates=True, feedback="viewport"),
@@ -272,5 +296,6 @@ COMMANDS = [
     Command("geometry.create_grease_pencil", create_grease_pencil, mutates=True, feedback="viewport"),
     Command("geometry.set_curve", set_curve, mutates=True, feedback="viewport"),
     Command("geometry.set_text", set_text, mutates=True, feedback="viewport"),
+    Command("geometry.convert_to_mesh", convert_to_mesh, mutates=True, feedback="viewport"),
     Command("geometry.report", report, mutates=False),
 ]
