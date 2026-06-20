@@ -198,6 +198,69 @@ def create_object(ctx: Ctx, payload: dict) -> dict:
     return _object_state(obj)
 
 
+def _parse_objects(ctx: Ctx, raw: Any) -> list[Any]:
+    if not isinstance(raw, str):
+        raise BridgeError(INVALID_PARAMS, "objects is required")
+    names = [name.strip() for name in raw.split(",") if name.strip()]
+    if not names:
+        raise BridgeError(INVALID_PARAMS, "objects must contain at least one object name")
+    return [ctx.get_object(name) for name in names]
+
+
+def _link_duplicate(ctx: Ctx, source: Any, duplicate: Any) -> None:
+    collections = list(getattr(source, "users_collection", []) or [])
+    if not collections:
+        collections = [ctx.bpy.context.scene.collection]
+    for collection in collections:
+        collection.objects.link(duplicate)
+
+    # Real Blender adds linked object IDs to bpy.data.objects automatically. Fake-bpy
+    # list collections need an explicit hook so tests can resolve the duplicate.
+    objects = getattr(ctx.bpy.data, "objects", None)
+    if hasattr(objects, "add") and objects.get(getattr(duplicate, "name", "")) is None:
+        objects.add(duplicate)
+
+
+def duplicate(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    linked = bool(payload.get("linked", False))
+    offset = _vec(payload.get("offset"), [0.0, 0.0, 0.0])
+    new_obj = obj.copy()
+
+    name = payload.get("name")
+    if isinstance(name, str) and name:
+        new_obj.name = name
+
+    if not linked:
+        data = getattr(obj, "data", None)
+        if data is not None and hasattr(data, "copy"):
+            new_obj.data = data.copy()
+
+    base_location = _float_list(getattr(obj, "location", []))
+    if len(base_location) == 3:
+        new_obj.location = [base_location[i] + offset[i] for i in range(3)]
+
+    _link_duplicate(ctx, obj, new_obj)
+    return _object_state(new_obj)
+
+
+def delete(ctx: Ctx, payload: dict) -> dict:
+    objects = _parse_objects(ctx, payload.get("objects"))
+    names = [getattr(obj, "name", "") for obj in objects]
+    for obj in objects:
+        ctx.bpy.data.objects.remove(obj, do_unlink=True)
+    return {"deleted": names, "count": len(names)}
+
+
+def rename(ctx: Ctx, payload: dict) -> dict:
+    name = payload.get("name")
+    if not isinstance(name, str) or not name:
+        raise BridgeError(INVALID_PARAMS, "name is required")
+    obj = ctx.get_object(payload.get("object"))
+    obj.name = name
+    return _object_state(obj)
+
+
 def transform_get(ctx: Ctx, payload: dict) -> dict:
     obj = ctx.get_object(payload.get("object"))
     return _object_state(obj)
@@ -210,6 +273,9 @@ def bounds(ctx: Ctx, payload: dict) -> dict:
 
 COMMANDS = [
     Command("object.create", create_object, mutates=True, feedback="viewport"),
+    Command("object.duplicate", duplicate, mutates=True, feedback="viewport"),
+    Command("object.delete", delete, mutates=True, feedback="viewport"),
+    Command("object.rename", rename, mutates=True, feedback="viewport"),
     Command("object.transform_get", transform_get, mutates=False),
     Command("object.bounds", bounds, mutates=False),
 ]

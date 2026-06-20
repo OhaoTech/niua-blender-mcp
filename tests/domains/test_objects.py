@@ -9,6 +9,7 @@ from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
+from niua_mcp_bridge.errors import INVALID_PARAMS, BridgeError
 
 
 class _NamedList(list):
@@ -231,6 +232,11 @@ def test_router_contains_object_create_tool() -> None:
     assert "object.create" in names
 
 
+def test_router_contains_object_lifecycle_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"object.duplicate", "object.delete", "object.rename"} <= names
+
+
 def test_transform_get_returns_object_state(env) -> None:
     ctx, _bpy = env
     reg = build_default_registry()
@@ -333,3 +339,60 @@ def test_create_dispatches_supported_primitives(env) -> None:
         "rotation": [0.0, 0.0, 0.0],
         "scale": [1.0, 1.0, 1.0],
     }
+
+
+def test_duplicate_copies_or_links_data_and_preserves_collection(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    source = bpy.data.objects.get("Cube")
+
+    copied = dispatch_on_main(
+        reg,
+        "object.duplicate",
+        {"object": "Cube", "name": "CubeCopy", "offset": [1, 1, 1]},
+        ctx,
+    )
+    linked = dispatch_on_main(
+        reg,
+        "object.duplicate",
+        {"object": "Cube", "name": "CubeLinked", "linked": True},
+        ctx,
+    )
+
+    copy_obj = bpy.data.objects.get("CubeCopy")
+    linked_obj = bpy.data.objects.get("CubeLinked")
+    assert copied["name"] == "CubeCopy"
+    assert copied["location"] == [2.0, 3.0, 4.0]
+    assert copy_obj.data is not source.data
+    assert source.data.copies == 1
+    assert [collection.name for collection in copy_obj.users_collection] == ["Props"]
+    assert linked["name"] == "CubeLinked"
+    assert linked_obj.data is source.data
+
+
+def test_delete_removes_multiple_objects_and_rejects_empty_list(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    bpy._create("DeleteA")
+    bpy._create("DeleteB")
+
+    out = dispatch_on_main(reg, "object.delete", {"objects": "DeleteA, DeleteB"}, ctx)
+
+    assert out == {"deleted": ["DeleteA", "DeleteB"], "count": 2}
+    assert bpy.data.objects.get("DeleteA") is None
+    assert bpy.data.objects.get("DeleteB") is None
+    assert bpy.data.objects.removed == [("DeleteA", True), ("DeleteB", True)]
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "object.delete", {"objects": " , "}, ctx)
+    assert exc.value.code == INVALID_PARAMS
+
+
+def test_rename_updates_object_lookup(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "object.rename", {"object": "Cube", "name": "RenamedCube"}, ctx)
+
+    assert out["name"] == "RenamedCube"
+    assert bpy.data.objects.get("Cube") is None
+    assert bpy.data.objects.get("RenamedCube") is not None
