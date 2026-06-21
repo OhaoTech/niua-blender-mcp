@@ -1159,6 +1159,37 @@ def test_sequencer_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert removed["strip_count"] == 0
 
 
+def test_shaderfx_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    grease = bridge.call("geometry.create_grease_pencil", {"type": "EMPTY", "name": "ShaderFxSketch"})
+    assert grease["type"] == "GREASEPENCIL"
+
+    types = bridge.call("shaderfx.types", {})
+    identifiers = {item["identifier"] for item in types["types"]}
+    assert "FX_BLUR" in identifiers
+
+    added = bridge.call("shaderfx.add", {"object": "ShaderFxSketch", "type": "FX_BLUR", "name": "SoftBlur"})
+    assert added["object"] == "ShaderFxSketch"
+    assert added["shaderfx"]["name"] == "SoftBlur"
+    assert added["shaderfx"]["type"] == "FX_BLUR"
+
+    listed = bridge.call("shaderfx.list", {"object": "ShaderFxSketch"})
+    assert listed["shaderfx_count"] == 1
+    assert listed["shaderfx"][0]["name"] == "SoftBlur"
+
+    samples = bridge.call(
+        "shaderfx.set",
+        {"object": "ShaderFxSketch", "name": "SoftBlur", "property": "samples", "value": "12"},
+    )
+    assert samples["value"] == 12
+
+    report = bridge.call("shaderfx.report", {"object": "ShaderFxSketch", "name": "SoftBlur"})
+    assert report["shaderfx"]["properties"]["type"]["value"] == "FX_BLUR"
+    assert report["shaderfx"]["properties"]["samples"]["value"] == 12
+
+    removed = bridge.call("shaderfx.remove", {"object": "ShaderFxSketch", "name": "SoftBlur"})
+    assert removed["shaderfx_count"] == 0
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
