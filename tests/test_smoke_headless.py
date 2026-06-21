@@ -1127,6 +1127,38 @@ def test_particles_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert removed["system_count"] == 0
 
 
+def test_sequencer_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    added = bridge.call(
+        "sequencer.strip_add",
+        {"type": "COLOR", "name": "ColorStrip", "frame_start": 3, "channel": 2},
+    )
+    assert added["strip"]["name"] == "ColorStrip"
+    assert added["strip"]["type"] == "COLOR"
+    assert added["strip"]["channel"] == 2
+
+    channel = bridge.call(
+        "sequencer.strip_set",
+        {"name": "ColorStrip", "property": "channel", "value": "4"},
+    )
+    assert channel["value"] == 4
+    assert channel["strip"]["channel"] == 4
+
+    muted = bridge.call(
+        "sequencer.strip_set",
+        {"name": "ColorStrip", "property": "mute", "value": "true"},
+    )
+    assert muted["value"] is True
+    assert muted["strip"]["mute"] is True
+
+    report = bridge.call("sequencer.report", {})
+    strip = next(item for item in report["strips"] if item["name"] == "ColorStrip")
+    assert strip["properties"]["name"]["value"] == "ColorStrip"
+    assert strip["properties"]["type"]["value"] == "COLOR"
+
+    removed = bridge.call("sequencer.strip_remove", {"name": "ColorStrip"})
+    assert removed["strip_count"] == 0
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
