@@ -1449,6 +1449,32 @@ def test_info_topbar_statusbar_gui_parity_workflow(bridge: BlenderBridge) -> Non
     assert "Objects:" in statusbar["scene_statistics"]
 
 
+def test_spreadsheet_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("object.create", {"type": "CUBE", "name": "SheetHero"})
+
+    report = bridge.call("spreadsheet.report", {"object": "SheetHero"})
+    assert report["object"] == "SheetHero"
+    assert report["component"] == "POINT"
+    assert report["row_count"] == 8
+    assert report["column_count"] >= 2
+
+    columns = bridge.call("spreadsheet.columns", {"object": "SheetHero"})
+    assert {"index", "position"} <= {column["name"] for column in columns["columns"]}
+
+    rows = bridge.call("spreadsheet.rows", {"object": "SheetHero", "limit": 2})
+    assert rows["total"] == 8
+    assert rows["count"] == 2
+    assert rows["rows"][0]["index"] == 0
+    assert len(rows["rows"][0]["position"]) == 3
+
+    edge_rows = bridge.call(
+        "spreadsheet.rows",
+        {"object": "SheetHero", "component": "EDGE", "limit": 1},
+    )
+    assert edge_rows["total"] == 12
+    assert len(edge_rows["rows"][0]["vertices"]) == 2
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
