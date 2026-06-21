@@ -43,6 +43,9 @@ def _fake_blender_source(root: Path) -> Path:
     (root / "scripts/startup/bl_ui/properties_particle.py").write_text("class PARTICLE_PT_context: pass\n")
     (root / "scripts/startup/bl_ui/properties_data_mesh.py").write_text("class DATA_PT_mesh: pass\n")
     (root / "scripts/startup/bl_ui/properties_data_volume.py").write_text("class DATA_PT_volume: pass\n")
+    (root / "scripts/startup/bl_ui/properties_data_unimplemented_fixture.py").write_text(
+        "class DATA_PT_unimplemented_fixture: pass\n"
+    )
     return root
 
 
@@ -56,11 +59,12 @@ def test_scans_blender_source_taxonomy(tmp_path: Path) -> None:
     assert scan["editor_spaces"] == ["buttons", "sequencer", "view3d"]
     assert scan["properties_files"] == [
         "properties_data_mesh.py",
+        "properties_data_unimplemented_fixture.py",
         "properties_data_volume.py",
         "properties_object.py",
         "properties_particle.py",
     ]
-    assert scan["object_data_types"] == ["mesh", "volume"]
+    assert scan["object_data_types"] == ["mesh", "unimplemented_fixture", "volume"]
 
 
 def test_builds_context_and_data_type_coverage(tmp_path: Path) -> None:

@@ -1335,6 +1335,35 @@ def test_speaker_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert "SpeakerHero" in {item["name"] for item in listed["speakers"]}
 
 
+def test_volume_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    created = bridge.call("volume.create_empty", {"name": "VolumeHero", "location": [1, 2, 3]})
+    assert created["object"] == "VolumeHero"
+    assert created["type"] == "VOLUME"
+    assert created["location"] == [1.0, 2.0, 3.0]
+    assert created["volume"]["data"] == "VolumeHero"
+
+    density = bridge.call("volume.set", {"name_or_object": "VolumeHero", "property": "display.density", "value": "2.25"})
+    assert density["value"] == pytest.approx(2.25)
+
+    render_space = bridge.call(
+        "volume.set",
+        {"name_or_object": "VolumeHero", "property": "render.space", "value": json.dumps("WORLD")},
+    )
+    assert render_space["value"] == "WORLD"
+
+    sliced = bridge.call("volume.set", {"name_or_object": "VolumeHero", "property": "display.use_slice", "value": "true"})
+    assert sliced["value"] is True
+
+    report = bridge.call("volume.report", {"name_or_object": "VolumeHero"})
+    assert report["volume"]["display"]["properties"]["density"]["value"] == pytest.approx(2.25)
+    assert report["volume"]["display"]["properties"]["use_slice"]["value"] is True
+    assert report["volume"]["render"]["properties"]["space"]["value"] == "WORLD"
+    assert "grid_count" in report["volume"]["grids"]
+
+    listed = bridge.call("volume.list", {})
+    assert "VolumeHero" in {item["name"] for item in listed["volumes"]}
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
