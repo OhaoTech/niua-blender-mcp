@@ -1425,6 +1425,30 @@ def test_text_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert removed["removed"] == "ScriptHero"
 
 
+def test_info_topbar_statusbar_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    info = bridge.call("info.report", {})
+    assert "area_count" in info
+    assert "report_copy" in info["operators"]
+
+    messages = bridge.call("info.messages", {"limit": 5})
+    assert messages["available"] is False
+    assert messages["limit"] == 5
+    assert messages["messages"] == []
+
+    topbar = bridge.call("topbar.report", {})
+    assert "area_count" in topbar
+    assert "search_operator" in topbar
+
+    search = bridge.call("topbar.command_search", {"query": "cube", "limit": 10})
+    assert search["query"] == "cube"
+    assert any(result["idname"] == "mesh.primitive_cube_add" for result in search["results"])
+
+    statusbar = bridge.call("statusbar.report", {})
+    assert "area_count" in statusbar
+    assert isinstance(statusbar["scene_statistics"], str)
+    assert "Objects:" in statusbar["scene_statistics"]
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
