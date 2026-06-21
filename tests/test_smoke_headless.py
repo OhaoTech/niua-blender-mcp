@@ -1475,6 +1475,37 @@ def test_spreadsheet_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert len(edge_rows["rows"][0]["vertices"]) == 2
 
 
+def test_project_api_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        config_dir = root / ".blender_project"
+        config_dir.mkdir()
+        (config_dir / "project.toml").write_text('name = "Smoke Project"\n', encoding="utf-8")
+        blend_path = root / "scene.blend"
+
+        bridge.call("app.file_save_as", {"path": str(blend_path)})
+
+        report = bridge.call("project.report", {})
+        assert report["detected_root"] == str(root)
+        assert report["config"]["data"]["name"] == "Smoke Project"
+        assert "save_project" in report["operators"]
+
+        files = bridge.call("project.files", {})
+        assert files["available"] is True
+        assert "scene.blend" in files["blend_files"]
+        assert files["config"]["exists"] is True
+
+        settings = bridge.call("project.settings", {})
+        assert settings["config"]["data"]["name"] == "Smoke Project"
+
+    api_report = bridge.call("api.report", {})
+    assert api_report["operator_count"] > 0
+    assert api_report["type_count"] > 0
+
+    search = bridge.call("api.search", {"query": "cube", "limit": 10})
+    assert any(result.get("idname") == "mesh.primitive_cube_add" for result in search["results"])
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
