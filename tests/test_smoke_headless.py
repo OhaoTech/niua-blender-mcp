@@ -1275,6 +1275,41 @@ def test_lightprobe_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert {"ProbeSphere", "ProbeVolume"} <= names
 
 
+def test_pointcloud_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    before = {obj["name"] for obj in bridge.call("scene.info", {})["objects"]}
+    created = bridge.call(
+        "ui.operator_invoke",
+        {
+            "idname": "object.pointcloud_random_add",
+            "args": "{}",
+            "area": "VIEW_3D",
+            "region": "WINDOW",
+            "require_area": True,
+        },
+    )
+    assert created["operator"] == "object.pointcloud_random_add"
+
+    listed = bridge.call("pointcloud.list", {})
+    candidates = [item for item in listed["pointclouds"] if item["object"] not in before]
+    assert candidates
+    cloud_name = candidates[-1]["object"]
+    assert candidates[-1]["point_count"] == 400
+    assert candidates[-1]["attribute_count"] >= 2
+
+    attrs = bridge.call("pointcloud.attributes", {"name_or_object": cloud_name})
+    attr_names = {item["name"] for item in attrs["attributes"]}
+    assert {"position", "radius"} <= attr_names
+
+    changed = bridge.call("pointcloud.set", {"name_or_object": cloud_name, "property": "use_fake_user", "value": "true"})
+    assert changed["value"] is True
+
+    report = bridge.call("pointcloud.report", {"name_or_object": cloud_name})
+    assert report["type"] == "POINTCLOUD"
+    assert report["pointcloud"]["point_count"] == 400
+    assert report["pointcloud"]["properties"]["use_fake_user"]["value"] is True
+    assert report["pointcloud"]["properties"]["points"]["value"]["count"] == 400
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
