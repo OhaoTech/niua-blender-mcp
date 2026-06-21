@@ -1216,6 +1216,37 @@ def test_tool_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert snap_after["value"] is snap_value
 
 
+def test_lattice_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    from niua_blender_mcp.bridge import BridgeError
+
+    created = bridge.call("lattice.create", {"name": "LatticeCage", "location": [1, 2, 3]})
+    assert created["object"] == "LatticeCage"
+    assert created["type"] == "LATTICE"
+    assert created["location"] == [1.0, 2.0, 3.0]
+    assert created["lattice"]["points_u"] == 2
+
+    report = bridge.call("lattice.report", {"object": "LatticeCage"})
+    assert report["lattice"]["point_count"] == 8
+    assert report["lattice"]["properties"]["points_u"]["value"] == 2
+
+    points_u = bridge.call("lattice.set", {"object": "LatticeCage", "property": "points_u", "value": "3"})
+    assert points_u["value"] == 3
+    assert points_u["lattice"]["properties"]["points_u"]["value"] == 3
+
+    interpolation = bridge.call(
+        "lattice.set",
+        {"object": "LatticeCage", "property": "interpolation_type_u", "value": json.dumps("KEY_LINEAR")},
+    )
+    assert interpolation["value"] == "KEY_LINEAR"
+
+    point = bridge.call("lattice.point_set", {"object": "LatticeCage", "index": 0, "co_deform": [0.2, 0.3, 0.4]})
+    assert point["point"]["co_deform"] == pytest.approx([0.2, 0.3, 0.4])
+
+    with pytest.raises(BridgeError) as exc:
+        bridge.call("lattice.convert_to_mesh", {"object": "LatticeCage", "name": "LatticeMesh"})
+    assert exc.value.code == "precondition_failed"
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
