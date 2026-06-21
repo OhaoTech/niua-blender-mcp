@@ -274,3 +274,16 @@ that remains a GUI/GPU demonstration is the *rendered pixels* of the eyes — th
 multi-angle/turntable/critique PNGs — which require a live GL context and so come back
 `available:false` in pure `--background`; their final visual proof is a GUI session, by
 design. The critique *loop* is agent behavior driving these primitives, not a Python loop.
+
+## Blender source coverage audit
+
+Blender source is kept outside this repo at `../blender-source`. Run:
+
+```bash
+python scripts/audit_blender_coverage.py --source ../blender-source --fail-on none
+```
+
+The audit scans Blender's source-backed editor/property taxonomy and compares it with
+the MCP router surface. Use `--json` for machine-readable output and
+`--fail-on partial` when a CI gate should reject contexts that only have generic
+`properties`/`rna` fallback instead of curated GUI-parity tools.
