@@ -1310,6 +1310,31 @@ def test_pointcloud_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert report["pointcloud"]["properties"]["points"]["value"]["count"] == 400
 
 
+def test_speaker_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    created = bridge.call("speaker.create", {"name": "SpeakerHero", "location": [1, 2, 3]})
+    assert created["object"] == "SpeakerHero"
+    assert created["type"] == "SPEAKER"
+    assert created["location"] == [1.0, 2.0, 3.0]
+    assert created["speaker"]["data"] == "SpeakerHero"
+
+    volume = bridge.call("speaker.set", {"name": "SpeakerHero", "property": "volume", "value": "0.35"})
+    assert volume["value"] == pytest.approx(0.35)
+
+    muted = bridge.call("speaker.set", {"name": "SpeakerHero", "property": "muted", "value": "true"})
+    assert muted["value"] is True
+
+    pitch = bridge.call("speaker.set", {"name": "SpeakerHero", "property": "pitch", "value": "1.5"})
+    assert pitch["value"] == pytest.approx(1.5)
+
+    report = bridge.call("speaker.report", {"name": "SpeakerHero"})
+    assert report["speaker"]["properties"]["volume"]["value"] == pytest.approx(0.35)
+    assert report["speaker"]["properties"]["muted"]["value"] is True
+    assert report["speaker"]["properties"]["pitch"]["value"] == pytest.approx(1.5)
+
+    listed = bridge.call("speaker.list", {})
+    assert "SpeakerHero" in {item["name"] for item in listed["speakers"]}
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
