@@ -232,6 +232,8 @@ Three products:
   curated-quality specs (Blender's own help text becomes the descriptions).
 - **`rna.call_operator(idname, args)` / `rna.set_property(path, value)`** — generic
   structured execution for anything not pre-generated.
+- **`properties.report/get/set/unset`** — stable Properties-editor paths backed by
+  live `bl_rna.properties`, including custom ID properties and percent-encoded names.
 
 Curation gate: allowlist TA categories (`mesh, object, uv, material, sculpt, curve,
 armature, pose, anim, nla, graph, transform, node, geometry_nodes, …`); denylist

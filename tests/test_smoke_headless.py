@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -1143,6 +1144,40 @@ def test_rna_set_then_get_property_round_trips(bridge: BlenderBridge) -> None:
 
     read = bridge.call("rna.get_property", {"path": "objects.RnaPropHero.location"})
     assert read["value"] == [1.0, 2.0, 3.0]  # non-empty, correct: RNA path resolved live
+
+
+def test_properties_object_report_and_stable_paths_round_trip(bridge: BlenderBridge) -> None:
+    name = "Props.Cube/One"
+    bridge.call("object.create", {"type": "CUBE", "name": name})
+
+    report = bridge.call("properties.object_report", {"object": name})
+    object_props = {prop["identifier"]: prop for prop in report["object_properties"]}
+    data_props = {prop["identifier"]: prop for prop in report["data"]["properties"]}
+    assert {"name", "type", "location", "data", "modifiers"} <= set(object_props)
+    assert {"name", "vertices", "polygons"} <= set(data_props)
+    assert report["coverage"]["missing_object_properties"] == []
+    assert report["coverage"]["missing_data_properties"] == []
+
+    location_path = object_props["location"]["path"]
+    assert location_path == "object:Props.Cube%2FOne/location"
+    written = bridge.call("properties.set", {"path": location_path, "value": json.dumps([2, 3, 4])})
+    assert written["value"] == [2.0, 3.0, 4.0]
+    assert bridge.call("properties.get", {"path": location_path})["value"] == [2.0, 3.0, 4.0]
+
+    note_path = "object:Props.Cube%2FOne/idprops/artist_note"
+    bridge.call("properties.set", {"path": note_path, "value": json.dumps("hero prop")})
+    assert bridge.call("properties.get", {"path": note_path})["value"] == "hero prop"
+    custom_report = bridge.call("properties.object_report", {"object": name})
+    assert {"key": "artist_note", "path": note_path, "value": "hero prop"} in custom_report[
+        "custom_properties"
+    ]
+    assert bridge.call("properties.unset", {"path": note_path}) == {"path": note_path, "removed": True}
+
+    data_root = f"data:meshes/{quote(report['data']['name'], safe='')}"
+    data_report = bridge.call("properties.report", {"path": data_root})
+    data_report_props = {prop["identifier"] for prop in data_report["properties"]}
+    assert {"name", "vertices", "polygons"} <= data_report_props
+    assert data_report["coverage"]["missing_properties"] == []
 
 
 def test_rna_call_operator_unknown_is_clean_error(bridge: BlenderBridge) -> None:

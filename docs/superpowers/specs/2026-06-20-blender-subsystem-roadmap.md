@@ -21,6 +21,7 @@ for high-risk behavior, and documented gaps.
 10. Animation / Rigging
 11. Rendering / Cameras / Lighting / Compositor
 12. UI Automation / GUI Parity Layer
+13. Properties Editor / RNA Completeness
 
 ## Coverage Matrix
 
@@ -35,7 +36,7 @@ For each subsystem, track:
 
 ## Current Focus
 
-Subsystem 12: UI Automation / GUI Parity Layer.
+Subsystem 13: Properties Editor / RNA Completeness.
 
 Subsystem 1 is complete: app/session/file lifecycle tools are engine-neutral, and export
 format is a parameter rather than a product-specific tool.
@@ -113,5 +114,14 @@ OS-level keyboard/mouse injection remains intentionally deferred to a separate f
 desktop automation adapter because Blender Python does not provide a portable
 background-safe event injector.
 
-Layer 1 subsystem pass is implemented. Next: completion audit, then Layer 2 craft verbs
-and senior-artist judgment loops.
+Subsystem 13 is implemented as `properties.*`. It covers stable percent-encoded
+Properties paths, object and mesh-data RNA reports without hard-coded property
+allowlists, generic `data:<collection>/<name>` RNA reports, get/set/unset, modifier
+property reporting, and custom ID property round-trips. It is the data-completeness
+safety net for the Properties editor. Source-backed remaining GUI-parity contexts are
+Tool settings, full constraints, particles, physics, shader effects, sequencer strip
+properties, and remaining object-data type ergonomics.
+
+Layer 1 data/control pass is implemented through subsystem 13. Next: finish the
+source-backed GUI parity backlog, then Layer 2 craft verbs and senior-artist judgment
+loops.

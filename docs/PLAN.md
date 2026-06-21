@@ -255,20 +255,20 @@ topology eye, deterministic gate checker, modeling battery plus harness and judg
 stub, playbook store, retopo seed recipe, and `model.retopo_quads`. Wave 2
 (UV/bake/materials) and the Phase B convergence loop are next.
 
-## Project status — Layer 1 subsystem pass COMPLETE  ✅
+## Project status — Layer 1 data/control pass COMPLETE  ✅
 
-The 12-subsystem Layer 1 pass is verified end to end against **real Blender 5.1.1
-headless**, not just fake-bpy. The surface now has **194 add-on commands** and **211
+The 13-subsystem Layer 1 data/control pass is verified end to end against **real Blender
+5.1.1 headless**, not just fake-bpy. The surface now has **199 add-on commands** and **216
 server specs** including generated tier-2 tools:
 scene, app/session/files, outliner, context, object, mesh, non-mesh geometry,
 modifiers, geometry nodes, materials/shading/textures, UV/images, animation/rigging,
-rendering/cameras/lights/compositor, UI automation, io, feedback, session,
+rendering/cameras/lights/compositor, UI automation, Properties/RNA completeness, io, feedback, session,
 capabilities, modeling craft verbs, `rna` discovery/exec, introspection, and gated
 `system` escape hatches. Every phase added a domain pack without touching the kernel
 contract, kept handlers tiny, pushed exactly one undo step per successful undoable scene
 mutation, and held parity. The full agentic spine is exercised headlessly: read →
 create/move → app/file save/open → introspect live RNA → edit
-mesh/uv/shading/modifiers/anim/rig/render/UI → export an engine-neutral asset by requested format →
+mesh/uv/shading/modifiers/anim/rig/render/UI/properties → export an engine-neutral asset by requested format →
 checkpoint/edit/revert (safe iterate) → critique bundle (analytic facts). The **only** part
 that remains a GUI/GPU demonstration is the *rendered pixels* of the eyes — the actual
 multi-angle/turntable/critique PNGs — which require a live GL context and so come back
