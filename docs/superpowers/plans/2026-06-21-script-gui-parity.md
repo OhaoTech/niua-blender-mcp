@@ -15,7 +15,7 @@ Close the final Layer 1 audit row for Blender's `script` editor space.
 
 - `SPACE_SCRIPT` is marked deprecated in the source, but still registers script operators.
 - The runtime script operators are `script.python_file_run` and `script.reload`; Blender also exposes `script.execute_preset` from Python UI modules.
-- Running files and reloading scripts can execute local Python, so MCP keeps these behind the same explicit `allow_python` trust gate used by `system.execute_python`.
+- `script.run_file` and `script.reload` mirror Blender GUI operators. `script.run_file` validates an explicit local path; arbitrary Python strings remain behind `system.execute_python`.
 
 ## Test Plan
 

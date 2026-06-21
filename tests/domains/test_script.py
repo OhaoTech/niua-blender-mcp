@@ -11,7 +11,6 @@ from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import BridgeError, PYTHON_DISABLED
 
 
 class FakeOp:
@@ -94,18 +93,17 @@ def test_script_report_and_paths(env) -> None:
     assert paths["script_directories"][0]["name"] == "Studio"
 
 
-def test_script_run_file_requires_python_gate(env, tmp_path) -> None:
+def test_script_run_file_and_reload_use_gui_operators(env, tmp_path) -> None:
     ctx, bpy = env
     reg = build_default_registry()
     path = tmp_path / "hello.py"
     path.write_text("x = 1\n", encoding="utf-8")
 
-    with pytest.raises(BridgeError) as exc:
-        dispatch_on_main(reg, "script.run_file", {"path": str(path)}, ctx)
-    assert exc.value.code == PYTHON_DISABLED
-
-    trusted_ctx = Ctx(bpy, allow_python=True)
-    result = dispatch_on_main(reg, "script.run_file", {"path": str(path)}, trusted_ctx)
+    result = dispatch_on_main(reg, "script.run_file", {"path": str(path)}, ctx)
     assert result["path"] == str(path)
     assert result["applied"] == ["script.python_file_run"]
     assert bpy.python_file_run.calls == [{"filepath": str(path)}]
+
+    reloaded = dispatch_on_main(reg, "script.reload", {}, ctx)
+    assert reloaded["applied"] == ["script.reload"]
+    assert bpy.reload.calls == [{}]

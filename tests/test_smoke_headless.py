@@ -1511,11 +1511,23 @@ def test_script_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert "python_file_run" in report["operators"]
     assert "reload" in report["operators"]
     assert report["execution"]["allow_python"] is False
-    assert report["execution"]["run_file_gated"] is True
+    assert report["execution"]["run_file_gated"] is False
 
     paths = bridge.call("script.paths", {})
     assert isinstance(paths["script_paths"], list)
     assert "script_directories" in paths
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "script_run_smoke.py")
+        Path(path).write_text(
+            "import bpy\n"
+            "text = bpy.data.texts.new('ScriptRunSmoke')\n"
+            "text.write('ok')\n",
+            encoding="utf-8",
+        )
+        run = bridge.call("script.run_file", {"path": path})
+        assert run["applied"] == ["script.python_file_run"]
+        assert bridge.call("text.read", {"name": "ScriptRunSmoke"})["body"] == "ok"
 
 
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:

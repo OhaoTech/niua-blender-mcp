@@ -7,7 +7,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import INVALID_PARAMS, PRECONDITION, PYTHON_DISABLED, BridgeError
+from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
 
 _SCRIPT_OPERATORS = ("python_file_run", "reload", "execute_preset")
 
@@ -109,14 +109,6 @@ def _call_operator(ctx: Ctx, name: str, **kwargs: Any) -> Any:
     return op(**kwargs)
 
 
-def _require_python(ctx: Ctx) -> None:
-    if not ctx.allow_python:
-        raise BridgeError(
-            PYTHON_DISABLED,
-            "script execution is disabled; enable it explicitly for a trusted local session",
-        )
-
-
 def _require_path(payload: dict) -> str:
     raw = payload.get("path")
     if not isinstance(raw, str) or not raw:
@@ -159,14 +151,14 @@ def report(ctx: Ctx, payload: dict) -> dict:
         "operators": {name: _operator_status(ctx, name) for name in _SCRIPT_OPERATORS},
         "execution": {
             "allow_python": bool(ctx.allow_python),
-            "run_file_gated": True,
-            "reload_gated": True,
+            "run_file_gated": False,
+            "reload_gated": False,
+            "arbitrary_code_gated": True,
         },
     }
 
 
 def run_file(ctx: Ctx, payload: dict) -> dict:
-    _require_python(ctx)
     path = _require_path(payload)
     result = _call_operator(ctx, "python_file_run", filepath=path)
     if isinstance(result, set) and "CANCELLED" in result:
@@ -179,7 +171,6 @@ def run_file(ctx: Ctx, payload: dict) -> dict:
 
 
 def reload(ctx: Ctx, payload: dict) -> dict:
-    _require_python(ctx)
     result = _call_operator(ctx, "reload")
     if isinstance(result, set) and "CANCELLED" in result:
         raise BridgeError(PRECONDITION, "script.reload cancelled")
