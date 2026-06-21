@@ -1506,6 +1506,18 @@ def test_project_api_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert any(result.get("idname") == "mesh.primitive_cube_add" for result in search["results"])
 
 
+def test_script_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    report = bridge.call("script.report", {})
+    assert "python_file_run" in report["operators"]
+    assert "reload" in report["operators"]
+    assert report["execution"]["allow_python"] is False
+    assert report["execution"]["run_file_gated"] is True
+
+    paths = bridge.call("script.paths", {})
+    assert isinstance(paths["script_paths"], list)
+    assert "script_directories" in paths
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
