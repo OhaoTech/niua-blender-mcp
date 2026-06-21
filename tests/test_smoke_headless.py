@@ -989,6 +989,73 @@ def test_animation_rigging_workflow(bridge: BlenderBridge) -> None:
     assert spine["location"] == [0.0, 0.0, 0.0]
 
 
+def test_constraints_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "ConstraintHero"})
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "ConstraintTarget"})
+
+    added = bridge.call(
+        "constraints.add",
+        {"object": "ConstraintHero", "type": "COPY_LOCATION", "name": "CopyTarget"},
+    )
+    assert added["object"] == "ConstraintHero"
+    assert added["owner"] == "OBJECT"
+    assert added["constraint"]["name"] == "CopyTarget"
+
+    listed = bridge.call("constraints.list", {"object": "ConstraintHero"})
+    assert listed["constraint_count"] == 1
+    assert listed["constraints"][0]["type"] == "COPY_LOCATION"
+
+    targeted = bridge.call(
+        "constraints.set",
+        {
+            "object": "ConstraintHero",
+            "name": "CopyTarget",
+            "property": "target",
+            "value": json.dumps({"object": "ConstraintTarget"}),
+        },
+    )
+    assert targeted["value"]["name"] == "ConstraintTarget"
+
+    changed = bridge.call(
+        "constraints.set",
+        {"object": "ConstraintHero", "name": "CopyTarget", "property": "influence", "value": "0.4"},
+    )
+    assert changed["value"] == pytest.approx(0.4)
+    assert changed["constraint"]["properties"]["influence"]["value"] == pytest.approx(0.4)
+
+    reported = bridge.call("constraints.report", {"object": "ConstraintHero", "name": "CopyTarget"})
+    assert reported["constraint"]["properties"]["name"]["value"] == "CopyTarget"
+    assert reported["constraint"]["properties"]["type"]["value"] == "COPY_LOCATION"
+
+    bridge.call("rig.add_armature", {"name": "ConstraintRig", "location": [0, 0, 0]})
+    bridge.call(
+        "rig.add_bone",
+        {"armature": "ConstraintRig", "name": "Spine", "head": [0, 0, 0], "tail": [0, 0, 1]},
+    )
+    bone_added = bridge.call(
+        "constraints.add",
+        {
+            "object": "ConstraintRig",
+            "owner": "BONE",
+            "bone": "Spine",
+            "type": "COPY_LOCATION",
+            "name": "CopyPose",
+        },
+    )
+    assert bone_added["owner"] == "BONE"
+    assert bone_added["bone"] == "Spine"
+    assert bone_added["constraint"]["name"] == "CopyPose"
+
+    bone_report = bridge.call(
+        "constraints.report",
+        {"object": "ConstraintRig", "owner": "BONE", "bone": "Spine", "name": "CopyPose"},
+    )
+    assert bone_report["constraint"]["properties"]["type"]["value"] == "COPY_LOCATION"
+
+    removed = bridge.call("constraints.remove", {"object": "ConstraintHero", "name": "CopyTarget"})
+    assert removed["constraint_count"] == 0
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
