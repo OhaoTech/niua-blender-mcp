@@ -1364,6 +1364,35 @@ def test_volume_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert "VolumeHero" in {item["name"] for item in listed["volumes"]}
 
 
+def test_tracking_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    tiny_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        clip_path = os.path.join(tmp, "plate.png")
+        Path(clip_path).write_bytes(tiny_png)
+
+        loaded = bridge.call("tracking.clip_load", {"path": clip_path, "name": "PlateClip"})
+        assert loaded["clip"]["name"] == "PlateClip"
+        assert loaded["clip"]["filepath"] == clip_path
+        assert loaded["clip"]["frame_duration"] >= 1
+
+        clips = bridge.call("tracking.clips", {})
+        assert "PlateClip" in {item["name"] for item in clips["clips"]}
+
+        report = bridge.call("tracking.report", {})
+        target = next(item for item in report["clips"] if item["name"] == "PlateClip")
+        assert target["track_count"] == 0
+        assert target["marker_count"] == 0
+
+        tracks = bridge.call("tracking.track_report", {"clip": "PlateClip"})
+        assert tracks["track_count"] == 0
+        assert tracks["active_track"] is None
+
+        markers = bridge.call("tracking.marker_report", {"clip": "PlateClip"})
+        assert markers["marker_count"] == 0
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
