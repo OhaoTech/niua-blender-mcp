@@ -1056,6 +1056,41 @@ def test_constraints_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert removed["constraint_count"] == 0
 
 
+def test_physics_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "PhysicsHero"})
+
+    rigid_body = bridge.call("physics.add", {"object": "PhysicsHero", "type": "RIGID_BODY"})
+    assert rigid_body["type"] == "RIGID_BODY"
+    assert rigid_body["physics"]["type"] == "ACTIVE"
+
+    mass = bridge.call(
+        "physics.set",
+        {"object": "PhysicsHero", "type": "RIGID_BODY", "property": "mass", "value": "2.25"},
+    )
+    assert mass["value"] == pytest.approx(2.25)
+
+    report = bridge.call("physics.report", {"object": "PhysicsHero"})
+    assert "RIGID_BODY" in report["present"]
+    assert report["physics"]["RIGID_BODY"]["properties"]["mass"]["value"] == pytest.approx(2.25)
+
+    removed_body = bridge.call("physics.remove", {"object": "PhysicsHero", "type": "RIGID_BODY"})
+    assert removed_body["physics"] is None
+
+    bridge.call("scene.create_object", {"type": "EMPTY", "name": "FieldHero"})
+    field = bridge.call("physics.add", {"object": "FieldHero", "type": "FIELD"})
+    assert field["physics"]["type"] == "FORCE"
+
+    strength = bridge.call("physics.field_set", {"object": "FieldHero", "property": "strength", "value": "4.0"})
+    assert strength["value"] == pytest.approx(4.0)
+
+    field_report = bridge.call("physics.field_report", {"object": "FieldHero"})
+    assert field_report["enabled"] is True
+    assert field_report["field"]["properties"]["strength"]["value"] == pytest.approx(4.0)
+
+    removed_field = bridge.call("physics.remove", {"object": "FieldHero", "type": "FIELD"})
+    assert removed_field["enabled"] is False
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
