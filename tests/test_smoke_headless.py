@@ -1190,6 +1190,32 @@ def test_shaderfx_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert removed["shaderfx_count"] == 0
 
 
+def test_tool_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    switched = bridge.call("tool.set", {"idname": "builtin.move", "area_type": "VIEW_3D", "mode": "OBJECT"})
+    assert switched["available"] is True
+    assert switched["active_tool"]["idname"] == "builtin.move"
+    assert switched["requested"]["area_type"] == "VIEW_3D"
+
+    active = bridge.call("tool.active", {"area_type": "VIEW_3D", "mode": "OBJECT"})
+    assert active["available"] is True
+    assert active["active_tool"]["idname"] == "builtin.move"
+
+    settings = bridge.call("tool.settings", {"area_type": "VIEW_3D", "mode": "OBJECT"})
+    assert "use_snap" in settings["tool_settings"]["properties"]
+    assert "transform_pivot_point" in settings["tool_settings"]["properties"]
+
+    snap_before = bridge.call("tool.setting_get", {"path": "use_snap"})
+    snap_value = not bool(snap_before["value"])
+    snap = bridge.call("tool.setting_set", {"path": "use_snap", "value": json.dumps(snap_value)})
+    assert snap["value"] is snap_value
+
+    threshold = bridge.call("tool.setting_set", {"path": "double_threshold", "value": "0.005"})
+    assert threshold["value"] == pytest.approx(0.005)
+
+    snap_after = bridge.call("tool.setting_get", {"path": "use_snap"})
+    assert snap_after["value"] is snap_value
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
