@@ -1091,6 +1091,42 @@ def test_physics_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert removed_field["enabled"] is False
 
 
+def test_particles_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "ParticleHero"})
+
+    added = bridge.call("particles.add", {"object": "ParticleHero", "name": "Sparks"})
+    assert added["particle_system"]["name"] == "Sparks"
+    assert added["particle_system"]["settings"]["type"] == "EMITTER"
+
+    systems = bridge.call("particles.systems", {"object": "ParticleHero"})
+    assert systems["system_count"] == 1
+    assert systems["systems"][0]["name"] == "Sparks"
+
+    count = bridge.call(
+        "particles.set",
+        {"object": "ParticleHero", "name": "Sparks", "property": "count", "value": "321"},
+    )
+    assert count["value"] == 321
+
+    frame = bridge.call(
+        "particles.set",
+        {
+            "object": "ParticleHero",
+            "name": "Sparks",
+            "property": "settings.frame_start",
+            "value": "12.0",
+        },
+    )
+    assert frame["value"] == pytest.approx(12.0)
+
+    report = bridge.call("particles.report", {"object": "ParticleHero", "name": "Sparks"})
+    assert report["particle_system"]["settings"]["properties"]["count"]["value"] == 321
+    assert report["particle_system"]["settings"]["properties"]["frame_start"]["value"] == pytest.approx(12.0)
+
+    removed = bridge.call("particles.remove", {"object": "ParticleHero", "name": "Sparks"})
+    assert removed["system_count"] == 0
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
