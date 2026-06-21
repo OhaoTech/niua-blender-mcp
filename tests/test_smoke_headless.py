@@ -1393,6 +1393,38 @@ def test_tracking_gui_parity_workflow(bridge: BlenderBridge) -> None:
         assert markers["marker_count"] == 0
 
 
+def test_text_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    created = bridge.call("text.create", {"name": "ScriptHero", "body": "print('one')\n"})
+    assert created["name"] == "ScriptHero"
+    assert created["body"] == "print('one')\n"
+
+    written = bridge.call("text.write", {"name": "ScriptHero", "body": "x = 1\n"})
+    assert written["body"] == "x = 1\n"
+
+    appended = bridge.call("text.append", {"name": "ScriptHero", "body": "y = 2\n"})
+    assert appended["body"] == "x = 1\ny = 2\n"
+
+    read = bridge.call("text.read", {"name": "ScriptHero"})
+    assert read["line_count"] == 2
+    assert read["body"] == "x = 1\ny = 2\n"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "script_hero.py")
+        saved = bridge.call("text.save", {"name": "ScriptHero", "path": path})
+        assert saved["path"] == path
+        assert Path(path).read_text(encoding="utf-8") == "x = 1\ny = 2\n"
+
+        opened = bridge.call("text.open", {"path": path, "name": "ScriptHeroOpened"})
+        assert opened["name"] == "ScriptHeroOpened"
+        assert opened["body"] == "x = 1\ny = 2\n"
+
+    listed = bridge.call("text.list", {})
+    assert {"ScriptHero", "ScriptHeroOpened"} <= {item["name"] for item in listed["texts"]}
+
+    removed = bridge.call("text.remove", {"name": "ScriptHero"})
+    assert removed["removed"] == "ScriptHero"
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
