@@ -1,7 +1,7 @@
 # Subsystem 11 Design: Rendering / Cameras / Lighting / Compositor
 
 Date: 2026-06-20
-Status: planned
+Status: implemented
 
 ## Goal
 

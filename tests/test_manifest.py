@@ -33,3 +33,8 @@ def test_search_scopes_to_domain() -> None:
     m = load_manifest()
     hits = m.search("", domain="uv", limit=50)
     assert all(h["idname"].split(".")[0] in m.domains["uv"].categories for h in hits)
+
+
+def test_manifest_excludes_product_specific_addon_operators() -> None:
+    m = load_manifest()
+    assert not [idname for idname in m.operators if idname.startswith("niua.")]

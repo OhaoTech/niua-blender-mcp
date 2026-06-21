@@ -14,7 +14,7 @@
 - No game-engine or orchestrator names in code-facing tool names or summaries.
 - Use `ctx.bpy` only in add-on handlers.
 - Every new curated tool must have a server `ToolSpec` and matching add-on `Command`.
-- Mutating tools must flow through dispatch so undo is pushed after successful handler execution where Blender undo is meaningful.
+- Mutating tools must flow through dispatch so undo is pushed after successful handler execution where Blender undo is meaningful. App/file/preference lifecycle operations (`app.file_*`, workspace switching, add-on toggles, preference saves) intentionally do not push Blender undo steps because they mutate session/file/application state rather than undoable scene data.
 - File paths for open/save/export tools must be absolute unless the tool explicitly documents otherwise.
 - Run tests from repo root with `pytest`.
 

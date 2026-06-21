@@ -340,6 +340,26 @@ def test_select_by_index_replace_add_remove_toggle(env) -> None:
     assert bpy.context.tool_settings.mesh_select_mode == (False, False, True)
 
 
+def test_select_by_index_replace_clears_all_element_domains(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(verts=4, edges=3, polys=[[0, 1, 2]])
+    for item in list(mesh.vertices) + list(mesh.edges) + list(mesh.polygons):
+        item.select = True
+    bpy.add(FakeObj("Cube", data=mesh))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "mesh.select_by_index",
+        {"object": "Cube", "mode": "VERT", "indices": "0,1", "action": "REPLACE"},
+        ctx,
+    )
+
+    assert out["vertices"] == [0, 1]
+    assert out["edges"] == []
+    assert out["faces"] == []
+
+
 def test_select_by_index_rejects_invalid_indices(env) -> None:
     ctx, bpy = env
     bpy.add(FakeObj("Cube", data=FakeMesh(verts=2, edges=0, polys=[])))

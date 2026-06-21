@@ -102,6 +102,24 @@ def _collection_summary(collection: Any) -> dict[str, Any]:
     return out
 
 
+def _collection_path(ctx: Ctx, collection: Any) -> str:
+    names = [_name(collection)]
+    parents = _collection_parents(ctx, collection)
+    current = parents[0] if parents else None
+    while current is not None:
+        names.append(_name(current))
+        parents = _collection_parents(ctx, current)
+        current = parents[0] if parents else None
+    return "/".join(reversed([name for name in names if name]))
+
+
+def _object_path(ctx: Ctx, obj: Any) -> str:
+    collections = _iter(getattr(obj, "users_collection", []))
+    prefix = _collection_path(ctx, collections[0]) if collections else ""
+    name = _name(obj)
+    return f"{prefix}/{name}" if prefix else name
+
+
 def _layer_collection_summary(layer_collection: Any) -> dict[str, Any]:
     collection = getattr(layer_collection, "collection", None)
     return {
@@ -307,14 +325,14 @@ def find(ctx: Ctx, payload: dict) -> dict:
         matches.append({"kind": candidate_kind, "name": name, **extra})
 
     for obj in _iter(getattr(ctx.bpy.data, "objects", [])):
-        add("OBJECT", _name(obj), type=str(getattr(obj, "type", "") or ""))
+        add("OBJECT", _name(obj), path=_object_path(ctx, obj), type=str(getattr(obj, "type", "") or ""))
     for collection in _all_collections(ctx):
-        add("COLLECTION", _name(collection))
+        add("COLLECTION", _name(collection), path=_collection_path(ctx, collection))
     for scene in _iter(getattr(ctx.bpy.data, "scenes", [])):
-        add("SCENE", _name(scene))
+        add("SCENE", _name(scene), path=_name(scene))
     scene = getattr(ctx.bpy.context, "scene", None)
     for view_layer in _iter(getattr(scene, "view_layers", [])):
-        add("VIEW_LAYER", _name(view_layer))
+        add("VIEW_LAYER", _name(view_layer), path=f"{_name(scene)}/{_name(view_layer)}")
 
     matches.sort(key=lambda item: (item["kind"], item["name"]))
     return {"query": query, "matches": matches[:limit], "count": min(len(matches), limit)}

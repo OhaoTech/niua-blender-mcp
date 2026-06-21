@@ -1,7 +1,7 @@
 # Subsystem 10 Design: Animation / Rigging
 
 Date: 2026-06-20
-Status: planned
+Status: implemented
 
 ## Goal
 

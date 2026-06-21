@@ -1,7 +1,7 @@
 # Subsystem 7 Design: Modifiers / Geometry Nodes
 
 Date: 2026-06-20
-Status: planned
+Status: implemented
 
 ## Goal
 

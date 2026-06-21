@@ -219,6 +219,8 @@ def test_outliner_scene_tree_workflow(bridge: BlenderBridge) -> None:
     assert "OutlinerProps" in child_collections
     props = next(child for child in tree["root"]["children"] if child["name"] == "OutlinerProps")
     assert any(obj["name"] == "OutlinerChild" for obj in props["objects"])
+    found = bridge.call("outliner.find", {"query": "OutlinerChild", "kind": "OBJECT"})
+    assert found["matches"][0]["path"] == "Scene Collection/OutlinerProps/OutlinerChild"
 
 
 def test_context_selection_mode_workflow(bridge: BlenderBridge) -> None:
@@ -253,7 +255,7 @@ def test_context_selection_mode_workflow(bridge: BlenderBridge) -> None:
         "context.poll_operator",
         {"idname": "mesh.subdivide", "object": "CtxCube", "mode": "EDIT", "select": "CtxCube"},
     )
-    assert poll == {"idname": "mesh.subdivide", "available": True}
+    assert poll == {"idname": "mesh.subdivide", "available": True, "ok": True}
 
     object_mode = bridge.call("context.mode_set", {"mode": "OBJECT", "object": "CtxCube"})
     assert object_mode["object_mode"] == "OBJECT"
@@ -422,6 +424,64 @@ def test_mesh_selection_topology_workflow(bridge: BlenderBridge) -> None:
     bridge.call("mesh.select_all", {"object": "MeshConvertHero", "action": "SELECT"})
     cleanup = bridge.call("mesh.remove_doubles", {"object": "MeshConvertHero", "threshold": 0.0001})
     assert cleanup == {"object": "MeshConvertHero", "applied": "remove_doubles", "threshold": 0.0001}
+
+    bridge.call("object.create", {"type": "CUBE", "name": "MeshMergeHero"})
+    merge_selection = bridge.call(
+        "mesh.select_by_index",
+        {"object": "MeshMergeHero", "mode": "VERT", "indices": "0,1", "action": "REPLACE"},
+    )
+    assert merge_selection["vertices"] == [0, 1]
+    assert merge_selection["edges"] == []
+    assert merge_selection["faces"] == []
+    assert bridge.call("mesh.merge", {"object": "MeshMergeHero"}) == {
+        "object": "MeshMergeHero",
+        "applied": "merge",
+    }
+    assert bridge.call("mesh.report", {"object": "MeshMergeHero"})["vertices"] == 7
+
+    bridge.call("object.create", {"type": "PLANE", "name": "MeshFillHero"})
+    bridge.call(
+        "mesh.select_by_index",
+        {"object": "MeshFillHero", "mode": "FACE", "indices": "0", "action": "REPLACE"},
+    )
+    assert bridge.call("mesh.delete", {"object": "MeshFillHero", "type": "ONLY_FACE"}) == {
+        "object": "MeshFillHero",
+        "deleted": "ONLY_FACE",
+    }
+    assert bridge.call("mesh.report", {"object": "MeshFillHero"})["faces"] == 0
+    bridge.call(
+        "mesh.select_by_index",
+        {"object": "MeshFillHero", "mode": "EDGE", "indices": "0,1,2,3", "action": "REPLACE"},
+    )
+    assert bridge.call("mesh.fill", {"object": "MeshFillHero"}) == {
+        "object": "MeshFillHero",
+        "applied": "fill",
+    }
+    assert bridge.call("mesh.report", {"object": "MeshFillHero"})["faces"] >= 1
+
+    bridge.call("object.create", {"type": "PLANE", "name": "MeshEdgeFaceHero"})
+    bridge.call(
+        "mesh.select_by_index",
+        {"object": "MeshEdgeFaceHero", "mode": "FACE", "indices": "0", "action": "REPLACE"},
+    )
+    assert bridge.call("mesh.delete", {"object": "MeshEdgeFaceHero", "type": "ONLY_FACE"}) == {
+        "object": "MeshEdgeFaceHero",
+        "deleted": "ONLY_FACE",
+    }
+    bridge.call(
+        "mesh.select_by_index",
+        {
+            "object": "MeshEdgeFaceHero",
+            "mode": "EDGE",
+            "indices": "0,1,2,3",
+            "action": "REPLACE",
+        },
+    )
+    assert bridge.call("mesh.edge_face_add", {"object": "MeshEdgeFaceHero"}) == {
+        "object": "MeshEdgeFaceHero",
+        "applied": "edge_face_add",
+    }
+    assert bridge.call("mesh.report", {"object": "MeshEdgeFaceHero"})["faces"] >= 1
 
 
 def test_non_mesh_geometry_workflow(bridge: BlenderBridge) -> None:
@@ -633,7 +693,21 @@ def test_rendering_cameras_lighting_compositor_workflow(bridge: BlenderBridge) -
 
     added = bridge.call("compositor.add_node", {"type": "CompositorNodeBlur", "name": "SoftBlur"})
     assert added["node"]["name"] == "SoftBlur"
-    assert any(node["name"] == "SoftBlur" for node in bridge.call("compositor.report", {})["nodes"])
+    comp_report = bridge.call("compositor.report", {})
+    assert any(node["name"] == "SoftBlur" for node in comp_report["nodes"])
+    render_layers = next(node for node in comp_report["nodes"] if node["type"] == "R_LAYERS")
+    output_node = next(node for node in comp_report["nodes"] if node["inputs"])
+    linked = bridge.call(
+        "compositor.link",
+        {
+            "from_node": render_layers["name"],
+            "from_socket": "0",
+            "to_node": output_node["name"],
+            "to_socket": "0",
+        },
+    )
+    assert linked["link"]["from_node"] == render_layers["name"]
+    assert linked["link"]["to_node"] == output_node["name"]
 
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "still.png")
@@ -847,6 +921,10 @@ def test_animation_rigging_workflow(bridge: BlenderBridge) -> None:
 
     interp = bridge.call("anim.set_interpolation", {"object": "AnimHero", "interpolation": "LINEAR"})
     assert interp["fcurves"] == 3 and interp["keyframes"] == 6
+
+    actions = bridge.call("anim.list_actions", {})
+    anim_action = next(action for action in actions["actions"] if action["name"] == report["action"])
+    assert anim_action["fcurves"] >= 3
 
     bridge.call("rig.add_armature", {"name": "RigHero", "location": [0, 0, 0]})
     bridge.call(
@@ -1418,3 +1496,7 @@ def test_ui_automation_gui_parity_workflow(bridge: BlenderBridge) -> None:
         shot = bridge.call("ui.screenshot", {"path": os.path.join(tmp, "ui.png")})
     assert shot["available"] is False
     assert "screen.screenshot" in shot["reason"]
+
+    redraw = bridge.call("ui.redraw", {})
+    assert redraw["available"] is False
+    assert "wm.redraw_timer" in redraw["reason"]

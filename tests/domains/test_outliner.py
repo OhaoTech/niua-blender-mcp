@@ -286,6 +286,9 @@ def test_find_searches_supported_outliner_kinds(env):
     assert ("COLLECTION", "Nested") in names
     assert ("SCENE", "Scene") in names
     assert ("VIEW_LAYER", "ViewLayer") in names
+    by_name = {match["name"]: match for match in out["matches"]}
+    assert by_name["Cube"]["path"] == "Scene Collection/Props/Cube"
+    assert by_name["Nested"]["path"] == "Scene Collection/Props/Nested"
 
 
 def test_orphans_lists_zero_user_datablocks(env):

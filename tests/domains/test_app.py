@@ -205,6 +205,7 @@ def test_file_new_runs_factory_settings_with_force(env):
     assert bpy.op_calls[0][1] == {"use_empty": True}
     assert out["filepath"] == ""
     assert out["is_dirty"] is False
+    assert bpy.undo_pushes == []
 
 
 def test_file_open_requires_absolute_path_and_force_when_dirty(env, tmp_path):
@@ -330,6 +331,7 @@ def test_workspaces_lists_and_switches_active_workspace(env):
     assert switched == {"active": "Modeling", "workspaces": ["Layout", "Modeling", "Scripting"]}
     assert bpy.context.window.workspace.name == "Modeling"
     assert bpy.context.workspace.name == "Modeling"
+    assert bpy.undo_pushes == []
 
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "app.workspace_set", {"name": "Compositing"}, ctx)
@@ -360,6 +362,7 @@ def test_addons_lists_and_toggles_modules(env):
     assert disabled["module"] == "mesh_looptools"
     assert disabled["enabled"] is False
     assert bpy.op_calls[-1] == ("preferences.addon_disable", {"module": "mesh_looptools"})
+    assert bpy.undo_pushes == []
 
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "app.addon_enable", {"module": "missing_addon"}, ctx)
@@ -380,3 +383,4 @@ def test_preferences_summary_and_save(env):
     saved = dispatch_on_main(reg, "app.preferences_save", {}, ctx)
     assert saved == {"ok": True, "applied": ["wm.save_userpref"]}
     assert bpy.op_calls[-1] == ("wm.save_userpref", {})
+    assert bpy.undo_pushes == []

@@ -55,7 +55,7 @@ by a `tier` field on `ToolSpec`:
 |------|------|------|-----------|------------------|
 | 1 | **Craft verbs** | Few dozen senior-artist composite tools (`uv.smart_unwrap_and_pack`, `model.retopo_quads`, `bake.normals`) | Hand-built | Always exposed *(mostly layer 2 — deferred)* |
 | 2 | **Domain catalogs** | Typed tools for the high-frequency native operators per craft area | **Generated** from the manifest | Lazy-loaded per domain |
-| 3 | **Reflection floor** | `capabilities.search → describe → invoke` over *every* operator + data path | Manifest at runtime | Always exposed |
+| 3 | **Reflection floor** | `capabilities.search → describe → invoke` over live Blender RNA, with committed manifest/codegen drift checks | Live RNA at runtime + manifest offline | Always exposed |
 
 ### 3.1 The unifying manifest
 
@@ -75,14 +75,14 @@ A single generated artifact powers tiers 2 and 3.
 - **Consumer (tier 2):** a generator (`src/niua_blender_mcp/codegen/`) reads the
   manifest and emits typed `ToolSpec`s for the allowlisted operators, grouped by
   domain, tagged `tier="generated"`.
-- **Consumer (tier 3):** at runtime, `capabilities.describe`/`invoke` read the
-  *same* manifest to type-validate arguments for **any** operator — including
-  ones with no generated tool. This turns the old "dumb" escape hatch into a
-  schema-validated, fully covered floor.
+- **Consumer (tier 3):** runtime `capabilities.search`/`describe` use live RNA in
+  the add-on, and `capabilities.invoke` delegates through the same validated
+  `rna.call_operator` path. The committed manifest remains the offline catalog,
+  tier-2 generator input, and drift-check fixture.
 
-This is the key move: **one manifest, validated tier-2 tools and a validated
-tier-3 floor.** Coverage is complete by construction (tier 3); ergonomics
-improve incrementally (tier 2) without ever blocking completeness.
+This is the key move: **one committed manifest plus a live-RNA reflection floor.**
+Tier 2 is generated from the manifest; tier 3 stays accurate for the connected
+Blender version by asking live RNA at runtime.
 
 ### 3.2 The `capabilities` meta-domain (discoverability front door)
 
@@ -99,10 +99,9 @@ model) is solved by one always-present meta-domain:
 - `capabilities.invoke(id, args)` → validated, context-resolved, undo-safe
   dispatch. This *is* tier 3 (it supersedes/wraps `rna.call_operator`).
 
-`search`/`describe` resolve against the committed manifest first (fast, offline,
-deterministic), falling back to live RNA for anything the manifest misses. This
-replaces the per-call `dir(bpy.ops)` walk in today's `rna.search` with a manifest
-lookup, keeping live RNA as a fallback.
+`search`/`describe` resolve against live RNA in the add-on, which avoids manifest
+drift for the connected Blender process. The committed manifest is still used for
+offline catalog tests and generated tier-2 specs.
 
 ### 3.3 Lazy loading
 
@@ -151,7 +150,7 @@ This is an evolution, not a rewrite. Concretely:
 ## 6. Milestones (layer 1)
 
 1. **Manifest + tiered router.** `gen_manifest.py`, committed manifest, `tier`
-   metadata, tier precedence, tier-3 validation reads the manifest.
+   metadata, tier precedence, and live-RNA tier-3 runtime validation.
 2. **`capabilities` front door.** `domains/search/describe/invoke` + lazy
    loading; agent can find and run anything. `rna.*` kept as aliases.
 3. **Tier-2 generator.** Manifest → generated catalogs; first wave of domains
@@ -161,9 +160,9 @@ This is an evolution, not a rewrite. Concretely:
 
 ## 7. Success criteria
 
-- **Completeness:** every operator / data path in Blender 5.1.x is reachable +
-  schema-validated via `capabilities` — provable by diffing the committed
-  manifest against the live `bpy` surface (a test run inside Blender).
+- **Completeness:** every in-scope operator exposed by live Blender RNA is reachable
+  through `capabilities`, with committed-manifest drift checks covering sampled
+  Blender 5.1.x operators.
 - **Correctness:** every invocation is context-resolved, poll-checked, and
   undo-safe; server↔addon parity holds for curated *and* generated tools.
 - **Discoverability:** for a battery of "describe-the-task" prompts, the agent

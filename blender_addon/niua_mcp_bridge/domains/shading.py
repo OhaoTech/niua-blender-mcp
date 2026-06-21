@@ -311,7 +311,10 @@ def add_image_texture(ctx: Ctx, payload: dict) -> dict:
     node_tree = _ensure_nodes(mat)
     principled = _principled(node_tree)
 
-    image = ctx.bpy.data.images.load(image_path)
+    try:
+        image = ctx.bpy.data.images.load(image_path)
+    except Exception as exc:  # noqa: BLE001 - Blender raises RuntimeError for bad image paths/formats
+        raise BridgeError(PRECONDITION, f"could not load image: {exc}", {"path": image_path}) from exc
     tex = node_tree.nodes.new("ShaderNodeTexImage")
     tex.image = image
     # Data textures (roughness/normal) must be Non-Color to render correctly.

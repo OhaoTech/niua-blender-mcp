@@ -172,8 +172,13 @@ def select_by_index(ctx: Ctx, payload: dict) -> dict:
         items = _mesh_items(obj.data, mode)
         indices = _parse_indices(payload.get("indices"), items)
         if action == "REPLACE":
-            for item in items:
-                item.select = False
+            for collection in (
+                getattr(obj.data, "vertices", []),
+                getattr(obj.data, "edges", []),
+                getattr(obj.data, "polygons", []),
+            ):
+                for item in collection:
+                    item.select = False
         for fallback, item in enumerate(items):
             index = int(getattr(item, "index", fallback))
             if index not in indices:

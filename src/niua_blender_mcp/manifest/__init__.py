@@ -2,8 +2,9 @@
 
 The manifest is generated inside Blender (scripts/gen_manifest.py) and committed
 as JSON. The server reads it here without ever importing bpy, so it works on
-machines with no Blender install. Powers capabilities.search/describe (tier 3)
-and the tier-2 code generator.
+machines with no Blender install. It powers offline search/describe helpers and
+the tier-2 code generator; the runtime capabilities domain in the Blender add-on
+uses live RNA so answers match the connected Blender session.
 """
 
 from __future__ import annotations

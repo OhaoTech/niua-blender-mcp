@@ -20550,36 +20550,6 @@
     }
    }
   },
-  "niua.import_asset": {
-   "category": "niua",
-   "description": "Download and import the asset from the pasted NIUA link",
-   "label": "Import",
-   "properties": {}
-  },
-  "niua.open_settings": {
-   "category": "niua",
-   "description": "Open the NIUA web settings page to manage API tokens",
-   "label": "Open NIUA Settings",
-   "properties": {}
-  },
-  "niua.open_web_app": {
-   "category": "niua",
-   "description": "Open the NIUA workbench \u2014 generate assets, chat, iterate on the web",
-   "label": "Open NIUA Web App",
-   "properties": {}
-  },
-  "niua.paste_clipboard": {
-   "category": "niua",
-   "description": "Paste the import link from clipboard",
-   "label": "Paste",
-   "properties": {}
-  },
-  "niua.test_connection": {
-   "category": "niua",
-   "description": "Verify the API is reachable and the token is valid",
-   "label": "Test Connection",
-   "properties": {}
-  },
   "nla.action_pushdown": {
    "category": "nla",
    "description": "Push action down onto the top of the NLA stack as a new strip",

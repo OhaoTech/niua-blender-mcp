@@ -24,7 +24,8 @@ standalone and decoupled**:
   (import) domain. Integration lives one level up, at the orchestrating agent, which
   holds all three MCPs and routes niua output into Blender import. This MCP is reusable
   outside niua entirely.
-- **niua-godot MCP** consumes Blender's exported files. Also decoupled.
+- A downstream engine/export MCP can consume Blender's exported files. That integration
+  remains decoupled and outside this repo.
 
 **Competitive landscape.** `youichi-uda/blender-mcp-pro` ($5/mo, 120+ hand-written
 tools, visible GUI, main-thread execution) already covers raw Blender features well. We

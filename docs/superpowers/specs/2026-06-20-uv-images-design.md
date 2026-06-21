@@ -1,7 +1,7 @@
 # Subsystem 9 Design: UV / Images
 
 Date: 2026-06-20
-Status: planned
+Status: implemented
 
 ## Goal
 

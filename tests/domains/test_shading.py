@@ -180,10 +180,13 @@ class FakeMaterials(dict):
 class FakeImages:
     def __init__(self) -> None:
         self.loaded = []
+        self.fail_load = False
 
     def load(self, path: str) -> FakeImage:
         import os
 
+        if self.fail_load:
+            raise RuntimeError("cannot load image")
         img = FakeImage(os.path.basename(path) or "image")
         self.loaded.append(path)
         return img
@@ -453,6 +456,23 @@ def test_add_image_texture_missing_material_not_found(env) -> None:
     assert exc.value.code == NOT_FOUND
 
 
+def test_add_image_texture_load_failure_is_precondition(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    dispatch_on_main(reg, "shading.create_material", {"name": "M"}, ctx)
+    bpy.images.fail_load = True
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "shading.add_image_texture",
+            {"material": "M", "image_path": "/tmp/missing.png"},
+            ctx,
+        )
+
+    assert exc.value.code == PRECONDITION
+
+
 # -- list_materials (read-only) --------------------------------------------------
 
 
@@ -564,6 +584,46 @@ def test_set_node_input_parses_json_value(env) -> None:
 
     assert out["input"]["default_value"] == 12.5
     assert bpy.materials["M"].node_tree.nodes.get("Noise").inputs["Scale"].default_value == 12.5
+
+
+def test_set_node_input_parses_json_vector_value(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    dispatch_on_main(reg, "shading.create_material", {"name": "M"}, ctx)
+    noise = dispatch_on_main(
+        reg,
+        "shading.add_node",
+        {"material": "M", "type": "ShaderNodeTexNoise", "name": "Noise"},
+        ctx,
+    )
+    node = bpy.materials["M"].node_tree.nodes.get(noise["node"]["name"])
+    node.inputs["Scale"].default_value = (0.0, 0.0, 0.0)
+
+    out = dispatch_on_main(
+        reg,
+        "shading.set_node_input",
+        {"material": "M", "node": "Noise", "input": "Scale", "value": "[1, 2, 3]"},
+        ctx,
+    )
+
+    assert out["input"]["default_value"] == [1.0, 2.0, 3.0]
+    assert node.inputs["Scale"].default_value == (1.0, 2.0, 3.0)
+
+
+def test_set_node_input_missing_node_raises_invalid_params(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    dispatch_on_main(reg, "shading.create_material", {"name": "M"}, ctx)
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "shading.set_node_input",
+            {"material": "M", "node": "Missing", "input": "Scale", "value": "1"},
+            ctx,
+        )
+
+    assert exc.value.code == INVALID_PARAMS
 
 
 def test_link_nodes_resolves_node_and_socket_names(env) -> None:

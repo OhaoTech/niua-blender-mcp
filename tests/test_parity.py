@@ -14,3 +14,13 @@ def test_server_commands_match_addon_handlers() -> None:
     }
     addon_commands = build_default_registry().names()
     assert server_commands == addon_commands
+
+
+def test_server_command_metadata_matches_addon_handlers() -> None:
+    registry = build_default_registry()
+    for spec in build_router().specs():
+        command_name = "capabilities.invoke" if spec.tier == "generated" else spec.command
+        command = registry.get(command_name)
+        assert command is not None
+        assert command.mutates == spec.mutates, command_name
+        assert command.feedback == spec.feedback, command_name

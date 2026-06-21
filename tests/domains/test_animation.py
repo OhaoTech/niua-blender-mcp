@@ -49,6 +49,22 @@ class FakeAction:
         self.frame_range = frame_range
 
 
+class FakeLayeredAction:
+    def __init__(self, name: str, fcurves=None, frame_range=(1.0, 10.0)) -> None:
+        self.name = name
+        self.frame_range = frame_range
+        self.slots = [object()]
+        self.layers = [types.SimpleNamespace(strips=[FakeStrip(fcurves or [])])]
+
+
+class FakeStrip:
+    def __init__(self, fcurves) -> None:
+        self._channelbag = types.SimpleNamespace(fcurves=list(fcurves))
+
+    def channelbag(self, slot):
+        return self._channelbag
+
+
 class FakeAnimData:
     def __init__(self, action: FakeAction | None = None) -> None:
         self.action = action
@@ -396,6 +412,22 @@ def test_list_actions_reports_actions(env) -> None:
     assert result["count"] == 2
     assert result["actions"][0] == {"name": "Walk", "fcurves": 2, "frame_range": [1.0, 24.0]}
     assert bpy.undo_pushes == []  # read-only
+
+
+def test_list_actions_counts_layered_action_fcurves(env) -> None:
+    ctx, bpy = env
+    bpy.actions.append(
+        FakeLayeredAction(
+            "Layered",
+            fcurves=[FakeFCurve("location"), FakeFCurve("location", index=1)],
+            frame_range=(1.0, 12.0),
+        )
+    )
+    reg = build_default_registry()
+
+    result = dispatch_on_main(reg, "anim.list_actions", {}, ctx)
+
+    assert result["actions"] == [{"name": "Layered", "fcurves": 2, "frame_range": [1.0, 12.0]}]
 
 
 # -- report (read-only) ------------------------------------------------------------

@@ -357,8 +357,9 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'niua_blender_mcp.manif
 
 The manifest is generated inside Blender (scripts/gen_manifest.py) and committed
 as JSON. The server reads it here without ever importing bpy, so it works on
-machines with no Blender install. Powers capabilities.search/describe (tier 3)
-and the tier-2 code generator.
+machines with no Blender install. Runtime capabilities.search/describe use live
+RNA; this manifest powers offline search/describe helpers and the tier-2 code
+generator.
 """
 
 from __future__ import annotations
@@ -1126,4 +1127,3 @@ git commit -m "docs: document three-tier capability surface and manifest workflo
   includes fixing the known `feedback.capture` WIREFRAME-renders-as-solid bug);
   game pipeline (LOD / collision / atlas / engine conventions).
 ```
-

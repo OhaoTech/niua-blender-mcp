@@ -1,7 +1,7 @@
 # Subsystem 8 Design: Materials / Shading / Nodes / Textures
 
 Date: 2026-06-20
-Status: planned
+Status: implemented
 
 ## Goal
 

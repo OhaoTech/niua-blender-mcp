@@ -253,17 +253,22 @@ def poll_operator(ctx: Ctx, payload: dict) -> dict:
     obj = payload.get("object") if isinstance(payload.get("object"), str) and payload.get("object") else None
     mode = payload.get("mode") if isinstance(payload.get("mode"), str) and payload.get("mode") else None
     select = _split_names(payload.get("select"), "select") if isinstance(payload.get("select"), str) and payload.get("select") else None
+    if obj is not None:
+        _get_object(ctx, obj)
+    if select is not None:
+        for name in select:
+            _get_object(ctx, name)
     try:
         with ctx.ensure(active=obj, mode=mode, select=select):
             poll = getattr(op, "poll", None)
             available = bool(poll()) if callable(poll) else True
     except BridgeError as exc:
-        return {"idname": idname, "available": False, "reason": exc.message}
+        return {"idname": idname, "ok": False, "available": False, "reason": exc.message}
     except Exception as exc:  # noqa: BLE001
-        return {"idname": idname, "available": False, "reason": str(exc)}
+        return {"idname": idname, "ok": False, "available": False, "reason": str(exc)}
     if not available:
-        return {"idname": idname, "available": False, "reason": "operator poll returned false"}
-    return {"idname": idname, "available": True}
+        return {"idname": idname, "ok": False, "available": False, "reason": "operator poll returned false"}
+    return {"idname": idname, "ok": True, "available": True}
 
 
 COMMANDS = [

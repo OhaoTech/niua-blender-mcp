@@ -317,6 +317,33 @@ def test_link_resolves_node_and_socket_names(monkeypatch) -> None:
     assert out["link"] in out["links"]
 
 
+def test_link_resolves_numeric_socket_indices(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    obj = bpy.add(FakeObject("Cube"))
+    mod = obj.modifiers.new(name="Nodes", type="NODES")
+    mod.node_group = FakeNodeGroup("GeoNodes")
+    transform = mod.node_group.nodes.new(type="GeometryNodeTransform")
+    transform.name = "Transform"
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "geometry_nodes.link",
+        {
+            "object": "Cube",
+            "modifier": "Nodes",
+            "from_node": "Group Input",
+            "from_socket": "0",
+            "to_node": "Transform",
+            "to_socket": "0",
+        },
+        ctx,
+    )
+
+    assert out["link"]["from_socket"] == "Geometry"
+    assert out["link"]["to_socket"] == "Geometry"
+
+
 def test_link_missing_node_raises_invalid_params(monkeypatch) -> None:
     ctx, bpy = env(monkeypatch)
     obj = bpy.add(FakeObject("Cube"))
@@ -338,4 +365,29 @@ def test_link_missing_node_raises_invalid_params(monkeypatch) -> None:
             },
             ctx,
         )
+    assert exc.value.code == INVALID_PARAMS
+
+
+def test_link_missing_socket_raises_invalid_params(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    obj = bpy.add(FakeObject("Cube"))
+    mod = obj.modifiers.new(name="Nodes", type="NODES")
+    mod.node_group = FakeNodeGroup("GeoNodes")
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "geometry_nodes.link",
+            {
+                "object": "Cube",
+                "modifier": "Nodes",
+                "from_node": "Group Input",
+                "from_socket": "Missing",
+                "to_node": "Group Output",
+                "to_socket": "Geometry",
+            },
+            ctx,
+        )
+
     assert exc.value.code == INVALID_PARAMS

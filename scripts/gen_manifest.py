@@ -13,7 +13,7 @@ import os
 
 import bpy  # available only inside Blender
 
-SKIP = {"wm", "screen", "file", "ui", "console", "preferences"}
+SKIP = {"wm", "screen", "file", "ui", "console", "preferences", "niua"}
 
 # Curated category -> craft domain + tier-2 allowlist. Extend as coverage grows.
 DOMAINS = {

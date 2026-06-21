@@ -287,13 +287,25 @@ def test_poll_operator_reports_available_and_unavailable_without_invoking(env):
         ctx,
     )
     assert out["idname"] == "mesh.subdivide"
+    assert out["ok"] is True
     assert out["available"] is True
 
     bpy.operator_poll_ok = False
     out2 = dispatch_on_main(reg, "context.poll_operator", {"idname": "mesh.subdivide"}, ctx)
     assert out2["idname"] == "mesh.subdivide"
+    assert out2["ok"] is False
     assert out2["available"] is False
     assert "poll" in out2["reason"]
+
+
+def test_poll_operator_missing_context_object_is_not_found(env):
+    ctx, _bpy = env
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "context.poll_operator", {"idname": "mesh.subdivide", "object": "Ghost"}, ctx)
+
+    assert exc.value.code == NOT_FOUND
 
 
 def test_poll_operator_unknown_operator_is_not_found(env):

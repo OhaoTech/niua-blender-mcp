@@ -121,16 +121,14 @@ def delete_keyframe(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "data_path": data_path, "frame": frame, "index": index}
 
 
-def _fcurves(obj: Any) -> list[Any]:
-    """Return the object's animation f-curves across Blender action layouts.
+def _action_fcurves(action: Any, slot: Any = None) -> list[Any]:
+    """Return an action's f-curves across Blender action layouts.
 
     Blender 4.4+ moved f-curves out of ``action.fcurves`` (removed entirely in 5.x)
     into slotted/layered actions: ``action.layers[].strips[].channelbag(slot).fcurves``.
-    We try the legacy flat list first (older Blender / fake-bpy unit tests), then fall
-    back to walking layered channelbags for the object's active action slot.
+    We try the legacy flat list first (older Blender / fake-bpy unit tests), then walk
+    layered channelbags for either the provided slot or every slot on the action.
     """
-    anim = getattr(obj, "animation_data", None)
-    action = getattr(anim, "action", None) if anim is not None else None
     if action is None:
         return []
 
@@ -141,20 +139,29 @@ def _fcurves(obj: Any) -> list[Any]:
     layers = getattr(action, "layers", None)
     if not layers:
         return []
-    slot = getattr(anim, "action_slot", None)
+    slots = [slot] if slot is not None else list(getattr(action, "slots", []) or [])
     out: list[Any] = []
     for layer in layers:
         for strip in getattr(layer, "strips", []) or []:
             channelbag = getattr(strip, "channelbag", None)
             if not callable(channelbag):
                 continue
-            try:
-                cb = channelbag(slot) if slot is not None else None
-            except (TypeError, RuntimeError):
-                cb = None
-            if cb is not None:
-                out.extend(getattr(cb, "fcurves", []) or [])
+            for candidate_slot in slots:
+                try:
+                    cb = channelbag(candidate_slot)
+                except (TypeError, RuntimeError):
+                    cb = None
+                if cb is not None:
+                    out.extend(getattr(cb, "fcurves", []) or [])
     return out
+
+
+def _fcurves(obj: Any) -> list[Any]:
+    """Return the object's animation f-curves across Blender action layouts."""
+    anim = getattr(obj, "animation_data", None)
+    action = getattr(anim, "action", None) if anim is not None else None
+    slot = getattr(anim, "action_slot", None) if anim is not None else None
+    return _action_fcurves(action, slot)
 
 
 def set_interpolation(ctx: Ctx, payload: dict) -> dict:
@@ -190,7 +197,7 @@ def list_actions(ctx: Ctx, payload: dict) -> dict:
         out.append(
             {
                 "name": getattr(action, "name", "?"),
-                "fcurves": len(list(getattr(action, "fcurves", []) or [])),
+                "fcurves": len(_action_fcurves(action)),
                 "frame_range": [float(v) for v in frame_range] if frame_range is not None else None,
             }
         )

@@ -244,8 +244,9 @@ invokable through a small default tool surface, while keeping curated tools firs
       describe through live RNA.
 
 Remaining layer-1 fill is additive: expand the manifest domain allowlists over time.
-Layer 2 remains a separate spec: senior craft verbs, judgment playbooks, deeper
-eyes, and game-pipeline conventions.
+Layer 2 has already started as a separate scaffold: senior craft verbs, judgment
+playbooks, deeper eyes, and game-pipeline conventions continue from the Phase A
+vertical slice below.
 
 ## Layer 2 Phase A vertical slice  ✅ DONE
 
@@ -254,18 +255,20 @@ topology eye, deterministic gate checker, modeling battery plus harness and judg
 stub, playbook store, retopo seed recipe, and `model.retopo_quads`. Wave 2
 (UV/bake/materials) and the Phase B convergence loop are next.
 
-## Project status — 7-phase plan COMPLETE  ✅
+## Project status — Layer 1 subsystem pass COMPLETE  ✅
 
-All seven phases (0–6) plus subsystem-1 app/session/file coverage are verified end to
-end against **real Blender 5.1.1 headless**, not just fake-bpy. The surface now has
-**79 curated add-on commands** and **96 server specs** including generated tier-2 tools:
-scene, app/session/files, mesh, uv, shading, modifiers, anim, rig, io, feedback,
-session, capabilities, modeling craft verbs, `rna` discovery/exec, introspection, and
-gated `system` escape hatches. Every phase added a domain pack without touching the
-kernel contract, kept handlers tiny, pushed exactly one undo step per successful scene
+The 12-subsystem Layer 1 pass is verified end to end against **real Blender 5.1.1
+headless**, not just fake-bpy. The surface now has **194 add-on commands** and **211
+server specs** including generated tier-2 tools:
+scene, app/session/files, outliner, context, object, mesh, non-mesh geometry,
+modifiers, geometry nodes, materials/shading/textures, UV/images, animation/rigging,
+rendering/cameras/lights/compositor, UI automation, io, feedback, session,
+capabilities, modeling craft verbs, `rna` discovery/exec, introspection, and gated
+`system` escape hatches. Every phase added a domain pack without touching the kernel
+contract, kept handlers tiny, pushed exactly one undo step per successful undoable scene
 mutation, and held parity. The full agentic spine is exercised headlessly: read →
 create/move → app/file save/open → introspect live RNA → edit
-mesh/uv/shading/modifiers/anim/rig → export an engine-neutral asset by requested format →
+mesh/uv/shading/modifiers/anim/rig/render/UI → export an engine-neutral asset by requested format →
 checkpoint/edit/revert (safe iterate) → critique bundle (analytic facts). The **only** part
 that remains a GUI/GPU demonstration is the *rendered pixels* of the eyes — the actual
 multi-angle/turntable/critique PNGs — which require a live GL context and so come back

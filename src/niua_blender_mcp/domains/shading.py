@@ -2,11 +2,8 @@
 
 Covers the hot path of material work: create a material, set its Principled BSDF
 parameters (base color, metallic, roughness, emission), assign a material to an
-object, and wire a single image-texture node to a Principled target (base color /
-roughness / normal). ``shading.list_materials`` is read-only inventory.
-
-Full arbitrary node-graph editing is deferred (DESIGN §12); this pack covers the
-Principled BSDF plus one texture node wired to a target, which is object-mode safe.
+object, wire image-texture nodes to Principled targets, and perform generic shader
+node add/link/default-value edits. ``shading.list_materials`` is read-only inventory.
 """
 
 from __future__ import annotations
