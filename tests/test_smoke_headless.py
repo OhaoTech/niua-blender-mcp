@@ -1247,6 +1247,34 @@ def test_lattice_gui_parity_workflow(bridge: BlenderBridge) -> None:
     assert exc.value.code == "precondition_failed"
 
 
+def test_lightprobe_gui_parity_workflow(bridge: BlenderBridge) -> None:
+    created = bridge.call("lightprobe.create", {"type": "SPHERE", "name": "ProbeSphere", "location": [0, 1, 2]})
+    assert created["object"] == "ProbeSphere"
+    assert created["type"] == "LIGHT_PROBE"
+    assert created["lightprobe"]["type"] == "SPHERE"
+    assert created["location"] == [0.0, 1.0, 2.0]
+
+    distance = bridge.call("lightprobe.set", {"name": "ProbeSphere", "property": "influence_distance", "value": "4.5"})
+    assert distance["value"] == pytest.approx(4.5)
+
+    visible = bridge.call("lightprobe.set", {"name": "ProbeSphere", "property": "show_influence", "value": "false"})
+    assert visible["value"] is False
+
+    report = bridge.call("lightprobe.report", {"name": "ProbeSphere"})
+    assert report["lightprobe"]["properties"]["influence_distance"]["value"] == pytest.approx(4.5)
+    assert report["lightprobe"]["properties"]["show_influence"]["value"] is False
+
+    volume = bridge.call("lightprobe.create", {"type": "VOLUME", "name": "ProbeVolume"})
+    assert volume["lightprobe"]["type"] == "VOLUME"
+
+    intensity = bridge.call("lightprobe.set", {"name": "ProbeVolume", "property": "intensity", "value": "2.0"})
+    assert intensity["value"] == pytest.approx(2.0)
+
+    listed = bridge.call("lightprobe.list", {})
+    names = {item["name"] for item in listed["lightprobes"]}
+    assert {"ProbeSphere", "ProbeVolume"} <= names
+
+
 def test_uv_images_workflow(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "UVHero"})
 
