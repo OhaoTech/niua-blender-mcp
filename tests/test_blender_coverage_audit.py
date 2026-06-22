@@ -70,11 +70,16 @@ def test_scans_blender_source_taxonomy(tmp_path: Path) -> None:
 def test_builds_context_and_data_type_coverage(tmp_path: Path) -> None:
     audit = _load_audit_module()
     source = _fake_blender_source(tmp_path / "blender")
+    tools = {
+        *audit.PREFIX_TOOL_RULES["modifiers"],
+        *audit.PREFIX_TOOL_RULES["object"],
+        "properties.report",
+    }
     mcp = audit.McpSurface(
         prefixes={"object", "modifiers", "properties", "rna", "capabilities"},
-        tool_count=12,
+        tool_count=len(tools),
         addon_command_count=10,
-        tools={"object.transform_get", "modifiers.list", "properties.report"},
+        tools=tools,
     )
 
     report = audit.build_report(source, mcp)
@@ -90,6 +95,29 @@ def test_builds_context_and_data_type_coverage(tmp_path: Path) -> None:
     assert by_data["volume"]["status"] == "partial"
     assert report["summary"]["partial"] >= 3
     assert report["summary"]["missing"] == 0
+
+
+def test_required_tools_prevent_placeholder_prefix_coverage(tmp_path: Path) -> None:
+    audit = _load_audit_module()
+    source = _fake_blender_source(tmp_path / "blender")
+    (source / "source/blender/editors/space_spreadsheet").mkdir(parents=True)
+    mcp = audit.McpSurface(
+        prefixes={"spreadsheet"},
+        tool_count=1,
+        addon_command_count=1,
+        tools={"spreadsheet.placeholder"},
+    )
+
+    report = audit.build_report(source, mcp)
+    by_editor = {row["name"]: row for row in report["coverage"]["editor_spaces"]}
+
+    assert by_editor["spreadsheet"]["status"] == "partial"
+    assert by_editor["spreadsheet"]["missing_prefixes"] == []
+    assert by_editor["spreadsheet"]["missing_tools"] == [
+        "spreadsheet.columns",
+        "spreadsheet.report",
+        "spreadsheet.rows",
+    ]
 
 
 def test_cli_json_and_fail_on_partial(tmp_path: Path, capsys) -> None:

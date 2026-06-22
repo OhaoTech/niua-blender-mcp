@@ -96,6 +96,267 @@ EDITOR_SPACE_RULES: dict[str, dict[str, Any]] = {
 }
 
 
+PREFIX_TOOL_RULES: dict[str, tuple[str, ...]] = {
+    "anim": (
+        "anim.insert_keyframe",
+        "anim.keyframes",
+        "anim.report",
+        "anim.set_timeline",
+        "anim.timeline",
+    ),
+    "api": ("api.report", "api.search"),
+    "app": (
+        "app.addons",
+        "app.file_new",
+        "app.file_open",
+        "app.file_save",
+        "app.file_save_as",
+        "app.file_save_copy",
+        "app.info",
+        "app.preferences_summary",
+        "app.redo",
+        "app.undo",
+        "app.workspaces",
+    ),
+    "camera": ("camera.create", "camera.list", "camera.report", "camera.set", "camera.set_active"),
+    "constraints": (
+        "constraints.add",
+        "constraints.list",
+        "constraints.remove",
+        "constraints.report",
+        "constraints.set",
+    ),
+    "context": (
+        "context.info",
+        "context.mesh_select_mode",
+        "context.mode_set",
+        "context.poll_operator",
+        "context.select_objects",
+        "context.set_active",
+    ),
+    "geometry": (
+        "geometry.convert_to_mesh",
+        "geometry.create_curve",
+        "geometry.create_grease_pencil",
+        "geometry.create_metaball",
+        "geometry.create_surface",
+        "geometry.report",
+    ),
+    "geometry_nodes": (
+        "geometry_nodes.add_node",
+        "geometry_nodes.create_modifier",
+        "geometry_nodes.link",
+        "geometry_nodes.report",
+    ),
+    "info": ("info.messages", "info.report"),
+    "io": ("io.export", "io.import", "io.prepare_asset"),
+    "lattice": (
+        "lattice.convert_to_mesh",
+        "lattice.create",
+        "lattice.point_set",
+        "lattice.report",
+        "lattice.set",
+    ),
+    "light": ("light.create", "light.list", "light.report", "light.set"),
+    "lightprobe": (
+        "lightprobe.create",
+        "lightprobe.list",
+        "lightprobe.report",
+        "lightprobe.set",
+    ),
+    "mesh": (
+        "mesh.bevel",
+        "mesh.delete",
+        "mesh.edge_face_add",
+        "mesh.extrude",
+        "mesh.fill",
+        "mesh.merge",
+        "mesh.quads_to_tris",
+        "mesh.remove_doubles",
+        "mesh.report",
+        "mesh.select_all",
+        "mesh.select_by_index",
+        "mesh.selection_report",
+        "mesh.subdivide",
+        "mesh.tris_to_quads",
+    ),
+    "modifiers": (
+        "modifiers.add",
+        "modifiers.apply",
+        "modifiers.copy",
+        "modifiers.list",
+        "modifiers.move",
+        "modifiers.remove",
+        "modifiers.set",
+        "modifiers.set_visibility",
+        "modifiers.types",
+    ),
+    "object": (
+        "object.bounds",
+        "object.create",
+        "object.delete",
+        "object.duplicate",
+        "object.origin_set",
+        "object.rename",
+        "object.transform_apply",
+        "object.transform_get",
+        "object.transform_set",
+    ),
+    "outliner": (
+        "outliner.collection_create",
+        "outliner.collection_delete",
+        "outliner.collection_rename",
+        "outliner.collection_visibility_set",
+        "outliner.describe",
+        "outliner.find",
+        "outliner.object_link",
+        "outliner.object_move",
+        "outliner.object_unlink",
+        "outliner.parent_clear",
+        "outliner.parent_set",
+        "outliner.tree",
+        "outliner.view_layer_create",
+        "outliner.view_layer_delete",
+        "outliner.view_layers",
+        "outliner.visibility_set",
+    ),
+    "particles": (
+        "particles.add",
+        "particles.remove",
+        "particles.report",
+        "particles.set",
+        "particles.systems",
+    ),
+    "physics": (
+        "physics.add",
+        "physics.field_report",
+        "physics.field_set",
+        "physics.remove",
+        "physics.report",
+        "physics.set",
+    ),
+    "pointcloud": (
+        "pointcloud.attributes",
+        "pointcloud.list",
+        "pointcloud.report",
+        "pointcloud.set",
+    ),
+    "project": ("project.files", "project.report", "project.settings"),
+    "properties": (
+        "properties.get",
+        "properties.object_report",
+        "properties.report",
+        "properties.set",
+        "properties.unset",
+    ),
+    "render": ("render.set_settings", "render.settings", "render.still"),
+    "rig": (
+        "rig.add_armature",
+        "rig.add_bone",
+        "rig.assign_weights",
+        "rig.clear_pose",
+        "rig.constraint_add",
+        "rig.constraint_remove",
+        "rig.constraints",
+        "rig.list_bones",
+        "rig.pose_report",
+        "rig.report",
+        "rig.set_bone_transform",
+        "rig.set_pose_bone",
+        "rig.vertex_group_create",
+        "rig.vertex_groups",
+    ),
+    "scene": ("scene.create_object", "scene.info", "scene.set_transform"),
+    "script": ("script.paths", "script.reload", "script.report", "script.run_file"),
+    "sequencer": (
+        "sequencer.modifier_add",
+        "sequencer.modifier_remove",
+        "sequencer.modifier_set",
+        "sequencer.modifiers",
+        "sequencer.report",
+        "sequencer.strip_add",
+        "sequencer.strip_remove",
+        "sequencer.strip_set",
+    ),
+    "shaderfx": (
+        "shaderfx.add",
+        "shaderfx.list",
+        "shaderfx.remove",
+        "shaderfx.report",
+        "shaderfx.set",
+        "shaderfx.types",
+    ),
+    "shading": (
+        "shading.add_node",
+        "shading.assign_material",
+        "shading.create_material",
+        "shading.link_nodes",
+        "shading.list_materials",
+        "shading.report",
+        "shading.set_node_input",
+        "shading.set_principled",
+    ),
+    "speaker": ("speaker.create", "speaker.list", "speaker.report", "speaker.set"),
+    "spreadsheet": ("spreadsheet.columns", "spreadsheet.report", "spreadsheet.rows"),
+    "statusbar": ("statusbar.report",),
+    "system": ("system.execute_python",),
+    "text": (
+        "text.append",
+        "text.create",
+        "text.list",
+        "text.open",
+        "text.read",
+        "text.remove",
+        "text.save",
+        "text.write",
+    ),
+    "textures": ("textures.list", "textures.load", "textures.report"),
+    "tool": (
+        "tool.active",
+        "tool.set",
+        "tool.setting_get",
+        "tool.setting_set",
+        "tool.settings",
+    ),
+    "topbar": ("topbar.command_search", "topbar.report"),
+    "tracking": (
+        "tracking.clip_load",
+        "tracking.clips",
+        "tracking.marker_report",
+        "tracking.report",
+        "tracking.track_report",
+    ),
+    "ui": (
+        "ui.operator_invoke",
+        "ui.operator_poll",
+        "ui.redraw",
+        "ui.screenshot",
+        "ui.state",
+        "ui.windows",
+    ),
+    "uv": (
+        "uv.average_islands_scale",
+        "uv.cube_project",
+        "uv.export_layout",
+        "uv.layer_create",
+        "uv.layer_delete",
+        "uv.layer_set_active",
+        "uv.layers",
+        "uv.pack_islands",
+        "uv.report",
+        "uv.seams",
+        "uv.seams_from_islands",
+        "uv.set_seams",
+        "uv.smart_project",
+        "uv.smart_unwrap",
+        "uv.sphere_project",
+        "uv.unwrap",
+    ),
+    "volume": ("volume.create_empty", "volume.import", "volume.list", "volume.report", "volume.set"),
+    "world": ("world.report", "world.set"),
+}
+
+
 def scan_blender_source(source: Path) -> dict[str, Any]:
     source = source.resolve()
     rna_space = source / "source/blender/makesrna/intern/rna_space.cc"
@@ -148,15 +409,26 @@ def scan_mcp_surface() -> McpSurface:
     return McpSurface(prefixes=prefixes, tool_count=len(tools), addon_command_count=addon_count, tools=tools)
 
 
-def _coverage_row(name: str, rules: dict[str, Any], prefixes: set[str]) -> dict[str, Any]:
+def _required_tools(rules: dict[str, Any]) -> list[str]:
+    tools: list[str] = []
+    for prefix in rules.get("required", []):
+        tools.extend(PREFIX_TOOL_RULES.get(prefix, ()))
+    tools.extend(rules.get("tools", []))
+    return sorted(set(tools))
+
+
+def _coverage_row(name: str, rules: dict[str, Any], mcp: McpSurface) -> dict[str, Any]:
     required = list(rules.get("required", []))
     partial = list(rules.get("partial", []))
-    present_required = [prefix for prefix in required if prefix in prefixes]
-    present_partial = [prefix for prefix in partial if prefix in prefixes]
-    missing = [prefix for prefix in required if prefix not in prefixes]
-    if required and not missing:
+    required_tools = _required_tools(rules)
+    present_required = [prefix for prefix in required if prefix in mcp.prefixes]
+    present_partial = [prefix for prefix in partial if prefix in mcp.prefixes]
+    present_tools = [tool for tool in required_tools if tool in mcp.tools]
+    missing_prefixes = [prefix for prefix in required if prefix not in mcp.prefixes]
+    missing_tools = [tool for tool in required_tools if tool not in mcp.tools]
+    if required and not missing_prefixes and not missing_tools:
         status = "covered"
-    elif present_required or present_partial:
+    elif present_required or present_partial or present_tools:
         status = "partial"
     else:
         status = "missing"
@@ -166,7 +438,10 @@ def _coverage_row(name: str, rules: dict[str, Any], prefixes: set[str]) -> dict[
         "required_prefixes": required,
         "partial_prefixes": partial,
         "present_prefixes": sorted(set(present_required + present_partial)),
-        "missing_prefixes": missing,
+        "missing_prefixes": missing_prefixes,
+        "required_tools": required_tools,
+        "present_tools": present_tools,
+        "missing_tools": missing_tools,
     }
 
 
@@ -182,15 +457,15 @@ def build_report(source: Path, mcp: McpSurface | None = None) -> dict[str, Any]:
     source_scan = scan_blender_source(source)
     mcp = mcp or scan_mcp_surface()
     context_rows = [
-        _coverage_row(context, CONTEXT_RULES.get(context, {"required": [], "partial": ["properties", "rna"]}), mcp.prefixes)
+        _coverage_row(context, CONTEXT_RULES.get(context, {"required": [], "partial": ["properties", "rna"]}), mcp)
         for context in source_scan["properties_contexts"]
     ]
     data_rows = [
-        _coverage_row(data_type, DATA_TYPE_RULES.get(data_type, {"required": [data_type], "partial": ["properties", "rna"]}), mcp.prefixes)
+        _coverage_row(data_type, DATA_TYPE_RULES.get(data_type, {"required": [data_type], "partial": ["properties", "rna"]}), mcp)
         for data_type in source_scan["object_data_types"]
     ]
     editor_rows = [
-        _coverage_row(space, EDITOR_SPACE_RULES.get(space, {"required": [space], "partial": ["ui", "rna"]}), mcp.prefixes)
+        _coverage_row(space, EDITOR_SPACE_RULES.get(space, {"required": [space], "partial": ["ui", "rna"]}), mcp)
         for space in source_scan["editor_spaces"]
     ]
     return {
@@ -215,9 +490,14 @@ def _print_table(title: str, rows: list[dict[str, Any]]) -> None:
     print("-" * len(title))
     print(f"{'STATUS':8} {'NAME':18} {'MISSING':24} PRESENT")
     for row in rows:
+        missing = []
+        if row["missing_prefixes"]:
+            missing.append("prefix:" + ",".join(row["missing_prefixes"]))
+        if row["missing_tools"]:
+            missing.append("tools:" + ",".join(row["missing_tools"]))
         print(
             f"{row['status']:8} {row['name']:18} "
-            f"{','.join(row['missing_prefixes']) or '-':24} "
+            f"{';'.join(missing) or '-':24} "
             f"{','.join(row['present_prefixes']) or '-'}"
         )
     print()
