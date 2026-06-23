@@ -300,7 +300,7 @@ def test_router_contains_object_transform_mutation_tools() -> None:
 
 def test_router_contains_object_engine_readiness_tools() -> None:
     names = {spec.name for spec in build_router().specs()}
-    assert {"object.lod_create", "object.collision_proxy_create"} <= names
+    assert {"object.lod_create", "object.collision_proxy_create", "object.collision_hulls_create"} <= names
 
 
 def test_transform_get_returns_object_state(env) -> None:
@@ -482,6 +482,34 @@ def test_collision_proxy_create_adds_named_box_proxy_around_bounds(env) -> None:
     assert proxy is not None
     assert proxy.dimensions == [4.5, 5.5, 6.5]
     assert ("mesh.primitive_cube_add", {"size": 1.0, "location": [1.0, 2.0, 3.0]}) in bpy.op_calls
+
+
+def test_collision_hulls_create_splits_bounds_along_longest_axis(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "object.collision_hulls_create",
+        {"object": "Cube", "count": 2, "axis": "LONGEST", "margin": 0.1},
+        ctx,
+    )
+
+    first = bpy.data.objects.get("Cube_COL_00")
+    second = bpy.data.objects.get("Cube_COL_01")
+    assert out == {
+        "object": "Cube",
+        "axis": "Z",
+        "count": 2,
+        "proxies": ["Cube_COL_00", "Cube_COL_01"],
+        "dimensions": [[4.2, 5.2, 3.2], [4.2, 5.2, 3.2]],
+    }
+    assert first is not None
+    assert second is not None
+    assert first.dimensions == [4.2, 5.2, 3.2]
+    assert second.dimensions == [4.2, 5.2, 3.2]
+    assert ("mesh.primitive_cube_add", {"size": 1.0, "location": [1.0, 2.0, 1.5]}) in bpy.op_calls
+    assert ("mesh.primitive_cube_add", {"size": 1.0, "location": [1.0, 2.0, 4.5]}) in bpy.op_calls
 
 
 def test_delete_removes_multiple_objects_and_rejects_empty_list(env) -> None:

@@ -263,12 +263,18 @@ def test_gate_check_optimize_uses_engine_readiness_metrics(env):
     assert out["gates_pass"] is True
     assert out["metrics"]["engine"]["lod_count"] == 1
     assert out["metrics"]["engine"]["collision_proxy_count"] == 1
+    assert out["metrics"]["engine"]["lod_triangle_reduction_ok"] is True
+    assert out["metrics"]["engine"]["collision_bounds_valid"] is True
     assert [gate["path"] for gate in out["gates"]] == [
         "engine.within_triangle_budget",
         "engine.within_material_budget",
         "engine.within_texture_budget",
         "engine.has_lods",
         "engine.has_collision_proxy",
+        "engine.lod_triangle_reduction_ok",
+        "engine.lod_silhouette_preserved",
+        "engine.has_collision_hulls",
+        "engine.collision_bounds_valid",
     ]
 
 

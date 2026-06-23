@@ -7,7 +7,7 @@ user's viewport never moves, and degrades to ``available: false`` headless / no-
 
 from __future__ import annotations
 
-from ..kernel import Bool, Enum, Int, Str, ToolSpec
+from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec
 
 _VIEWS = ["current", "front", "back", "left", "right", "top", "bottom", "persp"]
 _SHADING = ["SOLID", "WIREFRAME", "MATERIAL", "RENDERED"]
@@ -80,6 +80,24 @@ SPECS = [
             "material_budget": Int(default=4, minimum=0, summary="Maximum material slots for the optimize gate"),
             "texture_budget": Int(default=8, minimum=0, summary="Maximum unique image textures for the optimize gate"),
             "min_lods": Int(minimum=0, summary="Minimum detected LOD variants for the optimize gate"),
+            "max_lod_triangle_ratio": Float(
+                default=0.75,
+                minimum=0.0,
+                maximum=1.0,
+                summary="Maximum allowed triangle ratio for each LOD relative to the source",
+            ),
+            "max_lod_bounds_delta": Float(
+                default=0.1,
+                minimum=0.0,
+                maximum=1.0,
+                summary="Maximum relative bounds delta allowed for LOD silhouette preservation",
+            ),
+            "min_collision_hulls": Int(default=1, minimum=0, summary="Minimum detected collision hull count"),
+            "max_collision_oversize_ratio": Float(
+                default=0.5,
+                minimum=0.0,
+                summary="Maximum collision union oversize ratio relative to the source bounds",
+            ),
             "max_texture_size": Int(default=2048, minimum=1, summary="Maximum texture dimension for material atlas readiness"),
             "export_profile": Str(default="GENERIC", summary="Export profile: GENERIC, GODOT, UNREAL, or CUSTOM"),
             "export_format": Str(default="GLB", summary="Planned export format for profile validation"),

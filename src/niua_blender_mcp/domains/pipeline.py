@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..kernel import Bool, Int, Str, ToolSpec
+from ..kernel import Bool, Float, Int, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
@@ -36,6 +36,24 @@ SPECS = [
             "material_budget": Int(default=4, minimum=0, summary="Optimize-stage material budget"),
             "texture_budget": Int(default=8, minimum=0, summary="Optimize-stage texture budget"),
             "min_lods": Int(minimum=0, summary="Optimize-stage minimum LOD count"),
+            "max_lod_triangle_ratio": Float(
+                default=0.75,
+                minimum=0.0,
+                maximum=1.0,
+                summary="Optimize-stage maximum LOD triangle ratio relative to the source",
+            ),
+            "max_lod_bounds_delta": Float(
+                default=0.1,
+                minimum=0.0,
+                maximum=1.0,
+                summary="Optimize-stage maximum relative bounds delta for LOD silhouette preservation",
+            ),
+            "min_collision_hulls": Int(default=1, minimum=0, summary="Optimize-stage minimum collision hull count"),
+            "max_collision_oversize_ratio": Float(
+                default=0.5,
+                minimum=0.0,
+                summary="Optimize-stage maximum collision union oversize ratio",
+            ),
             "max_texture_size": Int(default=2048, minimum=1, summary="Bake/material-stage maximum texture dimension"),
             "export_profile": Str(default="GENERIC", summary="Export profile: GENERIC, GODOT, UNREAL, or CUSTOM"),
             "export_format": Str(default="GLB", summary="Planned export format for export-preflight profile validation"),

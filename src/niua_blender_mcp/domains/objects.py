@@ -94,6 +94,21 @@ SPECS = [
         feedback="viewport",
     ),
     ToolSpec(
+        name="object.collision_hulls_create",
+        category="object",
+        summary="Create split box collision hulls across an object's bounds using generic Asset_COL_## names",
+        command="object.collision_hulls_create",
+        params={
+            "object": Str(required=True, summary="Source object to bound"),
+            "name_prefix": Str(default="", summary="Optional proxy prefix; default is <object>_COL"),
+            "count": Int(default=2, minimum=2, maximum=16, summary="Number of hull boxes to create"),
+            "axis": Enum(["LONGEST", "X", "Y", "Z"], default="LONGEST", summary="Axis used to split the bounds"),
+            "margin": Float(default=0.0, minimum=0.0, summary="Extra size added around each hull"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
         name="object.delete",
         category="object",
         summary="Delete one or more objects",

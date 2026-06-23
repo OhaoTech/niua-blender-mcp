@@ -81,13 +81,17 @@ _PACKS: dict[str, dict[str, Any]] = {
     },
     "optimize": {
         "stage": "optimize",
-        "standards": "Optimize validates universal game-engine readiness: triangle, material, and texture budgets plus at least one LOD and a collision proxy.",
+        "standards": "Optimize validates universal game-engine readiness: budgets, reduced LODs that preserve bounds, and collision hulls that cover the source without excessive oversize.",
         "targets": {
             "within_triangle_budget": True,
             "within_material_budget": True,
             "within_texture_budget": True,
             "has_lods": True,
             "has_collision_proxy": True,
+            "lod_triangle_reduction_ok": True,
+            "lod_silhouette_preserved": True,
+            "has_collision_hulls": True,
+            "collision_bounds_valid": True,
         },
         "sources": [
             {"title": "Khronos glTF Asset Pipeline", "locator": "Khronos glTF asset workflow"},
@@ -99,6 +103,10 @@ _PACKS: dict[str, dict[str, Any]] = {
             "engine.within_texture_budget": "Reuse texture images or atlas maps so the asset stays inside the texture budget.",
             "engine.has_lods": "Create at least one named LOD variant such as Asset_LOD1.",
             "engine.has_collision_proxy": "Create a simple named collision proxy such as Asset_COL or UCX_Asset_00.",
+            "engine.lod_triangle_reduction_ok": "Lower each LOD triangle ratio or apply the decimate modifier before export.",
+            "engine.lod_silhouette_preserved": "Keep LOD bounds close to the source so the exported silhouette does not collapse.",
+            "engine.has_collision_hulls": "Create enough named collision hulls for the asset class, for example Asset_COL_00 and Asset_COL_01.",
+            "engine.collision_bounds_valid": "Resize or split collision hulls so their union covers the source without excessive oversize.",
         },
     },
     "export_preflight": {

@@ -24,6 +24,10 @@ def test_optimize_stage_gates_pass_engine_ready_metrics():
             "within_texture_budget": True,
             "has_lods": True,
             "has_collision_proxy": True,
+            "lod_triangle_reduction_ok": True,
+            "lod_silhouette_preserved": True,
+            "has_collision_hulls": True,
+            "collision_bounds_valid": True,
         }
     }
 
@@ -36,6 +40,10 @@ def test_optimize_stage_gates_pass_engine_ready_metrics():
         "engine.within_texture_budget",
         "engine.has_lods",
         "engine.has_collision_proxy",
+        "engine.lod_triangle_reduction_ok",
+        "engine.lod_silhouette_preserved",
+        "engine.has_collision_hulls",
+        "engine.collision_bounds_valid",
     ]
 
 

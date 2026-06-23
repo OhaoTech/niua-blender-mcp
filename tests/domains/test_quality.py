@@ -271,7 +271,7 @@ def test_quality_includes_engine_readiness_metrics(env) -> None:
         min_lods=1,
     )["engine"]
 
-    assert engine == {
+    expected = {
         "triangles": 4,
         "triangle_budget": 12,
         "within_triangle_budget": True,
@@ -287,6 +287,24 @@ def test_quality_includes_engine_readiness_metrics(env) -> None:
         "collision_proxy_count": 1,
         "has_collision_proxy": True,
     }
+    for key, value in expected.items():
+        assert engine[key] == value
+    assert engine["lods"] == [
+        {
+            "name": "Cube_LOD1",
+            "level": 1,
+            "triangles": 2,
+            "triangle_ratio": 0.5,
+            "bounds_delta": 0.0,
+        }
+    ]
+    assert engine["lod_triangle_reduction_ok"] is True
+    assert engine["lod_silhouette_preserved"] is True
+    assert engine["min_collision_hulls"] == 1
+    assert engine["has_collision_hulls"] is True
+    assert engine["collision_covers_source"] is True
+    assert engine["collision_tight"] is True
+    assert engine["collision_bounds_valid"] is True
 
 
 def test_engine_readiness_budget_failures_are_explicit(env) -> None:
@@ -313,6 +331,53 @@ def test_engine_readiness_budget_failures_are_explicit(env) -> None:
     assert engine["within_texture_budget"] is False
     assert engine["has_lods"] is False
     assert engine["has_collision_proxy"] is False
+    assert engine["lod_triangle_reduction_ok"] is False
+    assert engine["lod_silhouette_preserved"] is False
+    assert engine["has_collision_hulls"] is False
+    assert engine["collision_bounds_valid"] is False
+
+
+def test_engine_readiness_lod_and_collision_quality_failures_are_explicit(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)
+    bpy.add(FakeObj("Cube", data=mesh, dimensions=(4.0, 4.0, 4.0)))
+    bpy.add(FakeObj("Cube_LOD1", data=mesh, dimensions=(2.0, 4.0, 4.0)))
+    bpy.add(FakeObj("Cube_COL", data=mesh, dimensions=(10.0, 10.0, 10.0)))
+
+    engine = _quality(
+        env,
+        "Cube",
+        min_lods=1,
+        max_lod_triangle_ratio=0.5,
+        max_lod_bounds_delta=0.1,
+        min_collision_hulls=2,
+        max_collision_oversize_ratio=0.25,
+    )["engine"]
+
+    assert engine["lods"][0]["triangle_ratio"] == 1.0
+    assert engine["lods"][0]["bounds_delta"] == 0.5
+    assert engine["lod_triangle_reduction_ok"] is False
+    assert engine["lod_silhouette_preserved"] is False
+    assert engine["collision_proxy_count"] == 1
+    assert engine["min_collision_hulls"] == 2
+    assert engine["has_collision_hulls"] is False
+    assert engine["collision_covers_source"] is True
+    assert engine["collision_oversize_ratio"] == 1.5
+    assert engine["collision_tight"] is False
+    assert engine["collision_bounds_valid"] is False
+
+
+def test_engine_readiness_allows_optional_lod_and_collision_requirements(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+
+    engine = _quality(env, "Cube", min_lods=0, min_collision_hulls=0)["engine"]
+
+    assert engine["has_lods"] is True
+    assert engine["lod_triangle_reduction_ok"] is True
+    assert engine["lod_silhouette_preserved"] is True
+    assert engine["has_collision_hulls"] is True
+    assert engine["collision_bounds_valid"] is True
 
 
 def test_quality_includes_material_production_metrics(env) -> None:

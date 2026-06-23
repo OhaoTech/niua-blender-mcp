@@ -33,6 +33,10 @@ _GATES = {
         {"path": "engine.within_texture_budget", "op": "==", "value": True},
         {"path": "engine.has_lods", "op": "==", "value": True},
         {"path": "engine.has_collision_proxy", "op": "==", "value": True},
+        {"path": "engine.lod_triangle_reduction_ok", "op": "==", "value": True},
+        {"path": "engine.lod_silhouette_preserved", "op": "==", "value": True},
+        {"path": "engine.has_collision_hulls", "op": "==", "value": True},
+        {"path": "engine.collision_bounds_valid", "op": "==", "value": True},
     ],
     "export_preflight": [
         {"path": "scale.transform_applied", "op": "==", "value": True},

@@ -87,6 +87,10 @@ def _center(corners: list[list[float]]) -> list[float]:
     return [sum(corner[i] for corner in corners) / len(corners) for i in range(3)]
 
 
+def _rounded_vec(values: list[float]) -> list[float]:
+    return [round(float(value), 10) for value in values]
+
+
 def _bounds_state(obj: Any) -> dict:
     local = [_float_list(corner) for corner in (getattr(obj, "bound_box", []) or [])]
     matrix = getattr(obj, "matrix_world", None)
@@ -98,6 +102,17 @@ def _bounds_state(obj: Any) -> dict:
         "world": world,
         "center": _center(world),
     }
+
+
+def _create_box_proxy(ctx: Ctx, name: str, center: list[float], dimensions: list[float], before: set[str]) -> Any:
+    ctx.bpy.ops.mesh.primitive_cube_add(size=1.0, location=_rounded_vec(center))
+    proxy = _created(ctx, before)
+    proxy.name = name
+    proxy.dimensions = _rounded_vec(dimensions)
+    if hasattr(proxy, "display_type"):
+        proxy.display_type = "WIRE"
+    before.add(getattr(proxy, "name", ""))
+    return proxy
 
 
 def _scene_objects(ctx: Ctx) -> list[Any]:
@@ -302,17 +317,61 @@ def collision_proxy_create(ctx: Ctx, payload: dict) -> dict:
     dimensions = bounds_state["dimensions"] or _float_list(getattr(obj, "dimensions", [1.0, 1.0, 1.0]))
     dimensions = [float(dim) + (margin * 2.0) for dim in dimensions]
     before = {getattr(candidate, "name", "") for candidate in _scene_objects(ctx)}
-    ctx.bpy.ops.mesh.primitive_cube_add(size=1.0, location=center)
-    proxy = _created(ctx, before)
-    proxy.name = name
-    proxy.dimensions = dimensions
-    if hasattr(proxy, "display_type"):
-        proxy.display_type = "WIRE"
+    proxy = _create_box_proxy(ctx, name, center, dimensions, before)
     return {
         "object": getattr(obj, "name", ""),
         "proxy": getattr(proxy, "name", ""),
         "shape": shape,
-        "dimensions": dimensions,
+        "dimensions": _rounded_vec(dimensions),
+    }
+
+
+def collision_hulls_create(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    count = int(payload.get("count", 2))
+    if count < 2:
+        raise BridgeError(INVALID_PARAMS, "count must be >= 2")
+    if count > 16:
+        raise BridgeError(INVALID_PARAMS, "count must be <= 16")
+    margin = float(payload.get("margin", 0.0))
+    if margin < 0.0:
+        raise BridgeError(INVALID_PARAMS, "margin must be >= 0")
+
+    bounds_state = _bounds_state(obj)
+    center = bounds_state["center"] or _float_list(getattr(obj, "location", [0.0, 0.0, 0.0]))
+    dimensions = bounds_state["dimensions"] or _float_list(getattr(obj, "dimensions", [1.0, 1.0, 1.0]))
+    axis = str(payload.get("axis", "LONGEST")).upper()
+    if axis == "LONGEST":
+        axis_index = max(range(3), key=lambda i: dimensions[i])
+    elif axis in {"X", "Y", "Z"}:
+        axis_index = {"X": 0, "Y": 1, "Z": 2}[axis]
+    else:
+        raise BridgeError(INVALID_PARAMS, f"unsupported collision hull axis: {axis}")
+    axis_name = ["X", "Y", "Z"][axis_index]
+
+    name_prefix = payload.get("name_prefix")
+    if not isinstance(name_prefix, str) or not name_prefix:
+        name_prefix = f"{getattr(obj, 'name', 'Object')}_COL"
+
+    segment = dimensions[axis_index] / count
+    before = {getattr(candidate, "name", "") for candidate in _scene_objects(ctx)}
+    names: list[str] = []
+    proxy_dimensions: list[list[float]] = []
+    for index in range(count):
+        proxy_center = list(center)
+        proxy_center[axis_index] = center[axis_index] - (dimensions[axis_index] / 2.0) + (segment * (index + 0.5))
+        dims = [float(dim) + (margin * 2.0) for dim in dimensions]
+        dims[axis_index] = segment + (margin * 2.0)
+        proxy = _create_box_proxy(ctx, f"{name_prefix}_{index:02d}", proxy_center, dims, before)
+        names.append(getattr(proxy, "name", ""))
+        proxy_dimensions.append(_rounded_vec(dims))
+
+    return {
+        "object": getattr(obj, "name", ""),
+        "axis": axis_name,
+        "count": count,
+        "proxies": names,
+        "dimensions": proxy_dimensions,
     }
 
 
@@ -392,6 +451,7 @@ COMMANDS = [
     Command("object.duplicate", duplicate, mutates=True, feedback="viewport"),
     Command("object.lod_create", lod_create, mutates=True, feedback="viewport"),
     Command("object.collision_proxy_create", collision_proxy_create, mutates=True, feedback="viewport"),
+    Command("object.collision_hulls_create", collision_hulls_create, mutates=True, feedback="viewport"),
     Command("object.delete", delete, mutates=True, feedback="viewport"),
     Command("object.rename", rename, mutates=True, feedback="viewport"),
     Command("object.transform_set", transform_set, mutates=True, feedback="viewport"),
