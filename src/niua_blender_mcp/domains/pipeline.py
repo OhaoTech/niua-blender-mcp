@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..kernel import Str, ToolSpec
+from ..kernel import Int, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
@@ -53,5 +53,17 @@ SPECS = [
             "stage": Str(summary="Stage checkpoint to restore; defaults to current stage"),
         },
         mutates=True,
+    ),
+    ToolSpec(
+        name="pipeline.self_critique",
+        category="pipeline",
+        summary="Explain failed stage gates with grounded repair guidance",
+        command="pipeline.self_critique",
+        params={
+            "object": Str(required=True, summary="Object whose current stage should be critiqued"),
+            "stage": Str(summary="Stage to critique; defaults to current stage"),
+            "attempt": Int(default=1, minimum=1, maximum=20, summary="Current bounded retry attempt"),
+            "max_attempts": Int(default=3, minimum=1, maximum=20, summary="Retry budget for this stage"),
+        },
     ),
 ]

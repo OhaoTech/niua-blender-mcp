@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from ..context import Ctx
+from ..core import knowledge
 from ..core import pipeline as store
+from ..core.self_critique import critique_stage
 from ..core import session as session_store
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
@@ -119,10 +121,36 @@ def rollback(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "stage": stage, "label": label, "state": state_out}
 
 
+def self_critique(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_object(ctx, payload)
+    checked = gate_check(ctx, {"object": obj.name, "stage": payload.get("stage")})
+    stage = checked["stage"]
+    try:
+        pack = knowledge.stage_pack(stage)
+    except KeyError as exc:
+        raise BridgeError(INVALID_PARAMS, str(exc)) from exc
+    gate = {"gates": checked["gates"], "gates_pass": checked["gates_pass"]}
+    critique = critique_stage(
+        stage,
+        gate,
+        pack,
+        attempt=int(payload.get("attempt", 1)),
+        max_attempts=int(payload.get("max_attempts", 3)),
+    )
+    return {
+        "object": obj.name,
+        "stage": stage,
+        "gate": gate,
+        "critique": critique,
+        "state": checked["state"],
+    }
+
+
 COMMANDS = [
     Command("pipeline.start", start, mutates=False),
     Command("pipeline.status", status, mutates=False),
     Command("pipeline.gate_check", gate_check, mutates=False),
     Command("pipeline.advance", advance, mutates=False),
     Command("pipeline.rollback", rollback, mutates=True),
+    Command("pipeline.self_critique", self_critique, mutates=False),
 ]

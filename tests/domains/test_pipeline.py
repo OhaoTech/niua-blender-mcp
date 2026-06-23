@@ -159,6 +159,7 @@ def test_pipeline_specs_and_handlers_are_registered():
         "pipeline.gate_check": False,
         "pipeline.advance": False,
         "pipeline.rollback": True,
+        "pipeline.self_critique": False,
     }
 
     for name, mutates in expected_mutates.items():
@@ -271,3 +272,16 @@ def test_pipeline_rollback_restores_stage_checkpoint_and_pushes_undo(env):
     assert obj.data.tag == "base"
     assert len(obj.data.vertices) == len(_CUBE_VERTS)
     assert bpy.undo_pushes == ["niua:pipeline.rollback"]
+
+
+def test_pipeline_self_critique_returns_repair_guidance_for_failed_uv(env):
+    _ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    _dispatch(env, "pipeline.start", {"object": "Cube"})
+
+    out = _dispatch(env, "pipeline.self_critique", {"object": "Cube", "stage": "uv"})
+
+    assert out["stage"] == "uv"
+    assert out["gate"]["gates_pass"] is False
+    assert out["critique"]["failed_count"] >= 1
+    assert any("unwrap" in rec.lower() for rec in out["critique"]["recommendations"])
