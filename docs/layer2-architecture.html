@@ -368,7 +368,7 @@
     .wave-band {
       margin-top: 18px;
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 12px;
     }
 
@@ -600,11 +600,12 @@
             </div>
           </article>
 
-          <article class="stage missing-stage">
+          <article class="stage next-stage">
             <div class="stage-index">08</div>
             <h3>Optimize / LOD</h3>
             <p>Triangle budget, material count, texture budget, collision and LOD variants.</p>
             <div class="stage-status">
+              <span class="tag next-tag">Wave 4 next</span>
               <span class="tag missing-tag">perf gates</span>
               <span class="tag missing-tag">lod/collision</span>
             </div>
@@ -613,11 +614,11 @@
           <article class="stage next-stage">
             <div class="stage-index">09</div>
             <h3>Export</h3>
-            <p>glTF/GLB export, Godot conventions, transform sanity, external asset validation.</p>
+            <p>glTF/GLB export, engine-profile conventions, transform sanity, external asset validation.</p>
             <div class="stage-status">
               <span class="tag done-tag">glTF export</span>
               <span class="tag done-tag">export preflight</span>
-              <span class="tag missing-tag">Godot validator</span>
+              <span class="tag missing-tag">engine validators</span>
             </div>
           </article>
         </div>
@@ -653,7 +654,7 @@
             </article>
             <article class="pillar panel">
               <h3>4. Grounded knowledge</h3>
-              <p class="small">Human-reviewed stage standards are loaded as versioned packs; exemplar targets and deeper sources continue in Wave 3.</p>
+              <p class="small">Human-reviewed stage standards are loaded as versioned packs; exemplar targets and deeper sources continue in later waves.</p>
             </article>
           </div>
         </section>
@@ -689,12 +690,28 @@
       </article>
       <article class="wave next-wave">
         <h3>Wave 4 <span class="tag next-tag">next</span></h3>
-        <p class="small"><strong>Breadth.</strong> More asset classes, LOD, collision, organic/sculpt and hard-surface variants.</p>
+        <p class="small"><strong>Engine readiness.</strong> Add optimize stage, perf metrics, LOD basics, collision proxies, and budget gates.</p>
+      </article>
+      <article class="wave">
+        <h3>Wave 5</h3>
+        <p class="small"><strong>Bake + material production.</strong> Normal/AO/cavity checks, material budgets, texture slots, and atlas-ready validation.</p>
+      </article>
+      <article class="wave">
+        <h3>Wave 6</h3>
+        <p class="small"><strong>Engine profiles.</strong> Parameterized Godot/Unreal/custom validators without hardcoded engine naming.</p>
+      </article>
+      <article class="wave">
+        <h3>Wave 7</h3>
+        <p class="small"><strong>Advanced LOD/collision.</strong> Silhouette-delta checks, multi-hull collision, and stronger proxy validation.</p>
+      </article>
+      <article class="wave">
+        <h3>Wave 8</h3>
+        <p class="small"><strong>Asset-class breadth.</strong> Hard-surface, organic/sculpt, generated blob cleanup, and from-scratch prop workflows.</p>
       </article>
     </section>
 
     <footer>
-      Current source of truth: Layer 2 Wave 3 branch after self-critique implementation. This diagram is explanatory, not an implementation spec.
+      Current source of truth: main after Layer 2 Wave 3. This diagram is explanatory, not an implementation spec.
     </footer>
   </main>
 </body>
