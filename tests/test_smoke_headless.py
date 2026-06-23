@@ -21,6 +21,8 @@ from urllib.parse import quote
 import pytest
 
 from niua_blender_mcp.bridge import BlenderBridge
+from niua_blender_mcp.evals.gates import check_gates
+from niua_blender_mcp.evals.stage_gates import stage_gates
 
 REPO = Path(__file__).resolve().parents[1]
 ADDON_DIR = REPO / "blender_addon"
@@ -691,6 +693,34 @@ def test_feedback_lookdev_eye(bridge: BlenderBridge) -> None:
     assert out["available"] is True
     assert len(out["images"]) == 4
     assert all(img.get("data") for img in out["images"])
+
+
+def test_layer2_wave1_perception_foundation_acceptance(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "Wave1Cube"})
+    bridge.call("uv.smart_unwrap", {"object": "Wave1Cube", "island_margin": 0.02})
+
+    quality = bridge.call("feedback.quality", {"object": "Wave1Cube"})
+    assert quality["topology"]["quad_ratio"] == 1.0
+    assert quality["topology"]["ngons"] == 0
+    assert quality["uv"]["has_uvs"] is True
+    assert quality["orientation"]["degenerate_faces"] == 0
+
+    assert check_gates(quality, stage_gates("retopo"))["gates_pass"] is True
+    assert check_gates(quality, stage_gates("orientation"))["gates_pass"] is True
+
+    eyes = [
+        bridge.call("feedback.topology", {"object": "Wave1Cube", "res": 256}),
+        bridge.call("feedback.uv", {"object": "Wave1Cube", "res": 256}),
+        bridge.call("feedback.orientation", {"object": "Wave1Cube", "res": 256}),
+        bridge.call("feedback.wire_shaded", {"object": "Wave1Cube", "res": 256}),
+        bridge.call("feedback.lookdev", {"object": "Wave1Cube", "count": 4, "res": 256}),
+    ]
+    for eye in eyes:
+        assert isinstance(eye.get("available"), bool)
+    assert "analytics" in eyes[1]
+    assert "analytics" in eyes[2]
+    assert "analytics" in eyes[3]
+    assert "analytics" in eyes[4]
 
 
 def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:

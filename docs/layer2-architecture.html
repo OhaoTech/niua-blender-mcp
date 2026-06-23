@@ -376,8 +376,17 @@
       min-height: 136px;
       padding: 14px;
       border: 1px solid var(--line);
+      border-top: 6px solid var(--future);
       border-radius: 8px;
       background: rgba(255, 255, 255, 0.82);
+    }
+
+    .wave.done-wave {
+      border-top-color: var(--done);
+    }
+
+    .wave.next-wave {
+      border-top-color: var(--gate);
     }
 
     .wave h3 {
@@ -654,12 +663,12 @@
     </section>
 
     <section class="wave-band" aria-label="Build waves">
-      <article class="wave">
-        <h3>Wave 1</h3>
-        <p class="small"><strong>Perception + verification.</strong> Build the missing eyes and deterministic metrics first.</p>
+      <article class="wave done-wave">
+        <h3>Wave 1 <span class="tag done-tag">built</span></h3>
+        <p class="small"><strong>Perception + verification.</strong> Built Wave 1 eyes, metrics, gate profiles, and live acceptance.</p>
       </article>
-      <article class="wave">
-        <h3>Wave 2</h3>
+      <article class="wave next-wave">
+        <h3>Wave 2 <span class="tag next-tag">next</span></h3>
         <p class="small"><strong>Pipeline spine.</strong> Add stage registry, state, gates, checkpoint, and one end-to-end asset path.</p>
       </article>
       <article class="wave">
