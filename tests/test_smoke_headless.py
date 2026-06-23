@@ -723,6 +723,67 @@ def test_layer2_wave1_perception_foundation_acceptance(bridge: BlenderBridge) ->
     assert "analytics" in eyes[4]
 
 
+def test_layer2_wave2_pipeline_spine_acceptance(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "PipeHero"})
+    for layer in bridge.call("uv.layers", {"object": "PipeHero"})["layers"]:
+        bridge.call("uv.layer_delete", {"object": "PipeHero", "name": layer})
+    assert bridge.call("uv.report", {"object": "PipeHero"})["has_uvs"] is False
+
+    started = bridge.call("pipeline.start", {"object": "PipeHero"})
+    assert started["state"]["current_stage"] == "intake"
+
+    intake = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert intake["stage"] == "intake"
+    assert intake["gates_pass"] is True
+    assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "repair"
+
+    repair = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert repair["stage"] == "repair"
+    assert repair["gates_pass"] is True
+    assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "retopo"
+
+    retopo = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert retopo["stage"] == "retopo"
+    assert retopo["gates_pass"] is True
+    assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "uv"
+
+    uv_before = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert uv_before["stage"] == "uv"
+    assert uv_before["gates_pass"] is False
+
+    bridge.call("uv.smart_unwrap", {"object": "PipeHero", "island_margin": 0.02})
+    bridge.call("uv.pack_islands", {"object": "PipeHero", "margin": 0.01})
+    uv_after = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert uv_after["stage"] == "uv"
+    assert uv_after["gates_pass"] is True
+    assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "material"
+    assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "export_preflight"
+
+    preflight = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert preflight["stage"] == "export_preflight"
+    assert preflight["gates_pass"] is True
+
+    fd, path = tempfile.mkstemp(suffix=".glb")
+    os.close(fd)
+    os.unlink(path)
+    try:
+        exported = bridge.call("io.export", {"path": path, "format": "GLB", "objects": "PipeHero"})
+        assert exported["format"] == "GLB"
+        assert exported["object_count"] == 1
+        assert os.path.exists(path) and os.path.getsize(path) > 0
+        with open(path, "rb") as fh:
+            assert fh.read(4) == b"glTF"
+
+        done = bridge.call("pipeline.advance", {"object": "PipeHero"})
+        assert done["to_stage"] == "exported"
+        status = bridge.call("pipeline.status", {"object": "PipeHero"})
+        assert status["state"]["current_stage"] == "exported"
+        assert status["state"]["complete"] is True
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
 def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:
     # Orbit. Same contract: envelope shape holds even when rendering is unavailable
     # headless, and 'count' is honored / clamped into 2..24.
