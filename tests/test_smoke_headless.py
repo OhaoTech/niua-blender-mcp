@@ -784,6 +784,27 @@ def test_layer2_wave2_pipeline_spine_acceptance(bridge: BlenderBridge) -> None:
             os.unlink(path)
 
 
+def test_layer2_wave3_self_critique_acceptance(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "CritPipeHero"})
+    for layer in bridge.call("uv.layers", {"object": "CritPipeHero"})["layers"]:
+        bridge.call("uv.layer_delete", {"object": "CritPipeHero", "name": layer})
+
+    bridge.call("pipeline.start", {"object": "CritPipeHero"})
+    assert bridge.call("pipeline.advance", {"object": "CritPipeHero"})["to_stage"] == "repair"
+    assert bridge.call("pipeline.advance", {"object": "CritPipeHero"})["to_stage"] == "retopo"
+    assert bridge.call("pipeline.advance", {"object": "CritPipeHero"})["to_stage"] == "uv"
+
+    before = bridge.call("pipeline.self_critique", {"object": "CritPipeHero", "stage": "uv"})
+    assert before["gate"]["gates_pass"] is False
+    assert any("unwrap" in rec.lower() for rec in before["critique"]["recommendations"])
+
+    bridge.call("uv.smart_unwrap", {"object": "CritPipeHero", "island_margin": 0.02})
+    bridge.call("uv.pack_islands", {"object": "CritPipeHero", "margin": 0.01})
+    after = bridge.call("pipeline.self_critique", {"object": "CritPipeHero", "stage": "uv"})
+    assert after["gate"]["gates_pass"] is True
+    assert after["critique"]["failed_count"] == 0
+
+
 def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:
     # Orbit. Same contract: envelope shape holds even when rendering is unavailable
     # headless, and 'count' is honored / clamped into 2..24.
