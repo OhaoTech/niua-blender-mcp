@@ -616,6 +616,26 @@ def test_topology_overlay_renders_two_distinct_images(bridge: BlenderBridge) -> 
     assert data["facetype"] != data["wireframe"]
 
 
+def test_feedback_uv_checker_eye(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "UVEyeCube"})
+    bridge.call("uv.smart_unwrap", {"object": "UVEyeCube", "island_margin": 0.02})
+
+    out = bridge.call("feedback.uv", {"object": "UVEyeCube", "view": "persp", "res": 256})
+    analytics = out["analytics"]
+    assert analytics["has_uvs"] is True
+    assert analytics["uv_layer_count"] >= 1
+    assert "texel_density_px_per_unit" in analytics
+
+    if not out.get("available"):
+        reason = out.get("reason", "")
+        if "OpenGL" in reason or "opengl" in reason or "GPU" in reason:
+            pytest.skip(f"headless renderer unavailable: {reason}")
+        pytest.fail(f"uv checker eye failed: {reason}")
+    assert out["available"] is True
+    assert out["images"][0]["mode"] == "checker"
+    assert out["images"][0]["data"]
+
+
 def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:
     # Orbit. Same contract: envelope shape holds even when rendering is unavailable
     # headless, and 'count' is honored / clamped into 2..24.

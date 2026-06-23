@@ -18,4 +18,16 @@ SPECS = [
             "res": Int(default=768, minimum=64, maximum=2048, summary="Square render resolution (px)"),
         },
     ),
+    ToolSpec(
+        name="feedback.uv",
+        category="feedback",
+        summary="Render a UV checker eye and return structured UV analytics",
+        command="feedback.uv",
+        params={
+            "object": Str(summary="Mesh to inspect (defaults to active)"),
+            "view": Enum(_VIEWS, default="persp", summary="Named view to render from"),
+            "res": Int(default=768, minimum=64, maximum=2048, summary="Square render resolution (px)"),
+            "texture_size": Int(default=1024, minimum=1, maximum=16384, summary="Reference texture size for UV analytics"),
+        },
+    ),
 ]
