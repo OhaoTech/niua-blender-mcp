@@ -52,7 +52,9 @@ def gate_check(ctx: Ctx, payload: dict) -> dict:
     except ValueError as exc:
         raise BridgeError(INVALID_PARAMS, str(exc)) from exc
 
-    metrics = quality(ctx, {"object": obj.name})
+    metrics_payload = dict(payload)
+    metrics_payload["object"] = obj.name
+    metrics = quality(ctx, metrics_payload)
     checked = store.check_gates(metrics, gates)
     gate_record = {
         "stage": stage,

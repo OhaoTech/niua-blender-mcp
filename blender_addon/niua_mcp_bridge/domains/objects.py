@@ -244,6 +244,78 @@ def duplicate(ctx: Ctx, payload: dict) -> dict:
     return _object_state(new_obj)
 
 
+def lod_create(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    level = int(payload.get("level", 1))
+    if level < 1:
+        raise BridgeError(INVALID_PARAMS, "level must be >= 1")
+    ratio = float(payload.get("ratio", 0.5))
+    if ratio <= 0.0 or ratio > 1.0:
+        raise BridgeError(INVALID_PARAMS, "ratio must be > 0 and <= 1")
+    name = payload.get("name")
+    if not isinstance(name, str) or not name:
+        name = f"{getattr(obj, 'name', 'Object')}_LOD{level}"
+
+    lod = obj.copy()
+    lod.name = name
+    data = getattr(obj, "data", None)
+    if data is not None and hasattr(data, "copy"):
+        lod.data = data.copy()
+    _link_duplicate(ctx, obj, lod)
+
+    modifier_name = "LOD_DECIMATE"
+    modifiers = getattr(lod, "modifiers", None)
+    modifier = None
+    if modifiers is not None and hasattr(modifiers, "new"):
+        modifier = modifiers.new(name=modifier_name, type="DECIMATE")
+        modifier.ratio = ratio
+
+    applied = bool(payload.get("apply", False))
+    if applied and modifier is not None:
+        with ctx.ensure(active=lod, mode="OBJECT", select=[lod]):
+            ctx.check_poll(ctx.bpy.ops.object.modifier_apply)
+            ctx.bpy.ops.object.modifier_apply(modifier=modifier.name)
+    return {
+        "object": getattr(obj, "name", ""),
+        "lod": getattr(lod, "name", ""),
+        "level": level,
+        "ratio": ratio,
+        "modifier": modifier_name if modifier is not None else None,
+        "applied": applied,
+    }
+
+
+def collision_proxy_create(ctx: Ctx, payload: dict) -> dict:
+    obj = ctx.get_object(payload.get("object"))
+    shape = str(payload.get("shape", "BOX")).upper()
+    if shape != "BOX":
+        raise BridgeError(INVALID_PARAMS, f"unsupported collision proxy shape: {shape}")
+    margin = float(payload.get("margin", 0.0))
+    if margin < 0.0:
+        raise BridgeError(INVALID_PARAMS, "margin must be >= 0")
+    name = payload.get("name")
+    if not isinstance(name, str) or not name:
+        name = f"{getattr(obj, 'name', 'Object')}_COL"
+
+    bounds_state = _bounds_state(obj)
+    center = bounds_state["center"] or _float_list(getattr(obj, "location", [0.0, 0.0, 0.0]))
+    dimensions = bounds_state["dimensions"] or _float_list(getattr(obj, "dimensions", [1.0, 1.0, 1.0]))
+    dimensions = [float(dim) + (margin * 2.0) for dim in dimensions]
+    before = {getattr(candidate, "name", "") for candidate in _scene_objects(ctx)}
+    ctx.bpy.ops.mesh.primitive_cube_add(size=1.0, location=center)
+    proxy = _created(ctx, before)
+    proxy.name = name
+    proxy.dimensions = dimensions
+    if hasattr(proxy, "display_type"):
+        proxy.display_type = "WIRE"
+    return {
+        "object": getattr(obj, "name", ""),
+        "proxy": getattr(proxy, "name", ""),
+        "shape": shape,
+        "dimensions": dimensions,
+    }
+
+
 def delete(ctx: Ctx, payload: dict) -> dict:
     objects = _parse_objects(ctx, payload.get("objects"))
     names = [getattr(obj, "name", "") for obj in objects]
@@ -318,6 +390,8 @@ def bounds(ctx: Ctx, payload: dict) -> dict:
 COMMANDS = [
     Command("object.create", create_object, mutates=True, feedback="viewport"),
     Command("object.duplicate", duplicate, mutates=True, feedback="viewport"),
+    Command("object.lod_create", lod_create, mutates=True, feedback="viewport"),
+    Command("object.collision_proxy_create", collision_proxy_create, mutates=True, feedback="viewport"),
     Command("object.delete", delete, mutates=True, feedback="viewport"),
     Command("object.rename", rename, mutates=True, feedback="viewport"),
     Command("object.transform_set", transform_set, mutates=True, feedback="viewport"),

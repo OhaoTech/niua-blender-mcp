@@ -32,6 +32,10 @@ SPECS = [
         params={
             "object": Str(required=True, summary="Object whose pipeline gates should be checked"),
             "stage": Str(summary="Stage to check; defaults to the object's current stage"),
+            "triangle_budget": Int(default=5000, minimum=0, summary="Optimize-stage triangle budget"),
+            "material_budget": Int(default=4, minimum=0, summary="Optimize-stage material budget"),
+            "texture_budget": Int(default=8, minimum=0, summary="Optimize-stage texture budget"),
+            "min_lods": Int(default=1, minimum=0, summary="Optimize-stage minimum LOD count"),
         },
     ),
     ToolSpec(

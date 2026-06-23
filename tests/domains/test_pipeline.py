@@ -227,6 +227,44 @@ def test_gate_check_named_stage_uses_stage_gate_profile(env):
     assert out["state"]["state"]["gates"]["repair"]["gates_pass"] is False
 
 
+def test_gate_check_optimize_uses_engine_readiness_metrics(env):
+    _ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    bpy.add(FakeObj("Cube_LOD1", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS[:2])))
+    bpy.add(FakeObj("Cube_COL", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    _dispatch(env, "pipeline.start", {"object": "Cube"})
+
+    out = _dispatch(env, "pipeline.gate_check", {"object": "Cube", "stage": "optimize"})
+
+    assert out["stage"] == "optimize"
+    assert out["gates_pass"] is True
+    assert out["metrics"]["engine"]["lod_count"] == 1
+    assert out["metrics"]["engine"]["collision_proxy_count"] == 1
+    assert [gate["path"] for gate in out["gates"]] == [
+        "engine.within_triangle_budget",
+        "engine.within_material_budget",
+        "engine.within_texture_budget",
+        "engine.has_lods",
+        "engine.has_collision_proxy",
+    ]
+
+
+def test_gate_check_optimize_accepts_budget_overrides(env):
+    _ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    bpy.add(FakeObj("Cube_LOD1", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS[:2])))
+    bpy.add(FakeObj("Cube_COL", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    _dispatch(env, "pipeline.start", {"object": "Cube"})
+
+    out = _dispatch(env, "pipeline.gate_check", {"object": "Cube", "stage": "optimize", "triangle_budget": 8})
+
+    assert out["gates_pass"] is False
+    assert out["metrics"]["engine"]["triangle_budget"] == 8
+    assert out["metrics"]["engine"]["triangles"] == 12
+    assert out["gates"][0]["path"] == "engine.within_triangle_budget"
+    assert out["gates"][0]["actual"] is False
+
+
 def test_pipeline_advance_creates_next_stage_checkpoint(env):
     _ctx, bpy = env
     bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))

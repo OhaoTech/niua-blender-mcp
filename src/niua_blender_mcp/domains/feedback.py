@@ -72,10 +72,14 @@ SPECS = [
     ToolSpec(
         name="feedback.quality",
         category="feedback",
-        summary="Objective quality metrics for a mesh: topology, UVs, orientation, symmetry, proportion, scale (read-only)",
+        summary="Objective quality metrics for a mesh: topology, UVs, orientation, symmetry, proportion, scale, engine readiness (read-only)",
         command="feedback.quality",
         params={
             "object": Str(summary="Mesh object to measure (defaults to active)"),
+            "triangle_budget": Int(default=5000, minimum=0, summary="Maximum triangles for the optimize gate"),
+            "material_budget": Int(default=4, minimum=0, summary="Maximum material slots for the optimize gate"),
+            "texture_budget": Int(default=8, minimum=0, summary="Maximum unique image textures for the optimize gate"),
+            "min_lods": Int(default=1, minimum=0, summary="Minimum detected LOD variants for the optimize gate"),
         },
     ),
 ]

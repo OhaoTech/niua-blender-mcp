@@ -69,6 +69,20 @@ class FakeDataBlock:
         return FakeDataBlock(f"{self.name}.copy")
 
 
+class FakeModifier:
+    def __init__(self, name: str, mod_type: str) -> None:
+        self.name = name
+        self.type = mod_type
+        self.ratio = None
+
+
+class FakeModifiers(list):
+    def new(self, name: str, type: str) -> FakeModifier:
+        mod = FakeModifier(name, type)
+        self.append(mod)
+        return mod
+
+
 class FakeObject:
     def __init__(self, name: str, obj_type: str = "MESH", data=None) -> None:
         self.name = name
@@ -84,6 +98,7 @@ class FakeObject:
         self.dimensions = [4.0, 5.0, 6.0]
         self.parent = None
         self.users_collection = []
+        self.modifiers = FakeModifiers()
         self.matrix_world = FakeMatrix(1.0, 2.0, 3.0)
         self.bound_box = [
             (-1.0, -1.0, -1.0),
@@ -114,6 +129,7 @@ class FakeObject:
         dup.delta_scale = list(self.delta_scale)
         dup.rotation_mode = self.rotation_mode
         dup.dimensions = list(self.dimensions)
+        dup.modifiers = FakeModifiers()
         dup.matrix_world = self.matrix_world
         dup.bound_box = list(self.bound_box)
         return dup
@@ -282,6 +298,11 @@ def test_router_contains_object_transform_mutation_tools() -> None:
     assert {"object.transform_set", "object.transform_apply", "object.origin_set"} <= names
 
 
+def test_router_contains_object_engine_readiness_tools() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert {"object.lod_create", "object.collision_proxy_create"} <= names
+
+
 def test_transform_get_returns_object_state(env) -> None:
     ctx, _bpy = env
     reg = build_default_registry()
@@ -413,6 +434,54 @@ def test_duplicate_copies_or_links_data_and_preserves_collection(env) -> None:
     assert [collection.name for collection in copy_obj.users_collection] == ["Props"]
     assert linked["name"] == "CubeLinked"
     assert linked_obj.data is source.data
+
+
+def test_lod_create_duplicates_object_and_adds_decimate_modifier(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "object.lod_create",
+        {"object": "Cube", "level": 1, "ratio": 0.35},
+        ctx,
+    )
+
+    lod = bpy.data.objects.get("Cube_LOD1")
+    assert out == {
+        "object": "Cube",
+        "lod": "Cube_LOD1",
+        "level": 1,
+        "ratio": 0.35,
+        "modifier": "LOD_DECIMATE",
+        "applied": False,
+    }
+    assert lod is not None
+    assert lod.data is not bpy.data.objects.get("Cube").data
+    assert [mod.name for mod in lod.modifiers] == ["LOD_DECIMATE"]
+    assert lod.modifiers[0].type == "DECIMATE"
+    assert lod.modifiers[0].ratio == 0.35
+
+
+def test_collision_proxy_create_adds_named_box_proxy_around_bounds(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "object.collision_proxy_create",
+        {"object": "Cube", "margin": 0.25},
+        ctx,
+    )
+
+    proxy = bpy.data.objects.get("Cube_COL")
+    assert out["object"] == "Cube"
+    assert out["proxy"] == "Cube_COL"
+    assert out["shape"] == "BOX"
+    assert out["dimensions"] == [4.5, 5.5, 6.5]
+    assert proxy is not None
+    assert proxy.dimensions == [4.5, 5.5, 6.5]
+    assert ("mesh.primitive_cube_add", {"size": 1.0, "location": [1.0, 2.0, 3.0]}) in bpy.op_calls
 
 
 def test_delete_removes_multiple_objects_and_rejects_empty_list(env) -> None:

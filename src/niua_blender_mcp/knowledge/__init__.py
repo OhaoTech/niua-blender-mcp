@@ -48,6 +48,28 @@ _PACKS: dict[str, dict[str, Any]] = {
             "uv.stretch_ratio": "Add seams or use average island scale before repacking.",
         },
     },
+    "optimize": {
+        "stage": "optimize",
+        "standards": "Optimize validates universal game-engine readiness: triangle, material, and texture budgets plus at least one LOD and a collision proxy.",
+        "targets": {
+            "within_triangle_budget": True,
+            "within_material_budget": True,
+            "within_texture_budget": True,
+            "has_lods": True,
+            "has_collision_proxy": True,
+        },
+        "sources": [
+            {"title": "Khronos glTF Asset Pipeline", "locator": "Khronos glTF asset workflow"},
+            {"title": "Blender Manual - Decimate Modifier", "locator": "manual/modeling/modifiers/generate/decimate"},
+        ],
+        "recommendations": {
+            "engine.within_triangle_budget": "Reduce geometry, add a decimated LOD, or raise the explicit budget only if the asset class requires it.",
+            "engine.within_material_budget": "Merge material slots or atlas trim/detail materials before export.",
+            "engine.within_texture_budget": "Reuse texture images or atlas maps so the asset stays inside the texture budget.",
+            "engine.has_lods": "Create at least one named LOD variant such as Asset_LOD1.",
+            "engine.has_collision_proxy": "Create a simple named collision proxy such as Asset_COL or UCX_Asset_00.",
+        },
+    },
     "export_preflight": {
         "stage": "export_preflight",
         "standards": "Before export, transforms must be applied and the mesh must remain manifold for downstream engines.",

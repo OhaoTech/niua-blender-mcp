@@ -34,13 +34,31 @@ class FakePoly:
         self.vertices = list(vert_indices)
 
 
+class FakeImage:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class FakeTexNode:
+    type = "TEX_IMAGE"
+
+    def __init__(self, image: FakeImage) -> None:
+        self.image = image
+
+
+class FakeMaterial:
+    def __init__(self, name: str, images=()) -> None:
+        self.name = name
+        self.node_tree = types.SimpleNamespace(nodes=[FakeTexNode(image) for image in images])
+
+
 class FakeMesh:
     def __init__(self, *, verts=None, polys=None, edges=0, uv_layers=0, materials=0) -> None:
         self.vertices = [FakeVert(c) for c in (verts or [])]
         self.edges = [object() for _ in range(edges)]
         self.polygons = [FakePoly(p) for p in (polys or [])]
         self.uv_layers = [object() for _ in range(uv_layers)]
-        self.materials = [object() for _ in range(materials)]
+        self.materials = [object() for _ in range(materials)] if isinstance(materials, int) else list(materials)
 
 
 class FakeObj:
@@ -214,6 +232,75 @@ def test_quality_includes_orientation_block_with_fake_bpy_degrade(env) -> None:
         "inward_facing_ratio": None,
         "normal_consistency": None,
     }
+
+
+def test_quality_includes_engine_readiness_metrics(env) -> None:
+    ctx, bpy = env
+    albedo = FakeImage("crate_albedo")
+    normal = FakeImage("crate_normal")
+    mesh = FakeMesh(
+        verts=_SYMMETRIC_VERTS,
+        polys=_SYMMETRIC_POLYS,
+        materials=[
+            FakeMaterial("Body", [albedo, normal]),
+            FakeMaterial("Trim", [albedo]),
+        ],
+    )
+    bpy.add(FakeObj("Cube", data=mesh))
+    bpy.add(FakeObj("Cube_LOD1", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=[_SYMMETRIC_POLYS[0]])))
+    bpy.add(FakeObj("UCX_Cube_00", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+
+    engine = _quality(
+        env,
+        "Cube",
+        triangle_budget=12,
+        material_budget=2,
+        texture_budget=2,
+        min_lods=1,
+    )["engine"]
+
+    assert engine == {
+        "triangles": 4,
+        "triangle_budget": 12,
+        "within_triangle_budget": True,
+        "materials": 2,
+        "material_budget": 2,
+        "within_material_budget": True,
+        "textures": 2,
+        "texture_budget": 2,
+        "within_texture_budget": True,
+        "lod_count": 1,
+        "min_lods": 1,
+        "has_lods": True,
+        "collision_proxy_count": 1,
+        "has_collision_proxy": True,
+    }
+
+
+def test_engine_readiness_budget_failures_are_explicit(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(
+        verts=_SYMMETRIC_VERTS,
+        polys=_SYMMETRIC_POLYS * 3,
+        materials=[FakeMaterial("Body", [FakeImage("a")]), FakeMaterial("Trim", [FakeImage("b")])],
+    )
+    bpy.add(FakeObj("Cube", data=mesh))
+
+    engine = _quality(
+        env,
+        "Cube",
+        triangle_budget=4,
+        material_budget=1,
+        texture_budget=1,
+        min_lods=1,
+    )["engine"]
+
+    assert engine["triangles"] == 12
+    assert engine["within_triangle_budget"] is False
+    assert engine["within_material_budget"] is False
+    assert engine["within_texture_budget"] is False
+    assert engine["has_lods"] is False
+    assert engine["has_collision_proxy"] is False
 
 
 def test_quality_is_read_only_no_undo(env) -> None:

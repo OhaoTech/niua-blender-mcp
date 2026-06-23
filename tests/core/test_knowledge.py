@@ -4,7 +4,7 @@ from niua_mcp_bridge.core.knowledge import list_packs, load_pack, stage_pack
 
 
 def test_lists_stage_knowledge_packs():
-    assert list_packs() == ["export_preflight", "repair", "retopo", "uv"]
+    assert list_packs() == ["export_preflight", "optimize", "repair", "retopo", "uv"]
 
 
 def test_uv_pack_contains_cited_standards_and_targets():

@@ -28,6 +28,7 @@ def test_stage_registry_declares_game_asset_flow():
         "retopo",
         "uv",
         "material",
+        "optimize",
         "export_preflight",
         "exported",
     ]
@@ -37,6 +38,7 @@ def test_stage_registry_declares_game_asset_flow():
         "retopo": "retopo",
         "uv": "uv",
         "material": None,
+        "optimize": "optimize",
         "export_preflight": "export_preflight",
         "exported": None,
     }
@@ -111,3 +113,26 @@ def test_rollback_pointer_moves_current_stage_back_and_invalidates_future_gates(
     assert _statuses(out)["intake"] == "passed"
     assert _statuses(out)["repair"] == "current"
     assert _statuses(out)["retopo"] == "pending"
+
+
+def test_optimize_stage_requires_engine_readiness_gate_before_export_preflight():
+    pipeline.start("Hero")
+    pipeline.advance("Hero")
+    pipeline.record_gate("Hero", "repair", _gate("repair", True))
+    pipeline.advance("Hero")
+    pipeline.record_gate("Hero", "retopo", _gate("retopo", True))
+    pipeline.advance("Hero")
+    pipeline.record_gate("Hero", "uv", _gate("uv", True))
+    pipeline.advance("Hero")
+    out = pipeline.advance("Hero")
+
+    assert out["state"]["current_stage"] == "optimize"
+
+    with pytest.raises(ValueError, match="optimize"):
+        pipeline.advance("Hero")
+
+    pipeline.record_gate("Hero", "optimize", _gate("optimize", True))
+    out = pipeline.advance("Hero")
+
+    assert out["state"]["current_stage"] == "export_preflight"
+    assert out["state"]["completed"] == ["intake", "repair", "retopo", "uv", "material", "optimize"]

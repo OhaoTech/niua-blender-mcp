@@ -757,6 +757,19 @@ def test_layer2_wave2_pipeline_spine_acceptance(bridge: BlenderBridge) -> None:
     assert uv_after["stage"] == "uv"
     assert uv_after["gates_pass"] is True
     assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "material"
+    assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "optimize"
+
+    optimize_before = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert optimize_before["stage"] == "optimize"
+    assert optimize_before["gates_pass"] is False
+
+    bridge.call("object.lod_create", {"object": "PipeHero", "level": 1, "ratio": 0.5})
+    bridge.call("object.collision_proxy_create", {"object": "PipeHero", "margin": 0.0})
+    optimize_after = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert optimize_after["stage"] == "optimize"
+    assert optimize_after["gates_pass"] is True
+    assert optimize_after["metrics"]["engine"]["lod_count"] >= 1
+    assert optimize_after["metrics"]["engine"]["collision_proxy_count"] >= 1
     assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "export_preflight"
 
     preflight = bridge.call("pipeline.gate_check", {"object": "PipeHero"})

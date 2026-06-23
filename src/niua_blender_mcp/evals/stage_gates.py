@@ -18,6 +18,13 @@ _GATES = {
         {"path": "orientation.degenerate_faces", "op": "==", "value": 0},
         {"path": "orientation.inward_facing_faces", "op": "==", "value": 0},
     ],
+    "optimize": [
+        {"path": "engine.within_triangle_budget", "op": "==", "value": True},
+        {"path": "engine.within_material_budget", "op": "==", "value": True},
+        {"path": "engine.within_texture_budget", "op": "==", "value": True},
+        {"path": "engine.has_lods", "op": "==", "value": True},
+        {"path": "engine.has_collision_proxy", "op": "==", "value": True},
+    ],
     "export_preflight": [
         {"path": "scale.transform_applied", "op": "==", "value": True},
         {"path": "topology.non_manifold_edges", "op": "==", "value": 0},

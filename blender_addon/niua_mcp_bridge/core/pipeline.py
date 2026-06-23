@@ -12,6 +12,7 @@ _STAGES = [
     {"name": "retopo", "gate_profile": "retopo", "terminal": False},
     {"name": "uv", "gate_profile": "uv", "terminal": False},
     {"name": "material", "gate_profile": None, "terminal": False},
+    {"name": "optimize", "gate_profile": "optimize", "terminal": False},
     {"name": "export_preflight", "gate_profile": "export_preflight", "terminal": False},
     {"name": "exported", "gate_profile": None, "terminal": True},
 ]
@@ -33,6 +34,13 @@ _GATES = {
     "orientation": [
         {"path": "orientation.degenerate_faces", "op": "==", "value": 0},
         {"path": "orientation.inward_facing_faces", "op": "==", "value": 0},
+    ],
+    "optimize": [
+        {"path": "engine.within_triangle_budget", "op": "==", "value": True},
+        {"path": "engine.within_material_budget", "op": "==", "value": True},
+        {"path": "engine.within_texture_budget", "op": "==", "value": True},
+        {"path": "engine.has_lods", "op": "==", "value": True},
+        {"path": "engine.has_collision_proxy", "op": "==", "value": True},
     ],
     "export_preflight": [
         {"path": "scale.transform_applied", "op": "==", "value": True},
