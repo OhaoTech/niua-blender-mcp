@@ -103,12 +103,13 @@ _PACKS: dict[str, dict[str, Any]] = {
     },
     "export_preflight": {
         "stage": "export_preflight",
-        "standards": "Before export, transforms must be applied and the mesh must remain manifold for downstream engines.",
-        "targets": {"transform_applied": True, "non_manifold_edges": 0},
+        "standards": "Before export, transforms must be applied, the mesh must remain manifold, and the selected export profile must pass.",
+        "targets": {"transform_applied": True, "non_manifold_edges": 0, "profile_pass": True},
         "sources": [{"title": "glTF 2.0 Asset Workflow", "locator": "Khronos glTF 2.0 overview"}],
         "recommendations": {
             "scale.transform_applied": "Apply object transforms before export.",
             "topology.non_manifold_edges": "Repair manifold errors before exporting.",
+            "export_profile.profile_pass": "Run io.profile_validate for the selected profile and fix failed format, naming, axis, LOD, or collision checks.",
         },
     },
 }

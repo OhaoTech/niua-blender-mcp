@@ -792,9 +792,19 @@ def test_layer2_wave2_pipeline_spine_acceptance(bridge: BlenderBridge) -> None:
     assert optimize_after["metrics"]["engine"]["collision_proxy_count"] >= 1
     assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "export_preflight"
 
-    preflight = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    profile = bridge.call(
+        "io.profile_validate",
+        {"object": "PipeHero", "profile": "GODOT", "format": "GLB", "y_up": True},
+    )
+    assert profile["profile_pass"] is True
+
+    preflight = bridge.call(
+        "pipeline.gate_check",
+        {"object": "PipeHero", "stage": "export_preflight", "export_profile": "GODOT", "export_format": "GLB", "export_y_up": True},
+    )
     assert preflight["stage"] == "export_preflight"
     assert preflight["gates_pass"] is True
+    assert preflight["metrics"]["export_profile"]["profile"] == "GODOT"
 
     fd, path = tempfile.mkstemp(suffix=".glb")
     os.close(fd)

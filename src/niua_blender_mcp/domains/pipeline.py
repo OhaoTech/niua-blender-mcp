@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..kernel import Int, Str, ToolSpec
+from ..kernel import Bool, Int, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
@@ -35,8 +35,15 @@ SPECS = [
             "triangle_budget": Int(default=5000, minimum=0, summary="Optimize-stage triangle budget"),
             "material_budget": Int(default=4, minimum=0, summary="Optimize-stage material budget"),
             "texture_budget": Int(default=8, minimum=0, summary="Optimize-stage texture budget"),
-            "min_lods": Int(default=1, minimum=0, summary="Optimize-stage minimum LOD count"),
+            "min_lods": Int(minimum=0, summary="Optimize-stage minimum LOD count"),
             "max_texture_size": Int(default=2048, minimum=1, summary="Bake/material-stage maximum texture dimension"),
+            "export_profile": Str(default="GENERIC", summary="Export profile: GENERIC, GODOT, UNREAL, or CUSTOM"),
+            "export_format": Str(default="GLB", summary="Planned export format for export-preflight profile validation"),
+            "export_y_up": Bool(summary="Planned +Y-up export option for export-preflight profile validation"),
+            "allowed_formats": Str(default="", summary="CUSTOM export profile allowed formats"),
+            "require_collision": Bool(summary="CUSTOM export profile collision-proxy requirement"),
+            "require_applied_transforms": Bool(summary="CUSTOM export profile applied-transform requirement"),
+            "name_regex": Str(default="", summary="CUSTOM export profile object-name regex"),
         },
     ),
     ToolSpec(

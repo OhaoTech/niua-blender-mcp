@@ -75,6 +75,23 @@ def test_material_stage_gates_pass_pbr_and_atlas_metrics():
     ]
 
 
+def test_export_preflight_gates_include_engine_profile_validation():
+    metrics = {
+        "scale": {"transform_applied": True},
+        "topology": {"non_manifold_edges": 0},
+        "export_profile": {"profile_pass": True},
+    }
+
+    out = check_gates(metrics, stage_gates("export_preflight"))
+
+    assert out["gates_pass"] is True
+    assert [gate["path"] for gate in out["gates"]] == [
+        "scale.transform_applied",
+        "topology.non_manifold_edges",
+        "export_profile.profile_pass",
+    ]
+
+
 def test_unknown_stage_raises_key_error():
     with pytest.raises(KeyError, match="nope"):
         stage_gates("nope")

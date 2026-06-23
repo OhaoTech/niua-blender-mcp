@@ -364,6 +364,48 @@ def test_material_metrics_expose_missing_maps_and_bad_colorspace(env) -> None:
     assert material_quality["atlas_ready"] is False
 
 
+def test_quality_includes_export_profile_metrics(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("HeroAsset", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+    bpy.add(FakeObj("HeroAsset_LOD1", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=[_SYMMETRIC_POLYS[0]])))
+    bpy.add(FakeObj("HeroAsset_COL", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+
+    profile = _quality(
+        env,
+        "HeroAsset",
+        export_profile="GODOT",
+        export_format="GLB",
+        export_y_up=True,
+    )["export_profile"]
+
+    assert profile["profile"] == "GODOT"
+    assert profile["format"] == "GLB"
+    assert profile["profile_pass"] is True
+    assert profile["conventions"]["allowed_formats"] == ["GLB", "GLTF_SEPARATE"]
+
+
+def test_quality_export_profile_reports_profile_failures(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Bad Name", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+
+    profile = _quality(
+        env,
+        "Bad Name",
+        export_profile="CUSTOM",
+        export_format="OBJ",
+        allowed_formats="GLB,FBX",
+        name_regex="^[A-Za-z0-9_]+$",
+        min_lods=0,
+        require_collision=False,
+    )["export_profile"]
+
+    assert profile["profile"] == "CUSTOM"
+    assert profile["profile_pass"] is False
+    failed = [check["path"] for check in profile["checks"] if not check["pass"]]
+    assert "export_profile.format_allowed" in failed
+    assert "export_profile.name_matches" in failed
+
+
 def test_quality_is_read_only_no_undo(env) -> None:
     ctx, bpy = env
     pushes: list = []

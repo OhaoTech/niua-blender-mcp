@@ -15,8 +15,10 @@ import os
 from typing import Any
 
 from ..context import Ctx
+from ..core.export_profiles import export_profile_quality
 from ..dispatch import Command
 from ..errors import HANDLER_ERROR, INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
+from .mesh import topology_counts
 
 # -- format inference --------------------------------------------------------------
 
@@ -262,8 +264,19 @@ def prepare_asset(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "path": path, "format": fmt, "transform_applied": apply_transforms}
 
 
+def profile_validate(ctx: Ctx, payload: dict) -> dict:
+    name = payload.get("object")
+    if not isinstance(name, str) or not name:
+        raise BridgeError(INVALID_PARAMS, "object is required")
+    obj = ctx.get_object(name)
+    counts = topology_counts(getattr(obj, "data", None))
+    out = export_profile_quality(ctx, obj, counts, payload)
+    return {"object": getattr(obj, "name", ""), **out}
+
+
 COMMANDS = [
     Command("io.import", import_file, mutates=True, feedback="viewport"),
     Command("io.export", export, mutates=False),
     Command("io.prepare_asset", prepare_asset, mutates=True, feedback="viewport"),
+    Command("io.profile_validate", profile_validate, mutates=False),
 ]

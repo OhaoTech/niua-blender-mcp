@@ -37,6 +37,7 @@ _GATES = {
     "export_preflight": [
         {"path": "scale.transform_applied", "op": "==", "value": True},
         {"path": "topology.non_manifold_edges", "op": "==", "value": 0},
+        {"path": "export_profile.profile_pass", "op": "==", "value": True},
     ],
 }
 

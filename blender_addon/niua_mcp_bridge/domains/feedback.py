@@ -23,6 +23,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..core.engine_metrics import engine_quality
+from ..core.export_profiles import export_profile_quality
 from ..core.material_metrics import material_quality
 from ..core.orientation_metrics import orientation_quality
 from ..dispatch import Command
@@ -223,6 +224,7 @@ def quality(ctx: Ctx, payload: dict) -> dict:
         "scale": _scale(obj),
         "engine": engine_quality(ctx, obj, counts, payload),
         "material": material_quality(obj, payload),
+        "export_profile": export_profile_quality(ctx, obj, counts, payload),
     }
 
 
@@ -246,6 +248,7 @@ def _quality_compact(ctx: Ctx, obj_name: Any) -> dict | None:
         "transform_applied": full["scale"]["transform_applied"],
         "engine": full["engine"],
         "material": full["material"],
+        "export_profile": full["export_profile"],
     }
 
 

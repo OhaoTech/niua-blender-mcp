@@ -22,7 +22,7 @@ Operator ids (verified against Blender 5.1.1):
 
 from __future__ import annotations
 
-from ..kernel import Bool, Enum, Str, ToolSpec
+from ..kernel import Bool, Enum, Int, Str, ToolSpec
 
 #: Importable formats. AUTO infers from the file extension (see EXT_TO_FORMAT in the
 #: add-on handler). The rest force a specific importer.
@@ -30,6 +30,7 @@ IMPORT_FORMATS = ["AUTO", "GLTF", "GLB", "OBJ", "FBX", "STL", "USD", "PLY", "DAE
 
 #: Generic-export targets routed by io.export.
 EXPORT_FORMATS = ["AUTO", "GLB", "GLTF_SEPARATE", "FBX", "OBJ"]
+EXPORT_PROFILES = ["GENERIC", "GODOT", "UNREAL", "CUSTOM"]
 
 SPECS = [
     ToolSpec(
@@ -86,5 +87,22 @@ SPECS = [
         },
         mutates=True,
         feedback="viewport",
+    ),
+    ToolSpec(
+        name="io.profile_validate",
+        category="io",
+        summary="Validate an object against a parameterized export profile without exporting",
+        command="io.profile_validate",
+        params={
+            "object": Str(required=True, summary="Object to validate"),
+            "profile": Enum(EXPORT_PROFILES, default="GENERIC", summary="Export convention profile"),
+            "format": Enum(EXPORT_FORMATS, default="GLB", summary="Planned export format"),
+            "y_up": Bool(summary="Planned +Y-up export option"),
+            "allowed_formats": Str(default="", summary="CUSTOM override: comma-separated allowed formats"),
+            "require_collision": Bool(default=False, summary="CUSTOM override: require a collision proxy"),
+            "min_lods": Int(default=0, minimum=0, maximum=8, summary="CUSTOM override: minimum detected LOD variants"),
+            "require_applied_transforms": Bool(default=True, summary="CUSTOM override: require identity/applied transforms"),
+            "name_regex": Str(default="", summary="CUSTOM override: object-name regex"),
+        },
     ),
 ]

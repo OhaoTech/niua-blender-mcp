@@ -7,7 +7,7 @@ user's viewport never moves, and degrades to ``available: false`` headless / no-
 
 from __future__ import annotations
 
-from ..kernel import Enum, Int, Str, ToolSpec
+from ..kernel import Bool, Enum, Int, Str, ToolSpec
 
 _VIEWS = ["current", "front", "back", "left", "right", "top", "bottom", "persp"]
 _SHADING = ["SOLID", "WIREFRAME", "MATERIAL", "RENDERED"]
@@ -79,8 +79,15 @@ SPECS = [
             "triangle_budget": Int(default=5000, minimum=0, summary="Maximum triangles for the optimize gate"),
             "material_budget": Int(default=4, minimum=0, summary="Maximum material slots for the optimize gate"),
             "texture_budget": Int(default=8, minimum=0, summary="Maximum unique image textures for the optimize gate"),
-            "min_lods": Int(default=1, minimum=0, summary="Minimum detected LOD variants for the optimize gate"),
+            "min_lods": Int(minimum=0, summary="Minimum detected LOD variants for the optimize gate"),
             "max_texture_size": Int(default=2048, minimum=1, summary="Maximum texture dimension for material atlas readiness"),
+            "export_profile": Str(default="GENERIC", summary="Export profile: GENERIC, GODOT, UNREAL, or CUSTOM"),
+            "export_format": Str(default="GLB", summary="Planned export format for profile validation"),
+            "export_y_up": Bool(summary="Planned +Y-up export option for profile validation"),
+            "allowed_formats": Str(default="", summary="CUSTOM export profile allowed formats"),
+            "require_collision": Bool(summary="CUSTOM export profile collision-proxy requirement"),
+            "require_applied_transforms": Bool(summary="CUSTOM export profile applied-transform requirement"),
+            "name_regex": Str(default="", summary="CUSTOM export profile object-name regex"),
         },
     ),
 ]

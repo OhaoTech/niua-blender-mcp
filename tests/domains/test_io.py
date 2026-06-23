@@ -29,6 +29,8 @@ class FakeObj:
     def __init__(self, name: str, type: str = "MESH") -> None:
         self.name = name
         self.type = type
+        self.data = types.SimpleNamespace(polygons=[], materials=[])
+        self.matrix_world = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
         self._selected = False
         self.mode = "OBJECT"
 
@@ -415,6 +417,92 @@ def test_prepare_asset_unknown_object_raises_not_found(env, tmp_path) -> None:
         dispatch_on_main(reg, "io.prepare_asset", {"object": "Ghost", "path": str(tmp_path / "asset.glb")}, ctx)
     assert exc.value.code == NOT_FOUND
     assert bpy.undo_pushes == []
+
+
+def test_profile_validate_godot_profile_passes_with_lod_collision_and_glb(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("HeroAsset"))
+    bpy.add(FakeObj("HeroAsset_LOD1"))
+    bpy.add(FakeObj("HeroAsset_COL"))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "io.profile_validate",
+        {"object": "HeroAsset", "profile": "GODOT", "format": "GLB", "y_up": True},
+        ctx,
+    )
+
+    assert out["object"] == "HeroAsset"
+    assert out["profile"] == "GODOT"
+    assert out["profile_pass"] is True
+    assert [check["path"] for check in out["checks"]] == [
+        "export_profile.format_allowed",
+        "export_profile.name_matches",
+        "export_profile.transform_applied",
+        "export_profile.axis_matches",
+        "export_profile.lod_count",
+        "export_profile.has_collision_proxy",
+    ]
+
+
+def test_profile_validate_custom_profile_uses_parameterized_rules(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Bad Name"))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "io.profile_validate",
+        {
+            "object": "Bad Name",
+            "profile": "CUSTOM",
+            "format": "OBJ",
+            "allowed_formats": "GLB,FBX",
+            "name_regex": "^[A-Za-z0-9_]+$",
+            "require_collision": False,
+            "min_lods": 0,
+            "require_applied_transforms": True,
+        },
+        ctx,
+    )
+
+    assert out["profile"] == "CUSTOM"
+    assert out["profile_pass"] is False
+    by_path = {check["path"]: check for check in out["checks"]}
+    assert by_path["export_profile.format_allowed"]["pass"] is False
+    assert by_path["export_profile.name_matches"]["pass"] is False
+    assert by_path["export_profile.transform_applied"]["pass"] is True
+
+
+def test_profile_validate_custom_profile_reports_invalid_name_regex(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("HeroAsset"))
+    reg = build_default_registry()
+
+    out = dispatch_on_main(
+        reg,
+        "io.profile_validate",
+        {
+            "object": "HeroAsset",
+            "profile": "CUSTOM",
+            "format": "GLB",
+            "name_regex": "[",
+        },
+        ctx,
+    )
+
+    by_path = {check["path"]: check for check in out["checks"]}
+    assert out["profile_pass"] is False
+    assert by_path["export_profile.name_matches"]["pass"] is False
+    assert by_path["export_profile.name_matches"]["error"] == "invalid_regex"
+
+
+def test_profile_validate_is_exposed_in_router() -> None:
+    from niua_blender_mcp.domains import build_router
+
+    names = {spec.name for spec in build_router().specs()}
+    assert "io.profile_validate" in names
 
 
 def test_engine_specific_io_tools_are_not_registered() -> None:
