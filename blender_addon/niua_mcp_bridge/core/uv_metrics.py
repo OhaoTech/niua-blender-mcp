@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+EPSILON = 1e-9
+
 
 def polygon_area_2d(points: list[tuple[float, float]]) -> float:
     if len(points) < 3:
@@ -14,6 +16,82 @@ def polygon_area_2d(points: list[tuple[float, float]]) -> float:
         x2, y2 = points[(index + 1) % len(points)]
         acc += x1 * y2 - x2 * y1
     return abs(acc) * 0.5
+
+
+def _orientation(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def _point_on_segment(point: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> bool:
+    if abs(_orientation(a, b, point)) > EPSILON:
+        return False
+    return (
+        min(a[0], b[0]) - EPSILON <= point[0] <= max(a[0], b[0]) + EPSILON
+        and min(a[1], b[1]) - EPSILON <= point[1] <= max(a[1], b[1]) + EPSILON
+    )
+
+
+def _segments_properly_intersect(
+    a1: tuple[float, float],
+    a2: tuple[float, float],
+    b1: tuple[float, float],
+    b2: tuple[float, float],
+) -> bool:
+    first = _orientation(a1, a2, b1)
+    second = _orientation(a1, a2, b2)
+    third = _orientation(b1, b2, a1)
+    fourth = _orientation(b1, b2, a2)
+    return first * second < -EPSILON and third * fourth < -EPSILON
+
+
+def _point_in_polygon_strict(point: tuple[float, float], polygon: list[tuple[float, float]]) -> bool:
+    if len(polygon) < 3:
+        return False
+    for index, start in enumerate(polygon):
+        end = polygon[(index + 1) % len(polygon)]
+        if _point_on_segment(point, start, end):
+            return False
+
+    inside = False
+    x, y = point
+    for index, (x1, y1) in enumerate(polygon):
+        x2, y2 = polygon[(index + 1) % len(polygon)]
+        crosses = (y1 > y) != (y2 > y)
+        if crosses:
+            x_at_y = x1 + ((y - y1) * (x2 - x1) / (y2 - y1))
+            if x_at_y > x:
+                inside = not inside
+    return inside
+
+
+def polygons_overlap_2d(a: list[tuple[float, float]], b: list[tuple[float, float]]) -> bool:
+    """Return true only when two polygons share positive area."""
+    if len(a) < 3 or len(b) < 3:
+        return False
+
+    a_min_x = min(point[0] for point in a)
+    a_max_x = max(point[0] for point in a)
+    a_min_y = min(point[1] for point in a)
+    a_max_y = max(point[1] for point in a)
+    b_min_x = min(point[0] for point in b)
+    b_max_x = max(point[0] for point in b)
+    b_min_y = min(point[1] for point in b)
+    b_max_y = max(point[1] for point in b)
+    if a_max_x <= b_min_x + EPSILON or b_max_x <= a_min_x + EPSILON:
+        return False
+    if a_max_y <= b_min_y + EPSILON or b_max_y <= a_min_y + EPSILON:
+        return False
+
+    for a_index, a_start in enumerate(a):
+        a_end = a[(a_index + 1) % len(a)]
+        for b_index, b_start in enumerate(b):
+            b_end = b[(b_index + 1) % len(b)]
+            if _segments_properly_intersect(a_start, a_end, b_start, b_end):
+                return True
+
+    return any(_point_in_polygon_strict(point, b) for point in a) or any(
+        _point_in_polygon_strict(point, a) for point in b
+    )
 
 
 def uv_bounds_from_points(points: list[tuple[float, float]]) -> dict:
@@ -68,9 +146,12 @@ def uv_quality(obj: Any, *, texture_size: int = 1024, island_count: int | None =
         uv_area = 0.0
         mesh_area = 0.0
         stretch_units: list[float] = []
+        uv_polygons: list[list[tuple[float, float]]] = []
         for face in bm.faces:
             face_uvs = [(float(loop[uv_layer].uv[0]), float(loop[uv_layer].uv[1])) for loop in face.loops]
             uv_points.extend(face_uvs)
+            if len(face_uvs) >= 3:
+                uv_polygons.append(face_uvs)
             face_uv_area = polygon_area_2d(face_uvs)
             face_mesh_area = float(face.calc_area())
             uv_area += face_uv_area
@@ -88,6 +169,11 @@ def uv_quality(obj: Any, *, texture_size: int = 1024, island_count: int | None =
         if stretch_units:
             smallest = min(stretch_units)
             out["stretch_ratio"] = (max(stretch_units) / smallest) if smallest > 0.0 else None
+        out["overlap_detected"] = any(
+            polygons_overlap_2d(first, second)
+            for first_index, first in enumerate(uv_polygons)
+            for second in uv_polygons[first_index + 1 :]
+        )
         return out
     finally:
         bm.free()
