@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Layer 2 Architecture - Senior Game-Asset Pipeline</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f6f7f1;
+      --ink: #20262d;
+      --muted: #5f6872;
+      --line: #cfd5cf;
+      --panel: #ffffff;
+      --foundation: #263949;
+      --stage: #2f7e92;
+      --eye: #2d8a6e;
+      --gate: #c9791f;
+      --knowledge: #75613c;
+      --missing: #a9445a;
+      --done: #3d7a4b;
+      --future: #777f87;
+      --shadow: 0 18px 45px rgba(32, 38, 45, 0.09);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(90deg, rgba(32, 38, 45, 0.035) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(32, 38, 45, 0.035) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1380px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      gap: 28px;
+      align-items: end;
+      border-bottom: 2px solid var(--ink);
+      padding-bottom: 24px;
+      margin-bottom: 28px;
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
+    h1 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(2.25rem, 5vw, 5.4rem);
+      line-height: 0.94;
+      font-weight: 700;
+      max-width: 900px;
+    }
+
+    .lede {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 560px;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      align-self: stretch;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 650;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      flex: 0 0 auto;
+    }
+
+    .done { background: var(--done); }
+    .missing { background: var(--missing); }
+    .next { background: var(--gate); }
+    .base { background: var(--foundation); }
+
+    .board {
+      display: grid;
+      grid-template-columns: minmax(270px, 0.74fr) minmax(0, 1.8fr) minmax(270px, 0.78fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .rail, .pipeline, .right-rail {
+      min-width: 0;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .layer-card {
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      border-radius: 999px;
+      padding: 4px 8px;
+      color: #fff;
+      font-size: 0.68rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .badge.done-badge { background: var(--done); }
+    .badge.missing-badge { background: var(--missing); }
+    .badge.next-badge { background: var(--gate); }
+    .badge.base-badge { background: var(--foundation); }
+
+    h2 {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .list {
+      display: grid;
+      gap: 7px;
+      margin-top: 13px;
+    }
+
+    .chip {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-left-width: 5px;
+      border-radius: 8px;
+      padding: 7px 9px;
+      background: #fff;
+      font-size: 0.84rem;
+      font-weight: 650;
+    }
+
+    .chip span:last-child {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+
+    .chip.done-chip { border-left-color: var(--done); }
+    .chip.next-chip { border-left-color: var(--gate); }
+    .chip.missing-chip { border-left-color: var(--missing); }
+
+    .pipeline {
+      position: relative;
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .pipeline::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 84px;
+      bottom: 84px;
+      width: 4px;
+      transform: translateX(-50%);
+      background: linear-gradient(var(--stage), var(--gate), var(--missing));
+      border-radius: 999px;
+      opacity: 0.4;
+    }
+
+    .pipeline-head {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .pipeline-title {
+      font-size: 1.28rem;
+      font-weight: 800;
+    }
+
+    .stages {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .stage {
+      position: relative;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 150px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-top: 6px solid var(--stage);
+      background: rgba(255, 255, 255, 0.93);
+      border-radius: 8px;
+      z-index: 1;
+    }
+
+    .stage.done-stage { border-top-color: var(--done); }
+    .stage.next-stage { border-top-color: var(--gate); }
+    .stage.missing-stage { border-top-color: var(--missing); }
+
+    .stage-index {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.72rem;
+      font-weight: 850;
+      margin-bottom: 8px;
+    }
+
+    .stage h3 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .stage p {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .stage-status {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .tag {
+      border-radius: 999px;
+      padding: 3px 7px;
+      background: #eef1ed;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.68rem;
+      font-weight: 800;
+    }
+
+    .tag.done-tag {
+      color: #fff;
+      background: var(--done);
+    }
+
+    .tag.next-tag {
+      color: #fff;
+      background: var(--gate);
+    }
+
+    .tag.missing-tag {
+      color: #fff;
+      background: var(--missing);
+    }
+
+    .pillar-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .pillar {
+      border-left: 6px solid var(--eye);
+      padding: 14px;
+    }
+
+    .pillar:nth-child(2) { border-left-color: var(--gate); }
+    .pillar:nth-child(3) { border-left-color: var(--stage); }
+    .pillar:nth-child(4) { border-left-color: var(--knowledge); }
+
+    .pillar h3 {
+      font-size: 0.98rem;
+      margin-bottom: 6px;
+    }
+
+    .flow {
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 8px;
+      background: var(--foundation);
+      color: #fff;
+    }
+
+    .flow h2 {
+      color: #fff;
+    }
+
+    .flow-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .flow-step {
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 0.76rem;
+      font-weight: 800;
+    }
+
+    .wave-band {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .wave {
+      min-height: 136px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    .wave h3 {
+      font-size: 0.95rem;
+      margin-bottom: 7px;
+    }
+
+    .wave strong {
+      color: var(--gate);
+    }
+
+    footer {
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-align: center;
+    }
+
+    @media (max-width: 1050px) {
+      header,
+      .board {
+        grid-template-columns: 1fr;
+      }
+
+      .stages {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .flow-grid,
+      .wave-band {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      main {
+        width: min(100vw - 20px, 1380px);
+        padding-top: 18px;
+      }
+
+      header {
+        gap: 18px;
+      }
+
+      .legend,
+      .stages,
+      .flow-grid,
+      .wave-band {
+        grid-template-columns: 1fr;
+      }
+
+      .pipeline::before {
+        left: 20px;
+      }
+
+      .stage {
+        min-height: 130px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">Niua Blender MCP / Layer map</p>
+        <h1>Layer 2 is the senior game-asset pipeline.</h1>
+      </div>
+      <div>
+        <p class="lede">
+          Layer 1 gives the agent full Blender reach. Layer 2 adds senior production discipline:
+          staged work, perception, deterministic gates, knowledge, rollback, and final export.
+        </p>
+        <div class="legend" aria-label="Diagram legend">
+          <div class="legend-item"><span class="swatch done"></span>Built now</div>
+          <div class="legend-item"><span class="swatch next"></span>Next wave</div>
+          <div class="legend-item"><span class="swatch missing"></span>Missing</div>
+          <div class="legend-item"><span class="swatch base"></span>Layer 1 foundation</div>
+        </div>
+      </div>
+    </header>
+
+    <section class="board" aria-label="Layer 2 architecture board">
+      <aside class="rail">
+        <section class="panel layer-card">
+          <p class="eyebrow">Foundation <span class="badge base-badge">Done</span></p>
+          <h2>Layer 1: Blender control surface</h2>
+          <p class="small">
+            The MCP can inspect and mutate Blender through curated domains, RNA fallback,
+            scene tree access, UI state, undo, file/session tools, and glTF/GLB export.
+          </p>
+          <div class="list">
+            <div class="chip done-chip"><span>GUI parity audit</span><span>58/58</span></div>
+            <div class="chip done-chip"><span>Server specs</span><span>303</span></div>
+            <div class="chip done-chip"><span>Add-on commands</span><span>286</span></div>
+          </div>
+        </section>
+
+        <section class="panel layer-card">
+          <p class="eyebrow">Current Layer 2 seed <span class="badge done-badge">Built</span></p>
+          <h2>What exists today</h2>
+          <div class="list">
+            <div class="chip done-chip"><span>Topology eye</span><span>feedback.topology</span></div>
+            <div class="chip done-chip"><span>Quality metrics</span><span>feedback.quality</span></div>
+            <div class="chip done-chip"><span>Hard gates</span><span>evals/gates.py</span></div>
+            <div class="chip done-chip"><span>Scorecard harness</span><span>evals/harness.py</span></div>
+            <div class="chip done-chip"><span>Modeling recipe</span><span>playbooks</span></div>
+            <div class="chip done-chip"><span>Craft verbs</span><span>model.*</span></div>
+          </div>
+        </section>
+      </aside>
+
+      <section class="pipeline panel" aria-label="Pipeline stages">
+        <div class="pipeline-head">
+          <div>
+            <p class="eyebrow">Stage spine</p>
+            <h2 class="pipeline-title">One asset moves through gates, not vibes.</h2>
+          </div>
+          <span class="badge next-badge">Target architecture</span>
+        </div>
+
+        <div class="stages">
+          <article class="stage next-stage">
+            <div class="stage-index">01</div>
+            <h3>Intake / triage</h3>
+            <p>Read the brief or raw mesh, identify defects, classify the asset, set budgets.</p>
+            <div class="stage-status">
+              <span class="tag missing-tag">pipeline state missing</span>
+            </div>
+          </article>
+
+          <article class="stage next-stage">
+            <div class="stage-index">02</div>
+            <h3>Repair / blockout</h3>
+            <p>Fix scale, transforms, broken geometry, rough proportions, and readable shape.</p>
+            <div class="stage-status">
+              <span class="tag done-tag">mesh tools</span>
+              <span class="tag missing-tag">repair gates</span>
+            </div>
+          </article>
+
+          <article class="stage missing-stage">
+            <div class="stage-index">03</div>
+            <h3>High-poly detail</h3>
+            <p>Optional bevels, panels, sculpt/detail source for later baking.</p>
+            <div class="stage-status">
+              <span class="tag done-tag">bevel/recess</span>
+              <span class="tag missing-tag">high-low pairing</span>
+            </div>
+          </article>
+
+          <article class="stage done-stage">
+            <div class="stage-index">04</div>
+            <h3>Retopo</h3>
+            <p>Clean topology, no n-gons, controlled poles, no non-manifold edges.</p>
+            <div class="stage-status">
+              <span class="tag done-tag">topology eye</span>
+              <span class="tag done-tag">retopo verb</span>
+            </div>
+          </article>
+
+          <article class="stage next-stage">
+            <div class="stage-index">05</div>
+            <h3>UV unwrap / pack</h3>
+            <p>Seams, unwrap, pack, texel density, stretch, overlap, checker validation.</p>
+            <div class="stage-status">
+              <span class="tag done-tag">uv tools</span>
+              <span class="tag missing-tag">uv gates</span>
+            </div>
+          </article>
+
+          <article class="stage missing-stage">
+            <div class="stage-index">06</div>
+            <h3>Bake</h3>
+            <p>Normal/AO/cavity bake, cage sanity, projection errors, silhouette delta.</p>
+            <div class="stage-status">
+              <span class="tag missing-tag">bake tools</span>
+              <span class="tag missing-tag">bake metrics</span>
+            </div>
+          </article>
+
+          <article class="stage missing-stage">
+            <div class="stage-index">07</div>
+            <h3>Material / lookdev</h3>
+            <p>PBR maps, shader setup, texture slots, lookdev turntable, final sanity check.</p>
+            <div class="stage-status">
+              <span class="tag done-tag">shading tools</span>
+              <span class="tag missing-tag">lookdev eye</span>
+            </div>
+          </article>
+
+          <article class="stage missing-stage">
+            <div class="stage-index">08</div>
+            <h3>Optimize / LOD</h3>
+            <p>Triangle budget, material count, texture budget, collision and LOD variants.</p>
+            <div class="stage-status">
+              <span class="tag missing-tag">perf gates</span>
+              <span class="tag missing-tag">lod/collision</span>
+            </div>
+          </article>
+
+          <article class="stage next-stage">
+            <div class="stage-index">09</div>
+            <h3>Export</h3>
+            <p>glTF/GLB export, Godot conventions, transform sanity, external asset validation.</p>
+            <div class="stage-status">
+              <span class="tag done-tag">glTF export</span>
+              <span class="tag missing-tag">Godot validator</span>
+            </div>
+          </article>
+        </div>
+
+        <section class="flow" aria-label="Inside each stage">
+          <h2>Every stage has the same internal contract</h2>
+          <div class="flow-grid">
+            <div class="flow-step">Entry preconditions</div>
+            <div class="flow-step">Work tools</div>
+            <div class="flow-step">Perception eye</div>
+            <div class="flow-step">Objective metrics</div>
+            <div class="flow-step">Hard gate</div>
+            <div class="flow-step">Checkpoint / rollback</div>
+          </div>
+        </section>
+      </section>
+
+      <aside class="right-rail">
+        <section class="panel layer-card">
+          <p class="eyebrow">Four pillars <span class="badge next-badge">Layer 2</span></p>
+          <div class="pillar-grid">
+            <article class="pillar panel">
+              <h3>1. Perception</h3>
+              <p class="small">Eyes return both image evidence and structured analytics: topology, UV checker, normals, silhouette, AO/cavity, lookdev.</p>
+            </article>
+            <article class="pillar panel">
+              <h3>2. Objective verification</h3>
+              <p class="small">Deterministic metrics decide whether the asset may advance. The judge cannot talk gates into passing.</p>
+            </article>
+            <article class="pillar panel">
+              <h3>3. Pipeline state</h3>
+              <p class="small">A lightweight registry tracks stage, gates, checkpoint, rollback, and next allowed actions.</p>
+            </article>
+            <article class="pillar panel">
+              <h3>4. Grounded knowledge</h3>
+              <p class="small">Human-reviewed standards and reference exemplars replace guesswork with cited production constraints.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel layer-card">
+          <p class="eyebrow">Missing tool surface <span class="badge missing-badge">Not built</span></p>
+          <div class="list">
+            <div class="chip missing-chip"><span>Status</span><span>pipeline.status</span></div>
+            <div class="chip missing-chip"><span>Gate check</span><span>pipeline.gate_check</span></div>
+            <div class="chip missing-chip"><span>Advance</span><span>pipeline.advance</span></div>
+            <div class="chip missing-chip"><span>Rollback</span><span>pipeline.rollback</span></div>
+            <div class="chip missing-chip"><span>Knowledge</span><span>knowledge.load</span></div>
+          </div>
+        </section>
+      </aside>
+    </section>
+
+    <section class="wave-band" aria-label="Build waves">
+      <article class="wave">
+        <h3>Wave 1</h3>
+        <p class="small"><strong>Perception + verification.</strong> Build the missing eyes and deterministic metrics first.</p>
+      </article>
+      <article class="wave">
+        <h3>Wave 2</h3>
+        <p class="small"><strong>Pipeline spine.</strong> Add stage registry, state, gates, checkpoint, and one end-to-end asset path.</p>
+      </article>
+      <article class="wave">
+        <h3>Wave 3</h3>
+        <p class="small"><strong>Self-critique + knowledge.</strong> Bounded repair loops, cited standards, exemplar targets.</p>
+      </article>
+      <article class="wave">
+        <h3>Wave 4</h3>
+        <p class="small"><strong>Breadth.</strong> More asset classes, LOD, collision, organic/sculpt and hard-surface variants.</p>
+      </article>
+    </section>
+
+    <footer>
+      Current source of truth: main branch after Layer 1 closure. This diagram is explanatory, not an implementation spec.
+    </footer>
+  </main>
+</body>
+</html>
