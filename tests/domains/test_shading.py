@@ -136,6 +136,8 @@ class FakeMaterial:
 class FakeImage:
     def __init__(self, name: str) -> None:
         self.name = name
+        self.filepath = ""
+        self.size = [1024, 1024]
         self.colorspace_settings = types.SimpleNamespace(name="sRGB")
 
 
@@ -180,6 +182,7 @@ class FakeMaterials(dict):
 class FakeImages:
     def __init__(self) -> None:
         self.loaded = []
+        self.created = []
         self.fail_load = False
 
     def load(self, path: str) -> FakeImage:
@@ -190,6 +193,13 @@ class FakeImages:
         img = FakeImage(os.path.basename(path) or "image")
         self.loaded.append(path)
         return img
+
+    def new(self, name: str, width: int, height: int, alpha: bool = True) -> FakeImage:
+        image = FakeImage(name)
+        image.size = [int(width), int(height)]
+        image.alpha = bool(alpha)
+        self.created.append(image)
+        return image
 
 
 class FakeBpy(types.ModuleType):
@@ -471,6 +481,60 @@ def test_add_image_texture_load_failure_is_precondition(env) -> None:
         )
 
     assert exc.value.code == PRECONDITION
+
+
+def test_prepare_pbr_maps_creates_material_images_and_shader_nodes(env) -> None:
+    ctx, bpy = env
+    reg = build_default_registry()
+    obj = FakeObj("Cube")
+    bpy.add(obj)
+
+    out = dispatch_on_main(
+        reg,
+        "shading.prepare_pbr_maps",
+        {"object": "Cube", "material": "HeroMat", "prefix": "Hero", "size": 512},
+        ctx,
+    )
+
+    assert out["object"] == "Cube"
+    assert out["material"] == "HeroMat"
+    assert out["maps"] == ["BASE_COLOR", "NORMAL", "ROUGHNESS", "AO", "CAVITY"]
+    assert [image.name for image in bpy.images.created] == [
+        "Hero_BASE_COLOR",
+        "Hero_NORMAL",
+        "Hero_ROUGHNESS",
+        "Hero_AO",
+        "Hero_CAVITY",
+    ]
+    assert [image.size for image in bpy.images.created] == [[512, 512]] * 5
+    assert [image.colorspace_settings.name for image in bpy.images.created] == [
+        "sRGB",
+        "Non-Color",
+        "Non-Color",
+        "Non-Color",
+        "Non-Color",
+    ]
+    assert obj.active_material.name == "HeroMat"
+    tree = bpy.materials["HeroMat"].node_tree
+    assert {node.label for node in tree.nodes if node.type == "TEX_IMAGE"} == {
+        "BASE_COLOR",
+        "NORMAL",
+        "ROUGHNESS",
+        "AO",
+        "CAVITY",
+    }
+    principled = next(n for n in tree.nodes if n.type == "BSDF_PRINCIPLED")
+    normal_map = next(n for n in tree.nodes if n.type == "NORMAL_MAP")
+    assert principled.inputs["Base Color"].is_linked is True
+    assert principled.inputs["Roughness"].is_linked is True
+    assert normal_map.inputs["Color"].is_linked is True
+    assert principled.inputs["Normal"].is_linked is True
+    assert bpy.undo_pushes == ["niua:shading.prepare_pbr_maps"]
+
+
+def test_prepare_pbr_maps_is_exposed_in_router() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    assert "shading.prepare_pbr_maps" in names
 
 
 # -- list_materials (read-only) --------------------------------------------------

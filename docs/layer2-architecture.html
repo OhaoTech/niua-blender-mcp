@@ -535,7 +535,7 @@
         </section>
 
         <section class="panel layer-card">
-          <p class="eyebrow">Layer 2 built surface <span class="badge done-badge">Waves 1-4</span></p>
+          <p class="eyebrow">Layer 2 built surface <span class="badge done-badge">Waves 1-5</span></p>
           <h2>Surface and roadmap</h2>
           <div class="list">
             <div class="chip done-chip"><span>Topology eye</span><span>feedback.topology</span></div>
@@ -558,7 +558,8 @@
             <div class="chip done-chip"><span>Engine readiness</span><span>quality.engine</span></div>
             <div class="chip done-chip"><span>Optimize gate</span><span>pipeline optimize</span></div>
             <div class="chip done-chip"><span>LOD/collision tools</span><span>object.*</span></div>
-            <div class="chip future-chip"><span>Bake/material depth</span><span>Wave 5</span></div>
+            <div class="chip done-chip"><span>Bake/material gates</span><span>quality.material</span></div>
+            <div class="chip done-chip"><span>PBR map prep</span><span>shading.prepare_pbr_maps</span></div>
             <div class="chip future-chip"><span>Engine profiles</span><span>Wave 6</span></div>
             <div class="chip future-chip"><span>Asset breadth</span><span>Wave 8</span></div>
           </div>
@@ -571,7 +572,7 @@
             <p class="eyebrow">Stage spine</p>
             <h2 class="pipeline-title">One asset moves through gates, not vibes.</h2>
           </div>
-          <span class="badge done-badge">Waves 1-4 built</span>
+          <span class="badge done-badge">Waves 1-5 built</span>
         </div>
 
         <div class="stages">
@@ -608,7 +609,7 @@
             <p>Optional bevels, panels, sculpt/detail source for later baking.</p>
             <div class="stage-status">
               <span class="tag done-tag">bevel/recess</span>
-              <span class="tag future-tag">Wave 5/8</span>
+              <span class="tag future-tag">Wave 8</span>
               <span class="tag future-tag">high-low pairing</span>
             </div>
           </article>
@@ -640,26 +641,28 @@
             </div>
           </article>
 
-          <article class="stage future-stage">
+          <article class="stage done-stage">
             <div class="stage-index">06</div>
             <h3>Bake</h3>
             <p>Normal/AO/cavity bake, cage sanity, projection errors, silhouette delta.</p>
             <div class="stage-status">
-              <span class="tag future-tag">Wave 5</span>
-              <span class="tag future-tag">bake tools</span>
-              <span class="tag future-tag">bake metrics</span>
+              <span class="tag done-tag">Wave 5</span>
+              <span class="tag done-tag">normal/AO/cavity slots</span>
+              <span class="tag done-tag">bake gates</span>
+              <span class="tag future-tag">projection depth</span>
             </div>
           </article>
 
-          <article class="stage future-stage">
+          <article class="stage done-stage">
             <div class="stage-index">07</div>
             <h3>Material / lookdev</h3>
             <p>PBR maps, shader setup, texture slots, lookdev turntable, final sanity check.</p>
             <div class="stage-status">
               <span class="tag done-tag">shading tools</span>
               <span class="tag done-tag">lookdev eye</span>
-              <span class="tag future-tag">Wave 5</span>
-              <span class="tag future-tag">texture budgets</span>
+              <span class="tag done-tag">Wave 5</span>
+              <span class="tag done-tag">PBR map gates</span>
+              <span class="tag done-tag">atlas readiness</span>
             </div>
           </article>
 
@@ -735,6 +738,9 @@
             <div class="chip done-chip"><span>Rollback</span><span>pipeline.rollback</span></div>
             <div class="chip done-chip"><span>Self-critique</span><span>pipeline.self_critique</span></div>
             <div class="chip done-chip"><span>Knowledge</span><span>knowledge.load</span></div>
+            <div class="chip done-chip"><span>Bake gate</span><span>Wave 5</span></div>
+            <div class="chip done-chip"><span>Material gate</span><span>Wave 5</span></div>
+            <div class="chip done-chip"><span>PBR map prep</span><span>shading.prepare_pbr_maps</span></div>
             <div class="chip done-chip"><span>Optimize gate</span><span>Wave 4</span></div>
             <div class="chip done-chip"><span>LOD create</span><span>object.lod_create</span></div>
             <div class="chip done-chip"><span>Collision proxy</span><span>object.collision_proxy_create</span></div>
@@ -748,8 +754,9 @@
       <p class="eyebrow">Big map <span class="badge base-badge">Layer 2 waves</span></p>
       <h2>Stage pipeline and roadmap now share one spine</h2>
       <p class="small">
-        Waves 1-4 made the pipeline observable, gated, resumable, self-critiquing, and
-        engine-ready at the universal budget/proxy level. Later waves deepen the same spine.
+        Waves 1-5 made the pipeline observable, gated, resumable, self-critiquing,
+        material-ready, and engine-ready at the universal budget/proxy level.
+        Later waves deepen the same spine.
       </p>
       <div class="map-grid">
         <div class="map-row done-row">
@@ -762,15 +769,15 @@
           <span>Built engine-readiness metrics, LOD basics, collision proxies, and configurable budget gates.</span>
           <span class="tag done-tag">Wave 4</span>
         </div>
-        <div class="map-row next-row">
+        <div class="map-row done-row">
           <strong>Bake + material production</strong>
-          <span>Turn lookdev into production validation: bake outputs, texture budgets, material slots, atlas readiness.</span>
-          <span class="tag next-tag">Wave 5</span>
+          <span>Built PBR map preparation, normal/AO/cavity checks, material gates, texture-size checks, and atlas readiness.</span>
+          <span class="tag done-tag">Wave 5</span>
         </div>
-        <div class="map-row partial-row">
+        <div class="map-row next-row">
           <strong>Export profiles</strong>
           <span>Validate generic, Godot, Unreal, or custom conventions through parameters, not hardcoded engine names.</span>
-          <span class="tag future-tag">Wave 6</span>
+          <span class="tag next-tag">Wave 6</span>
         </div>
         <div class="map-row partial-row">
           <strong>Advanced LOD/collision quality</strong>
@@ -802,12 +809,12 @@
         <h3>Wave 4 <span class="tag done-tag">built</span></h3>
         <p class="small"><strong>Engine readiness.</strong> Built optimize stage, engine metrics, LOD basics, collision proxies, and budget gates.</p>
       </article>
-      <article class="wave next-wave">
-        <h3>Wave 5 <span class="tag next-tag">next</span></h3>
-        <p class="small"><strong>Bake + material production.</strong> Normal/AO/cavity checks, material budgets, texture slots, and atlas-ready validation.</p>
+      <article class="wave done-wave">
+        <h3>Wave 5 <span class="tag done-tag">built</span></h3>
+        <p class="small"><strong>Bake + material production.</strong> Built PBR map slots, normal/AO/cavity checks, material gates, texture-size checks, and atlas readiness.</p>
       </article>
-      <article class="wave future-wave">
-        <h3>Wave 6 <span class="tag future-tag">future</span></h3>
+      <article class="wave next-wave">
+        <h3>Wave 6 <span class="tag next-tag">next</span></h3>
         <p class="small"><strong>Engine profiles.</strong> Parameterized Godot/Unreal/custom validators without hardcoded engine naming.</p>
       </article>
       <article class="wave future-wave">
@@ -821,7 +828,7 @@
     </section>
 
     <footer>
-      Current source of truth: main after Layer 2 Wave 4. This diagram is explanatory, not an implementation spec.
+      Current source of truth: main after Layer 2 Wave 5. This diagram is explanatory, not an implementation spec.
     </footer>
   </main>
 </body>

@@ -39,6 +39,42 @@ def test_optimize_stage_gates_pass_engine_ready_metrics():
     ]
 
 
+def test_bake_stage_gates_pass_bake_ready_material_metrics():
+    metrics = {
+        "material": {
+            "bake_maps_present": True,
+            "data_maps_non_color": True,
+        }
+    }
+
+    out = check_gates(metrics, stage_gates("bake"))
+
+    assert out["gates_pass"] is True
+    assert [gate["path"] for gate in out["gates"]] == [
+        "material.bake_maps_present",
+        "material.data_maps_non_color",
+    ]
+
+
+def test_material_stage_gates_pass_pbr_and_atlas_metrics():
+    metrics = {
+        "material": {
+            "pbr_maps_present": True,
+            "textures_within_size": True,
+            "atlas_ready": True,
+        }
+    }
+
+    out = check_gates(metrics, stage_gates("material"))
+
+    assert out["gates_pass"] is True
+    assert [gate["path"] for gate in out["gates"]] == [
+        "material.pbr_maps_present",
+        "material.textures_within_size",
+        "material.atlas_ready",
+    ]
+
+
 def test_unknown_stage_raises_key_error():
     with pytest.raises(KeyError, match="nope"):
         stage_gates("nope")

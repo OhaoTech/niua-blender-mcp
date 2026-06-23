@@ -28,13 +28,36 @@ class FakePoly:
         self.vertices = list(vert_indices)
 
 
+class FakeImage:
+    def __init__(self, name: str, colorspace="sRGB") -> None:
+        self.name = name
+        self.filepath = f"/tmp/{name}.png"
+        self.size = [1024, 1024]
+        self.colorspace_settings = types.SimpleNamespace(name=colorspace)
+
+
+class FakeTexNode:
+    type = "TEX_IMAGE"
+
+    def __init__(self, label: str, image: FakeImage) -> None:
+        self.name = image.name
+        self.label = label
+        self.image = image
+
+
+class FakeMaterial:
+    def __init__(self, name: str, maps=()) -> None:
+        self.name = name
+        self.node_tree = types.SimpleNamespace(nodes=[FakeTexNode(label, image) for label, image in maps])
+
+
 class FakeMesh:
     def __init__(self, *, verts=None, polys=None, edges=0, uv_layers=0, materials=0, tag="mesh") -> None:
         self.vertices = [FakeVert(c) for c in (verts or [])]
         self.edges = [object() for _ in range(edges)]
         self.polygons = [FakePoly(p) for p in (polys or [])]
         self.uv_layers = [object() for _ in range(uv_layers)]
-        self.materials = [object() for _ in range(materials)]
+        self.materials = [object() for _ in range(materials)] if isinstance(materials, int) else list(materials)
         self.tag = tag
 
     def copy(self) -> "FakeMesh":
@@ -263,6 +286,39 @@ def test_gate_check_optimize_accepts_budget_overrides(env):
     assert out["metrics"]["engine"]["triangles"] == 12
     assert out["gates"][0]["path"] == "engine.within_triangle_budget"
     assert out["gates"][0]["actual"] is False
+
+
+def test_gate_check_bake_and_material_use_material_production_metrics(env):
+    _ctx, bpy = env
+    material = FakeMaterial(
+        "HeroMat",
+        [
+            ("BASE_COLOR", FakeImage("hero_base_color", "sRGB")),
+            ("NORMAL", FakeImage("hero_normal", "Non-Color")),
+            ("ROUGHNESS", FakeImage("hero_roughness", "Non-Color")),
+            ("AO", FakeImage("hero_ao", "Non-Color")),
+            ("CAVITY", FakeImage("hero_cavity", "Non-Color")),
+        ],
+    )
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS, materials=[material])))
+    _dispatch(env, "pipeline.start", {"object": "Cube"})
+
+    bake = _dispatch(env, "pipeline.gate_check", {"object": "Cube", "stage": "bake"})
+    material_gate = _dispatch(env, "pipeline.gate_check", {"object": "Cube", "stage": "material"})
+
+    assert bake["gates_pass"] is True
+    assert bake["metrics"]["material"]["bake_maps_present"] is True
+    assert [gate["path"] for gate in bake["gates"]] == [
+        "material.bake_maps_present",
+        "material.data_maps_non_color",
+    ]
+    assert material_gate["gates_pass"] is True
+    assert material_gate["metrics"]["material"]["atlas_ready"] is True
+    assert [gate["path"] for gate in material_gate["gates"]] == [
+        "material.pbr_maps_present",
+        "material.textures_within_size",
+        "material.atlas_ready",
+    ]
 
 
 def test_pipeline_advance_creates_next_stage_checkpoint(env):

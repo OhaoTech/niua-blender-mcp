@@ -8,7 +8,7 @@ node add/link/default-value edits. ``shading.list_materials`` is read-only inven
 
 from __future__ import annotations
 
-from ..kernel import Enum, Float, Str, ToolSpec, Vec3
+from ..kernel import Enum, Float, Int, Str, ToolSpec, Vec3
 
 TEXTURE_TARGETS = ["BASE_COLOR", "ROUGHNESS", "NORMAL"]
 
@@ -65,6 +65,21 @@ SPECS = [
                 default="BASE_COLOR",
                 summary="Principled input to drive: BASE_COLOR, ROUGHNESS or NORMAL",
             ),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="shading.prepare_pbr_maps",
+        category="shading",
+        summary="Create node-based PBR image slots for BASE_COLOR, NORMAL, ROUGHNESS, AO, and CAVITY",
+        command="shading.prepare_pbr_maps",
+        params={
+            "object": Str(summary="Object to receive or reuse the material"),
+            "material": Str(default="", summary="Material to create/reuse; default is object's active material or <object>_PBR"),
+            "prefix": Str(default="", summary="Image name prefix; default is object or material name"),
+            "maps": Str(default="", summary="Comma-separated map set; default is BASE_COLOR,NORMAL,ROUGHNESS,AO,CAVITY"),
+            "size": Int(default=1024, minimum=1, maximum=8192, summary="Square image size in pixels"),
         },
         mutates=True,
         feedback="viewport",

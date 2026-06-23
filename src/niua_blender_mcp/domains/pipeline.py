@@ -36,6 +36,7 @@ SPECS = [
             "material_budget": Int(default=4, minimum=0, summary="Optimize-stage material budget"),
             "texture_budget": Int(default=8, minimum=0, summary="Optimize-stage texture budget"),
             "min_lods": Int(default=1, minimum=0, summary="Optimize-stage minimum LOD count"),
+            "max_texture_size": Int(default=2048, minimum=1, summary="Bake/material-stage maximum texture dimension"),
         },
     ),
     ToolSpec(

@@ -29,6 +29,14 @@ _TARGET_INPUT = {
     "ROUGHNESS": ("Roughness", "Non-Color"),
     "NORMAL": ("Normal", "Non-Color"),
 }
+_PBR_MAPS = ("BASE_COLOR", "NORMAL", "ROUGHNESS", "AO", "CAVITY")
+_PBR_COLORSPACE = {
+    "BASE_COLOR": "sRGB",
+    "NORMAL": "Non-Color",
+    "ROUGHNESS": "Non-Color",
+    "AO": "Non-Color",
+    "CAVITY": "Non-Color",
+}
 
 
 def _get_material(ctx: Ctx, name: str) -> Any:
@@ -186,6 +194,20 @@ def _parse_json_value(raw: Any) -> Any:
         raise BridgeError(INVALID_PARAMS, f"value must be valid JSON: {exc}") from exc
 
 
+def _parse_maps(raw: Any) -> list[str]:
+    if raw is None or raw == "":
+        return list(_PBR_MAPS)
+    if not isinstance(raw, str):
+        raise BridgeError(INVALID_PARAMS, "maps must be a comma-separated string")
+    maps = [part.strip().upper() for part in raw.split(",") if part.strip()]
+    if not maps:
+        raise BridgeError(INVALID_PARAMS, "maps must contain at least one map")
+    bad = [map_name for map_name in maps if map_name not in _PBR_MAPS]
+    if bad:
+        raise BridgeError(INVALID_PARAMS, f"unsupported PBR map: {bad[0]}")
+    return maps
+
+
 def _coerce_socket_default(current: Any, value: Any) -> Any:
     if current is None:
         return value
@@ -268,6 +290,102 @@ def set_principled(ctx: Ctx, payload: dict) -> dict:
         changed["emission_strength"] = float(payload["emission_strength"])
 
     return {"material": mat.name, "set": changed}
+
+
+def _resolve_or_create_material_for_maps(ctx: Ctx, payload: dict) -> tuple[Any | None, Any, bool]:
+    obj = None
+    obj_name = payload.get("object")
+    if isinstance(obj_name, str) and obj_name:
+        obj = ctx.get_object(obj_name)
+
+    mat_name = payload.get("material")
+    mat = ctx.bpy.data.materials.get(mat_name) if isinstance(mat_name, str) and mat_name else None
+    if mat is None and obj is not None and not (isinstance(mat_name, str) and mat_name):
+        mat = getattr(obj, "active_material", None)
+
+    created = False
+    if mat is None:
+        name = mat_name if isinstance(mat_name, str) and mat_name else f"{getattr(obj, 'name', 'Asset')}_PBR"
+        mat = ctx.bpy.data.materials.new(name=name)
+        mat.use_nodes = True
+        created = True
+    else:
+        _ensure_nodes(mat)
+
+    if obj is not None:
+        data = getattr(obj, "data", None)
+        materials = getattr(data, "materials", None)
+        if materials is None:
+            raise BridgeError(PRECONDITION, f"object cannot hold materials: {obj.name}")
+        slots = list(materials)
+        if mat in slots:
+            index = slots.index(mat)
+        else:
+            materials.append(mat)
+            index = len(slots)
+        if hasattr(obj, "active_material_index"):
+            obj.active_material_index = index
+    return obj, mat, created
+
+
+def _new_pbr_image(ctx: Ctx, name: str, size: int, map_name: str) -> Any:
+    image = ctx.bpy.data.images.new(name=name, width=size, height=size, alpha=True)
+    cs = getattr(image, "colorspace_settings", None)
+    if cs is not None and hasattr(cs, "name"):
+        cs.name = _PBR_COLORSPACE[map_name]
+    return image
+
+
+def _add_pbr_texture_node(node_tree: Any, principled: Any, image: Any, map_name: str) -> Any:
+    tex = node_tree.nodes.new("ShaderNodeTexImage")
+    tex.name = getattr(image, "name", map_name)
+    tex.label = map_name
+    tex.image = image
+    if map_name == "BASE_COLOR":
+        _link_sockets(node_tree, tex.outputs["Color"], principled.inputs["Base Color"])
+    elif map_name == "ROUGHNESS":
+        _link_sockets(node_tree, tex.outputs["Color"], principled.inputs["Roughness"])
+    elif map_name == "NORMAL":
+        normal_map = node_tree.nodes.new("ShaderNodeNormalMap")
+        normal_map.name = f"{getattr(image, 'name', 'Normal')}_NORMAL_MAP"
+        normal_map.label = "NORMAL_MAP"
+        _link_sockets(node_tree, tex.outputs["Color"], normal_map.inputs["Color"])
+        _link_sockets(node_tree, normal_map.outputs["Normal"], principled.inputs["Normal"])
+    return tex
+
+
+def prepare_pbr_maps(ctx: Ctx, payload: dict) -> dict:
+    obj, mat, created = _resolve_or_create_material_for_maps(ctx, payload)
+    maps = _parse_maps(payload.get("maps"))
+    size = int(payload.get("size", 1024))
+    if size < 1:
+        raise BridgeError(INVALID_PARAMS, "size must be >= 1")
+    prefix = payload.get("prefix")
+    if not isinstance(prefix, str) or not prefix:
+        prefix = getattr(obj, "name", None) or getattr(mat, "name", "Asset")
+
+    node_tree = _ensure_nodes(mat)
+    principled = _principled(node_tree)
+    created_maps = []
+    for map_name in maps:
+        image = _new_pbr_image(ctx, f"{prefix}_{map_name}", size, map_name)
+        node = _add_pbr_texture_node(node_tree, principled, image, map_name)
+        created_maps.append(
+            {
+                "map": map_name,
+                "image": getattr(image, "name", ""),
+                "node": getattr(node, "name", ""),
+                "colorspace": getattr(getattr(image, "colorspace_settings", None), "name", ""),
+                "size": [int(v) for v in list(getattr(image, "size", []) or [])[:2]],
+            }
+        )
+    return {
+        "object": getattr(obj, "name", None) if obj is not None else None,
+        "material": getattr(mat, "name", ""),
+        "created_material": created,
+        "maps": maps,
+        "created": created_maps,
+    }
 
 
 def assign_material(ctx: Ctx, payload: dict) -> dict:
@@ -425,6 +543,7 @@ def list_materials(ctx: Ctx, payload: dict) -> dict:
 COMMANDS = [
     Command("shading.create_material", create_material, mutates=True),
     Command("shading.set_principled", set_principled, mutates=True, feedback="viewport"),
+    Command("shading.prepare_pbr_maps", prepare_pbr_maps, mutates=True, feedback="viewport"),
     Command("shading.assign_material", assign_material, mutates=True, feedback="viewport"),
     Command("shading.add_image_texture", add_image_texture, mutates=True, feedback="viewport"),
     Command("shading.report", report, mutates=False),

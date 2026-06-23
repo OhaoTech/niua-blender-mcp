@@ -23,6 +23,7 @@ from typing import Any
 
 from ..context import Ctx
 from ..core.engine_metrics import engine_quality
+from ..core.material_metrics import material_quality
 from ..core.orientation_metrics import orientation_quality
 from ..dispatch import Command
 from .mesh import (
@@ -203,7 +204,7 @@ def _scale(obj: Any) -> dict:
 
 
 def quality(ctx: Ctx, payload: dict) -> dict:
-    """Objective quality metrics for a mesh: topology, UVs, orientation, symmetry, proportion, scale, engine readiness.
+    """Objective quality metrics for a mesh: topology, UVs, orientation, symmetry, proportion, scale, engine/material readiness.
 
     The numeric judgment channel that complements the multi-angle images — so the agent's
     do->observe->judge->revert loop converges on facts, not vibes. Read-only; bmesh-derived
@@ -221,6 +222,7 @@ def quality(ctx: Ctx, payload: dict) -> dict:
         "proportion": _proportion(obj),
         "scale": _scale(obj),
         "engine": engine_quality(ctx, obj, counts, payload),
+        "material": material_quality(obj, payload),
     }
 
 
@@ -243,6 +245,7 @@ def _quality_compact(ctx: Ctx, obj_name: Any) -> dict | None:
         "aspect_ratio": full["proportion"]["aspect_ratio"],
         "transform_applied": full["scale"]["transform_applied"],
         "engine": full["engine"],
+        "material": full["material"],
     }
 
 

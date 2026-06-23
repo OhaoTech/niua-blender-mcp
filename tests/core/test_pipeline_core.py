@@ -27,6 +27,7 @@ def test_stage_registry_declares_game_asset_flow():
         "repair",
         "retopo",
         "uv",
+        "bake",
         "material",
         "optimize",
         "export_preflight",
@@ -37,7 +38,8 @@ def test_stage_registry_declares_game_asset_flow():
         "repair": "orientation",
         "retopo": "retopo",
         "uv": "uv",
-        "material": None,
+        "bake": "bake",
+        "material": "material",
         "optimize": "optimize",
         "export_preflight": "export_preflight",
         "exported": None,
@@ -115,7 +117,7 @@ def test_rollback_pointer_moves_current_stage_back_and_invalidates_future_gates(
     assert _statuses(out)["retopo"] == "pending"
 
 
-def test_optimize_stage_requires_engine_readiness_gate_before_export_preflight():
+def test_bake_and_material_stages_require_gates_before_optimize():
     pipeline.start("Hero")
     pipeline.advance("Hero")
     pipeline.record_gate("Hero", "repair", _gate("repair", True))
@@ -123,7 +125,20 @@ def test_optimize_stage_requires_engine_readiness_gate_before_export_preflight()
     pipeline.record_gate("Hero", "retopo", _gate("retopo", True))
     pipeline.advance("Hero")
     pipeline.record_gate("Hero", "uv", _gate("uv", True))
+    out = pipeline.advance("Hero")
+
+    assert out["state"]["current_stage"] == "bake"
+
+    with pytest.raises(ValueError, match="bake"):
+        pipeline.advance("Hero")
+
+    pipeline.record_gate("Hero", "bake", _gate("bake", True))
     pipeline.advance("Hero")
+
+    with pytest.raises(ValueError, match="material"):
+        pipeline.advance("Hero")
+
+    pipeline.record_gate("Hero", "material", _gate("material", True))
     out = pipeline.advance("Hero")
 
     assert out["state"]["current_stage"] == "optimize"
@@ -135,4 +150,12 @@ def test_optimize_stage_requires_engine_readiness_gate_before_export_preflight()
     out = pipeline.advance("Hero")
 
     assert out["state"]["current_stage"] == "export_preflight"
-    assert out["state"]["completed"] == ["intake", "repair", "retopo", "uv", "material", "optimize"]
+    assert out["state"]["completed"] == [
+        "intake",
+        "repair",
+        "retopo",
+        "uv",
+        "bake",
+        "material",
+        "optimize",
+    ]

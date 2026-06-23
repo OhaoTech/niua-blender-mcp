@@ -48,6 +48,37 @@ _PACKS: dict[str, dict[str, Any]] = {
             "uv.stretch_ratio": "Add seams or use average island scale before repacking.",
         },
     },
+    "bake": {
+        "stage": "bake",
+        "standards": "Bake stage requires normal, AO, and cavity map outputs, with data maps stored as Non-Color images before material production advances.",
+        "targets": {"bake_maps_present": True, "data_maps_non_color": True},
+        "sources": [
+            {"title": "Blender Manual - Cycles Baking", "locator": "manual/render/cycles/baking"},
+            {"title": "Blender Manual - Color Management", "locator": "manual/render/color_management"},
+        ],
+        "recommendations": {
+            "material.bake_maps_present": "Create or bake NORMAL, AO, and CAVITY texture slots before advancing.",
+            "material.data_maps_non_color": "Set normal, roughness, AO, and cavity images to Non-Color data.",
+        },
+    },
+    "material": {
+        "stage": "material",
+        "standards": "Material production requires a complete PBR texture set and atlas-ready image dimensions before optimization.",
+        "targets": {
+            "pbr_maps_present": True,
+            "textures_within_size": True,
+            "atlas_ready": True,
+        },
+        "sources": [
+            {"title": "Khronos glTF 2.0 Materials", "locator": "Khronos glTF material model"},
+            {"title": "Blender Manual - Shader Nodes", "locator": "manual/render/shader_nodes"},
+        ],
+        "recommendations": {
+            "material.pbr_maps_present": "Prepare BASE_COLOR, NORMAL, ROUGHNESS, AO, and CAVITY map slots.",
+            "material.textures_within_size": "Resize or regenerate oversized textures to the stage texture limit.",
+            "material.atlas_ready": "Use complete square PBR textures with data maps in Non-Color space.",
+        },
+    },
     "optimize": {
         "stage": "optimize",
         "standards": "Optimize validates universal game-engine readiness: triangle, material, and texture budgets plus at least one LOD and a collision proxy.",

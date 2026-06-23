@@ -35,21 +35,33 @@ class FakePoly:
 
 
 class FakeImage:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, size=(1024, 1024), colorspace="sRGB") -> None:
         self.name = name
+        self.filepath = f"/tmp/{name}.png"
+        self.size = list(size)
+        self.colorspace_settings = types.SimpleNamespace(name=colorspace)
 
 
 class FakeTexNode:
     type = "TEX_IMAGE"
 
-    def __init__(self, image: FakeImage) -> None:
+    def __init__(self, image: FakeImage, label: str = "") -> None:
+        self.name = image.name
+        self.label = label
         self.image = image
 
 
 class FakeMaterial:
     def __init__(self, name: str, images=()) -> None:
         self.name = name
-        self.node_tree = types.SimpleNamespace(nodes=[FakeTexNode(image) for image in images])
+        nodes = []
+        for item in images:
+            if isinstance(item, tuple):
+                label, image = item
+                nodes.append(FakeTexNode(image, label))
+            else:
+                nodes.append(FakeTexNode(item))
+        self.node_tree = types.SimpleNamespace(nodes=nodes)
 
 
 class FakeMesh:
@@ -301,6 +313,55 @@ def test_engine_readiness_budget_failures_are_explicit(env) -> None:
     assert engine["within_texture_budget"] is False
     assert engine["has_lods"] is False
     assert engine["has_collision_proxy"] is False
+
+
+def test_quality_includes_material_production_metrics(env) -> None:
+    ctx, bpy = env
+    material = FakeMaterial(
+        "HeroMat",
+        [
+            ("BASE_COLOR", FakeImage("hero_base_color", colorspace="sRGB")),
+            ("NORMAL", FakeImage("hero_normal", colorspace="Non-Color")),
+            ("ROUGHNESS", FakeImage("hero_roughness", colorspace="Non-Color")),
+            ("AO", FakeImage("hero_ao", colorspace="Non-Color")),
+            ("CAVITY", FakeImage("hero_cavity", colorspace="Non-Color")),
+        ],
+    )
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS, materials=[material])))
+
+    material_quality = _quality(env, "Cube", max_texture_size=1024)["material"]
+
+    assert material_quality["material_count"] == 1
+    assert material_quality["texture_count"] == 5
+    assert material_quality["present_maps"] == ["AO", "BASE_COLOR", "CAVITY", "NORMAL", "ROUGHNESS"]
+    assert material_quality["missing_maps"] == []
+    assert material_quality["bake_maps_present"] is True
+    assert material_quality["pbr_maps_present"] is True
+    assert material_quality["data_maps_non_color"] is True
+    assert material_quality["textures_within_size"] is True
+    assert material_quality["atlas_ready"] is True
+
+
+def test_material_metrics_expose_missing_maps_and_bad_colorspace(env) -> None:
+    ctx, bpy = env
+    material = FakeMaterial(
+        "HeroMat",
+        [
+            ("BASE_COLOR", FakeImage("hero_base_color", colorspace="sRGB")),
+            ("NORMAL", FakeImage("hero_normal", colorspace="sRGB")),
+            ("ROUGHNESS", FakeImage("hero_roughness", size=(4096, 4096), colorspace="Non-Color")),
+        ],
+    )
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS, materials=[material])))
+
+    material_quality = _quality(env, "Cube", max_texture_size=2048)["material"]
+
+    assert material_quality["missing_maps"] == ["AO", "CAVITY"]
+    assert material_quality["bake_maps_present"] is False
+    assert material_quality["pbr_maps_present"] is False
+    assert material_quality["data_maps_non_color"] is False
+    assert material_quality["textures_within_size"] is False
+    assert material_quality["atlas_ready"] is False
 
 
 def test_quality_is_read_only_no_undo(env) -> None:

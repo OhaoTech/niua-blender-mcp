@@ -18,6 +18,15 @@ _GATES = {
         {"path": "orientation.degenerate_faces", "op": "==", "value": 0},
         {"path": "orientation.inward_facing_faces", "op": "==", "value": 0},
     ],
+    "bake": [
+        {"path": "material.bake_maps_present", "op": "==", "value": True},
+        {"path": "material.data_maps_non_color", "op": "==", "value": True},
+    ],
+    "material": [
+        {"path": "material.pbr_maps_present", "op": "==", "value": True},
+        {"path": "material.textures_within_size", "op": "==", "value": True},
+        {"path": "material.atlas_ready", "op": "==", "value": True},
+    ],
     "optimize": [
         {"path": "engine.within_triangle_budget", "op": "==", "value": True},
         {"path": "engine.within_material_budget", "op": "==", "value": True},

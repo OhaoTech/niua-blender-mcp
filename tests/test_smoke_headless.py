@@ -756,7 +756,27 @@ def test_layer2_wave2_pipeline_spine_acceptance(bridge: BlenderBridge) -> None:
     uv_after = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
     assert uv_after["stage"] == "uv"
     assert uv_after["gates_pass"] is True
+    assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "bake"
+
+    bake_before = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert bake_before["stage"] == "bake"
+    assert bake_before["gates_pass"] is False
+
+    prepared = bridge.call(
+        "shading.prepare_pbr_maps",
+        {"object": "PipeHero", "material": "PipeHero_PBR", "prefix": "PipeHero", "size": 512},
+    )
+    assert prepared["maps"] == ["BASE_COLOR", "NORMAL", "ROUGHNESS", "AO", "CAVITY"]
+    bake_after = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert bake_after["stage"] == "bake"
+    assert bake_after["gates_pass"] is True
+    assert bake_after["metrics"]["material"]["bake_maps_present"] is True
+
     assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "material"
+    material_gate = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
+    assert material_gate["stage"] == "material"
+    assert material_gate["gates_pass"] is True
+    assert material_gate["metrics"]["material"]["atlas_ready"] is True
     assert bridge.call("pipeline.advance", {"object": "PipeHero"})["to_stage"] == "optimize"
 
     optimize_before = bridge.call("pipeline.gate_check", {"object": "PipeHero"})
