@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import operator
 from typing import Any
 
 _STAGES = [
@@ -16,6 +17,28 @@ _STAGES = [
 ]
 _STAGE_INDEX = {stage["name"]: index for index, stage in enumerate(_STAGES)}
 _STORE: dict[str, dict[str, Any]] = {}
+_OPS = {">=": operator.ge, "<=": operator.le, "==": operator.eq, "<": operator.lt, ">": operator.gt}
+_GATES = {
+    "retopo": [
+        {"path": "topology.quad_ratio", "op": ">=", "value": 0.95},
+        {"path": "topology.ngons", "op": "==", "value": 0},
+        {"path": "topology.non_manifold_edges", "op": "==", "value": 0},
+    ],
+    "uv": [
+        {"path": "uv.has_uvs", "op": "==", "value": True},
+        {"path": "uv.out_of_bounds_loops", "op": "==", "value": 0},
+        {"path": "uv.overlap_detected", "op": "==", "value": False},
+        {"path": "uv.stretch_ratio", "op": "<=", "value": 2.0},
+    ],
+    "orientation": [
+        {"path": "orientation.degenerate_faces", "op": "==", "value": 0},
+        {"path": "orientation.inward_facing_faces", "op": "==", "value": 0},
+    ],
+    "export_preflight": [
+        {"path": "scale.transform_applied", "op": "==", "value": True},
+        {"path": "topology.non_manifold_edges", "op": "==", "value": 0},
+    ],
+}
 
 
 def _checkpoint_label(stage: str) -> str:
@@ -67,6 +90,50 @@ def _status_for_state(state: dict[str, Any]) -> dict[str, Any]:
 
 def stage_registry() -> list[dict[str, Any]]:
     return [deepcopy(stage) for stage in _STAGES]
+
+
+def gate_profile(stage: str) -> str | None:
+    _require_stage(stage)
+    return _STAGES[_STAGE_INDEX[stage]]["gate_profile"]
+
+
+def stage_gates(stage: str) -> list[dict[str, Any]]:
+    profile = gate_profile(stage)
+    if profile is None:
+        return []
+    try:
+        return [deepcopy(gate) for gate in _GATES[profile]]
+    except KeyError as exc:
+        raise ValueError(f"unknown stage gate profile: {profile}") from exc
+
+
+def _dig(metrics: dict[str, Any], path: str) -> Any:
+    cur: Any = metrics
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def check_gates(metrics: dict[str, Any], gates: list[dict[str, Any]]) -> dict[str, Any]:
+    results = []
+    all_pass = True
+    for gate in gates:
+        actual = _dig(metrics, gate["path"])
+        fn = _OPS.get(gate["op"])
+        ok = bool(actual is not None and fn is not None and fn(actual, gate["value"]))
+        all_pass = all_pass and ok
+        results.append(
+            {
+                "path": gate["path"],
+                "op": gate["op"],
+                "value": gate["value"],
+                "actual": actual,
+                "pass": ok,
+            }
+        )
+    return {"gates": results, "gates_pass": all_pass}
 
 
 def start(object_name: str, profile: str = "game_asset") -> dict[str, Any]:
