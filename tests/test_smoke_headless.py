@@ -636,6 +636,24 @@ def test_feedback_uv_checker_eye(bridge: BlenderBridge) -> None:
     assert out["images"][0]["data"]
 
 
+def test_feedback_orientation_eye(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "OrientCube"})
+
+    out = bridge.call("feedback.orientation", {"object": "OrientCube", "view": "persp", "res": 256})
+    analytics = out["analytics"]
+    assert "inward_facing_faces" in analytics
+    assert "normal_consistency" in analytics
+
+    if not out.get("available"):
+        reason = out.get("reason", "")
+        if "OpenGL" in reason or "opengl" in reason or "GPU" in reason:
+            pytest.skip(f"headless renderer unavailable: {reason}")
+        pytest.fail(f"orientation eye failed: {reason}")
+    assert out["available"] is True
+    assert out["images"][0]["mode"] == "orientation"
+    assert out["images"][0]["data"]
+
+
 def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:
     # Orbit. Same contract: envelope shape holds even when rendering is unavailable
     # headless, and 'count' is honored / clamped into 2..24.

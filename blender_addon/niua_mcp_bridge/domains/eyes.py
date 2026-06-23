@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..context import Ctx
+from ..core.orientation_metrics import orientation_quality
 from ..core.uv_metrics import uv_quality
 from ..dispatch import Command
 from .uv import report as uv_report
@@ -49,6 +50,34 @@ def _ensure_checker_material(bpy: Any) -> Any:
     nt.links.new(checker.outputs["Color"], emi.inputs["Color"])
     nt.links.new(emi.outputs["Emission"], out.inputs["Surface"])
     mat.diffuse_color = (0.96, 0.92, 0.56, 1.0)
+    return mat
+
+
+def _ensure_orientation_material(bpy: Any) -> Any:
+    mat = bpy.data.materials.get("__niua_orientation_backface")
+    if mat is None:
+        mat = bpy.data.materials.new("__niua_orientation_backface")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    emi = nt.nodes.new("ShaderNodeEmission")
+    try:
+        geom = nt.nodes.new("ShaderNodeNewGeometry")
+        front = nt.nodes.new("ShaderNodeRGB")
+        front.outputs["Color"].default_value = (0.18, 0.72, 0.48, 1.0)
+        back = nt.nodes.new("ShaderNodeRGB")
+        back.outputs["Color"].default_value = (0.95, 0.12, 0.18, 1.0)
+        mix = nt.nodes.new("ShaderNodeMixRGB")
+        nt.links.new(geom.outputs["Backfacing"], mix.inputs["Fac"])
+        nt.links.new(front.outputs["Color"], mix.inputs["Color1"])
+        nt.links.new(back.outputs["Color"], mix.inputs["Color2"])
+        nt.links.new(mix.outputs["Color"], emi.inputs["Color"])
+    except Exception:  # noqa: BLE001 - node names drift across Blender versions
+        emi.inputs["Color"].default_value = (0.18, 0.72, 0.48, 1.0)
+    emi.inputs["Strength"].default_value = 1.0
+    nt.links.new(emi.outputs["Emission"], out.inputs["Surface"])
+    mat.diffuse_color = (0.18, 0.72, 0.48, 1.0)
     return mat
 
 
@@ -110,7 +139,60 @@ def uv_checker(ctx: Ctx, payload: dict) -> dict:
         return {"available": False, "reason": str(exc), "analytics": analytics}
 
 
+def orientation(ctx: Ctx, payload: dict) -> dict:
+    from ..core import capture as cap
+
+    obj_name = payload.get("object")
+    view = str(payload.get("view", "persp"))
+    res = int(payload.get("res", 768))
+    analytics: dict
+
+    try:
+        obj = _resolve_mesh(ctx, obj_name)
+        if obj is None:
+            return {"available": False, "reason": f"not a mesh object: {obj_name}", "analytics": {}}
+        analytics = orientation_quality(obj)
+
+        mesh = obj.data
+        orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
+        orig_index = [p.material_index for p in getattr(mesh, "polygons", [])]
+        center, size = cap.scene_bbox(ctx.bpy, obj.name)
+        cam_obj = cap._ensure_capture_camera(ctx.bpy)
+        cap._apply_frame(cam_obj, cap.view_camera(center, size, view))
+
+        try:
+            mesh.materials.clear()
+            mesh.materials.append(_ensure_orientation_material(ctx.bpy))
+            for poly in getattr(mesh, "polygons", []):
+                poly.material_index = 0
+            image = cap._render_to_b64(ctx.bpy, cam_obj, "MATERIAL", res)
+        finally:
+            mesh.materials.clear()
+            for mat in orig_mats:
+                mesh.materials.append(mat)
+            for poly, index in zip(getattr(mesh, "polygons", []), orig_index):
+                poly.material_index = index
+
+        return {
+            "available": True,
+            "view": view,
+            "analytics": analytics,
+            "images": [
+                {
+                    "view": view,
+                    "mode": "orientation",
+                    "mimeType": "image/png",
+                    "encoding": "base64",
+                    "data": image,
+                }
+            ],
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "reason": str(exc), "analytics": locals().get("analytics", {})}
+
+
 COMMANDS = [
     Command("feedback.topology", topology, mutates=False),
     Command("feedback.uv", uv_checker, mutates=False),
+    Command("feedback.orientation", orientation, mutates=False),
 ]
