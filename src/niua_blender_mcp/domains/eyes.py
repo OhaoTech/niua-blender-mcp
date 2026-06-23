@@ -41,4 +41,26 @@ SPECS = [
             "res": Int(default=768, minimum=64, maximum=2048, summary="Square render resolution (px)"),
         },
     ),
+    ToolSpec(
+        name="feedback.wire_shaded",
+        category="feedback",
+        summary="Render shaded material view with real wire geometry overlay and quality analytics",
+        command="feedback.wire_shaded",
+        params={
+            "object": Str(summary="Mesh to inspect (defaults to active)"),
+            "view": Enum(_VIEWS, default="persp", summary="Named view to render from"),
+            "res": Int(default=768, minimum=64, maximum=2048, summary="Square render resolution (px)"),
+        },
+    ),
+    ToolSpec(
+        name="feedback.lookdev",
+        category="feedback",
+        summary="Render a material-shaded lookdev turntable and return quality analytics",
+        command="feedback.lookdev",
+        params={
+            "object": Str(summary="Mesh to inspect (defaults to active)"),
+            "count": Int(default=6, minimum=2, maximum=24, summary="Number of turntable frames"),
+            "res": Int(default=768, minimum=64, maximum=2048, summary="Square render resolution (px)"),
+        },
+    ),
 ]

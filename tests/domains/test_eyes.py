@@ -24,7 +24,7 @@ def test_topology_degrades_gracefully_without_gpu():
     assert "Matrix" not in out["reason"]
 
 
-def test_feedback_uv_and_orientation_are_registered():
+def test_layer2_feedback_eyes_are_registered():
     from niua_blender_mcp.domains import build_router
     from niua_mcp_bridge.domains import build_default_registry
 
@@ -34,3 +34,7 @@ def test_feedback_uv_and_orientation_are_registered():
     assert "feedback.uv" in commands
     assert "feedback.orientation" in specs
     assert "feedback.orientation" in commands
+    assert "feedback.wire_shaded" in specs
+    assert "feedback.wire_shaded" in commands
+    assert "feedback.lookdev" in specs
+    assert "feedback.lookdev" in commands

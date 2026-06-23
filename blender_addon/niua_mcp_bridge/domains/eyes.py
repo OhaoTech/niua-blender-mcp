@@ -81,6 +81,22 @@ def _ensure_orientation_material(bpy: Any) -> Any:
     return mat
 
 
+def _ensure_flat_material(bpy: Any, name: str, rgba: tuple[float, float, float, float]) -> Any:
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    emi = nt.nodes.new("ShaderNodeEmission")
+    emi.inputs["Color"].default_value = rgba
+    emi.inputs["Strength"].default_value = 1.0
+    nt.links.new(emi.outputs["Emission"], out.inputs["Surface"])
+    mat.diffuse_color = rgba
+    return mat
+
+
 def uv_checker(ctx: Ctx, payload: dict) -> dict:
     from ..core import capture as cap
 
@@ -191,8 +207,95 @@ def orientation(ctx: Ctx, payload: dict) -> dict:
         return {"available": False, "reason": str(exc), "analytics": locals().get("analytics", {})}
 
 
+def wire_shaded(ctx: Ctx, payload: dict) -> dict:
+    from ..core import capture as cap
+    from .feedback import quality
+
+    obj_name = payload.get("object")
+    view = str(payload.get("view", "persp"))
+    res = int(payload.get("res", 768))
+    analytics: dict
+    try:
+        analytics = quality(ctx, {"object": obj_name} if obj_name else {})
+    except Exception as exc:  # noqa: BLE001
+        analytics = {"available": False, "reason": str(exc)}
+
+    try:
+        obj = _resolve_mesh(ctx, obj_name)
+        if obj is None:
+            return {"available": False, "reason": f"not a mesh object: {obj_name}", "analytics": analytics}
+
+        mesh = obj.data
+        orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
+        orig_index = [p.material_index for p in getattr(mesh, "polygons", [])]
+        center, size = cap.scene_bbox(ctx.bpy, obj.name)
+        cam_obj = cap._ensure_capture_camera(ctx.bpy)
+        cap._apply_frame(cam_obj, cap.view_camera(center, size, view))
+        wire_mod = None
+
+        try:
+            if not orig_mats:
+                mesh.materials.append(_ensure_flat_material(ctx.bpy, "__niua_wire_base", (0.56, 0.60, 0.62, 1.0)))
+                for poly in getattr(mesh, "polygons", []):
+                    poly.material_index = 0
+            wire_slot = len(mesh.materials)
+            mesh.materials.append(_ensure_flat_material(ctx.bpy, "__niua_wire_line", (0.01, 0.01, 0.012, 1.0)))
+            wire_mod = obj.modifiers.new(name="__niua_wire_shaded", type="WIREFRAME")
+            wire_mod.thickness = max(max(size) * 0.008, 1e-4)
+            wire_mod.use_replace = False
+            wire_mod.use_even_offset = True
+            wire_mod.material_offset = wire_slot
+            image = cap._render_to_b64(ctx.bpy, cam_obj, "MATERIAL", res)
+        finally:
+            if wire_mod is not None:
+                try:
+                    obj.modifiers.remove(wire_mod)
+                except Exception:  # noqa: BLE001
+                    pass
+            mesh.materials.clear()
+            for mat in orig_mats:
+                mesh.materials.append(mat)
+            for poly, index in zip(getattr(mesh, "polygons", []), orig_index):
+                poly.material_index = index
+
+        return {
+            "available": True,
+            "view": view,
+            "analytics": analytics,
+            "images": [
+                {
+                    "view": view,
+                    "mode": "wire_shaded",
+                    "mimeType": "image/png",
+                    "encoding": "base64",
+                    "data": image,
+                }
+            ],
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "reason": str(exc), "analytics": analytics}
+
+
+def lookdev(ctx: Ctx, payload: dict) -> dict:
+    from ..core import capture as cap
+    from .feedback import quality
+
+    obj_name = payload.get("object")
+    count = int(payload.get("count", 6))
+    res = int(payload.get("res", 768))
+    try:
+        analytics = quality(ctx, {"object": obj_name} if obj_name else {})
+    except Exception as exc:  # noqa: BLE001
+        analytics = {"available": False, "reason": str(exc)}
+    out = cap.turntable(ctx.bpy, count=count, shading="MATERIAL", res=res, obj_name=obj_name)
+    out["analytics"] = analytics
+    return out
+
+
 COMMANDS = [
     Command("feedback.topology", topology, mutates=False),
     Command("feedback.uv", uv_checker, mutates=False),
     Command("feedback.orientation", orientation, mutates=False),
+    Command("feedback.wire_shaded", wire_shaded, mutates=False),
+    Command("feedback.lookdev", lookdev, mutates=False),
 ]

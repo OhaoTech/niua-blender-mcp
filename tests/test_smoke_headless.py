@@ -654,6 +654,45 @@ def test_feedback_orientation_eye(bridge: BlenderBridge) -> None:
     assert out["images"][0]["data"]
 
 
+def test_feedback_wire_shaded_eye(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "WireEyeCube"})
+    bridge.call("shading.create_material", {"name": "WireEyeMat"})
+    bridge.call("shading.set_principled", {"material": "WireEyeMat", "base_color": [0.2, 0.45, 0.85]})
+    bridge.call("shading.assign_material", {"object": "WireEyeCube", "material": "WireEyeMat"})
+
+    out = bridge.call("feedback.wire_shaded", {"object": "WireEyeCube", "view": "persp", "res": 256})
+    assert out["analytics"]["topology"]["quad_ratio"] == 1.0
+
+    if not out.get("available"):
+        reason = out.get("reason", "")
+        if "OpenGL" in reason or "opengl" in reason or "GPU" in reason:
+            pytest.skip(f"headless renderer unavailable: {reason}")
+        pytest.fail(f"wire-shaded eye failed: {reason}")
+    assert out["available"] is True
+    assert out["images"][0]["mode"] == "wire_shaded"
+    assert out["images"][0]["data"]
+
+
+def test_feedback_lookdev_eye(bridge: BlenderBridge) -> None:
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "LookdevCube"})
+    bridge.call("shading.create_material", {"name": "LookdevMat"})
+    bridge.call("shading.set_principled", {"material": "LookdevMat", "base_color": [0.8, 0.35, 0.18]})
+    bridge.call("shading.assign_material", {"object": "LookdevCube", "material": "LookdevMat"})
+
+    out = bridge.call("feedback.lookdev", {"object": "LookdevCube", "count": 4, "res": 256})
+    assert out["analytics"]["topology"]["quad_ratio"] == 1.0
+    assert isinstance(out.get("images"), list)
+
+    if not out.get("available"):
+        reason = out.get("reason", "")
+        if "OpenGL" in reason or "opengl" in reason or "GPU" in reason:
+            pytest.skip(f"headless renderer unavailable: {reason}")
+        pytest.fail(f"lookdev eye failed: {reason}")
+    assert out["available"] is True
+    assert len(out["images"]) == 4
+    assert all(img.get("data") for img in out["images"])
+
+
 def test_feedback_turntable_returns_envelope(bridge: BlenderBridge) -> None:
     # Orbit. Same contract: envelope shape holds even when rendering is unavailable
     # headless, and 'count' is honored / clamped into 2..24.
