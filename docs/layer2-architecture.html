@@ -17,8 +17,8 @@
       --eye: #2d8a6e;
       --gate: #c9791f;
       --knowledge: #75613c;
-      --missing: #a9445a;
       --done: #3d7a4b;
+      --partial: #2f7e92;
       --future: #777f87;
       --shadow: 0 18px 45px rgba(32, 38, 45, 0.09);
     }
@@ -102,9 +102,9 @@
     }
 
     .done { background: var(--done); }
-    .missing { background: var(--missing); }
     .next { background: var(--gate); }
     .base { background: var(--foundation); }
+    .future { background: var(--future); }
 
     .board {
       display: grid;
@@ -157,7 +157,6 @@
     }
 
     .badge.done-badge { background: var(--done); }
-    .badge.missing-badge { background: var(--missing); }
     .badge.next-badge { background: var(--gate); }
     .badge.base-badge { background: var(--foundation); }
 
@@ -201,7 +200,8 @@
 
     .chip.done-chip { border-left-color: var(--done); }
     .chip.next-chip { border-left-color: var(--gate); }
-    .chip.missing-chip { border-left-color: var(--missing); }
+    .chip.future-chip { border-left-color: var(--future); }
+    .chip.partial-chip { border-left-color: var(--partial); }
 
     .pipeline {
       position: relative;
@@ -217,7 +217,7 @@
       bottom: 84px;
       width: 4px;
       transform: translateX(-50%);
-      background: linear-gradient(var(--stage), var(--gate), var(--missing));
+      background: linear-gradient(var(--stage), var(--gate), var(--future));
       border-radius: 999px;
       opacity: 0.4;
     }
@@ -261,7 +261,8 @@
 
     .stage.done-stage { border-top-color: var(--done); }
     .stage.next-stage { border-top-color: var(--gate); }
-    .stage.missing-stage { border-top-color: var(--missing); }
+    .stage.future-stage { border-top-color: var(--future); }
+    .stage.partial-stage { border-top-color: var(--partial); }
 
     .stage-index {
       color: var(--muted);
@@ -308,9 +309,9 @@
       background: var(--gate);
     }
 
-    .tag.missing-tag {
+    .tag.future-tag {
       color: #fff;
-      background: var(--missing);
+      background: var(--future);
     }
 
     .pillar-grid {
@@ -365,6 +366,47 @@
       font-weight: 800;
     }
 
+    .stage-map {
+      margin-top: 18px;
+      padding: 18px;
+    }
+
+    .stage-map h2 {
+      margin-bottom: 6px;
+    }
+
+    .map-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .map-row {
+      display: grid;
+      grid-template-columns: minmax(170px, 0.8fr) minmax(0, 1.2fr) minmax(130px, 0.5fr);
+      gap: 10px;
+      align-items: center;
+      min-height: 46px;
+      border: 1px solid var(--line);
+      border-left: 6px solid var(--future);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.84);
+      padding: 9px 11px;
+      font-size: 0.84rem;
+    }
+
+    .map-row.done-row { border-left-color: var(--done); }
+    .map-row.next-row { border-left-color: var(--gate); }
+    .map-row.partial-row { border-left-color: var(--partial); }
+
+    .map-row strong {
+      font-size: 0.88rem;
+    }
+
+    .map-row span {
+      color: var(--muted);
+    }
+
     .wave-band {
       margin-top: 18px;
       display: grid;
@@ -387,6 +429,10 @@
 
     .wave.next-wave {
       border-top-color: var(--gate);
+    }
+
+    .wave.future-wave {
+      border-top-color: var(--future);
     }
 
     .wave h3 {
@@ -416,7 +462,8 @@
       }
 
       .flow-grid,
-      .wave-band {
+      .wave-band,
+      .map-row {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
@@ -434,7 +481,8 @@
       .legend,
       .stages,
       .flow-grid,
-      .wave-band {
+      .wave-band,
+      .map-row {
         grid-template-columns: 1fr;
       }
 
@@ -458,12 +506,13 @@
       <div>
         <p class="lede">
           Layer 1 gives the agent full Blender reach. Layer 2 adds senior production discipline:
-          staged work, perception, deterministic gates, knowledge, rollback, and final export.
+          staged work, perception, deterministic gates, knowledge, rollback, engine readiness,
+          baking/material production, engine profiles, and asset-class breadth.
         </p>
         <div class="legend" aria-label="Diagram legend">
-          <div class="legend-item"><span class="swatch done"></span>Built now</div>
+          <div class="legend-item"><span class="swatch done"></span>Built</div>
           <div class="legend-item"><span class="swatch next"></span>Next wave</div>
-          <div class="legend-item"><span class="swatch missing"></span>Missing</div>
+          <div class="legend-item"><span class="swatch future"></span>Future wave</div>
           <div class="legend-item"><span class="swatch base"></span>Layer 1 foundation</div>
         </div>
       </div>
@@ -486,8 +535,8 @@
         </section>
 
         <section class="panel layer-card">
-          <p class="eyebrow">Current Layer 2 seed <span class="badge done-badge">Built</span></p>
-          <h2>What exists today</h2>
+          <p class="eyebrow">Layer 2 built surface <span class="badge done-badge">Waves 1-3</span></p>
+          <h2>Surface and roadmap</h2>
           <div class="list">
             <div class="chip done-chip"><span>Topology eye</span><span>feedback.topology</span></div>
             <div class="chip done-chip"><span>UV checker eye</span><span>feedback.uv</span></div>
@@ -506,6 +555,10 @@
             <div class="chip done-chip"><span>Scorecard harness</span><span>evals/harness.py</span></div>
             <div class="chip done-chip"><span>Modeling recipe</span><span>playbooks</span></div>
             <div class="chip done-chip"><span>Craft verbs</span><span>model.*</span></div>
+            <div class="chip future-chip"><span>Engine readiness</span><span>Wave 4</span></div>
+            <div class="chip future-chip"><span>Bake/material depth</span><span>Wave 5</span></div>
+            <div class="chip future-chip"><span>Engine profiles</span><span>Wave 6</span></div>
+            <div class="chip future-chip"><span>Asset breadth</span><span>Wave 8</span></div>
           </div>
         </section>
       </aside>
@@ -516,15 +569,16 @@
             <p class="eyebrow">Stage spine</p>
             <h2 class="pipeline-title">One asset moves through gates, not vibes.</h2>
           </div>
-          <span class="badge done-badge">Wave 2 built</span>
+          <span class="badge done-badge">Waves 1-3 built</span>
         </div>
 
         <div class="stages">
-          <article class="stage next-stage">
+          <article class="stage done-stage">
             <div class="stage-index">01</div>
             <h3>Intake / triage</h3>
             <p>Read the brief or raw mesh, identify defects, classify the asset, set budgets.</p>
             <div class="stage-status">
+              <span class="tag done-tag">Wave 2</span>
               <span class="tag done-tag">pipeline state store</span>
               <span class="tag done-tag">start/status</span>
               <span class="tag done-tag">gate check</span>
@@ -532,11 +586,12 @@
             </div>
           </article>
 
-          <article class="stage next-stage">
+          <article class="stage done-stage">
             <div class="stage-index">02</div>
             <h3>Repair / blockout</h3>
             <p>Fix scale, transforms, broken geometry, rough proportions, and readable shape.</p>
             <div class="stage-status">
+              <span class="tag done-tag">Waves 1-3</span>
               <span class="tag done-tag">mesh tools</span>
               <span class="tag done-tag">orientation metrics</span>
               <span class="tag done-tag">orientation eye</span>
@@ -545,13 +600,14 @@
             </div>
           </article>
 
-          <article class="stage missing-stage">
+          <article class="stage future-stage">
             <div class="stage-index">03</div>
             <h3>High-poly detail</h3>
             <p>Optional bevels, panels, sculpt/detail source for later baking.</p>
             <div class="stage-status">
               <span class="tag done-tag">bevel/recess</span>
-              <span class="tag missing-tag">high-low pairing</span>
+              <span class="tag future-tag">Wave 5/8</span>
+              <span class="tag future-tag">high-low pairing</span>
             </div>
           </article>
 
@@ -560,6 +616,7 @@
             <h3>Retopo</h3>
             <p>Clean topology, no n-gons, controlled poles, no non-manifold edges.</p>
             <div class="stage-status">
+              <span class="tag done-tag">Wave 1</span>
               <span class="tag done-tag">topology eye</span>
               <span class="tag done-tag">wire-shaded eye</span>
               <span class="tag done-tag">retopo gates</span>
@@ -567,11 +624,12 @@
             </div>
           </article>
 
-          <article class="stage next-stage">
+          <article class="stage done-stage">
             <div class="stage-index">05</div>
             <h3>UV unwrap / pack</h3>
             <p>Seams, unwrap, pack, texel density, stretch, overlap, checker validation.</p>
             <div class="stage-status">
+              <span class="tag done-tag">Wave 1/2</span>
               <span class="tag done-tag">uv tools</span>
               <span class="tag done-tag">uv metrics</span>
               <span class="tag done-tag">overlap metric</span>
@@ -580,23 +638,26 @@
             </div>
           </article>
 
-          <article class="stage missing-stage">
+          <article class="stage future-stage">
             <div class="stage-index">06</div>
             <h3>Bake</h3>
             <p>Normal/AO/cavity bake, cage sanity, projection errors, silhouette delta.</p>
             <div class="stage-status">
-              <span class="tag missing-tag">bake tools</span>
-              <span class="tag missing-tag">bake metrics</span>
+              <span class="tag future-tag">Wave 5</span>
+              <span class="tag future-tag">bake tools</span>
+              <span class="tag future-tag">bake metrics</span>
             </div>
           </article>
 
-          <article class="stage missing-stage">
+          <article class="stage future-stage">
             <div class="stage-index">07</div>
             <h3>Material / lookdev</h3>
             <p>PBR maps, shader setup, texture slots, lookdev turntable, final sanity check.</p>
             <div class="stage-status">
               <span class="tag done-tag">shading tools</span>
               <span class="tag done-tag">lookdev eye</span>
+              <span class="tag future-tag">Wave 5</span>
+              <span class="tag future-tag">texture budgets</span>
             </div>
           </article>
 
@@ -606,19 +667,21 @@
             <p>Triangle budget, material count, texture budget, collision and LOD variants.</p>
             <div class="stage-status">
               <span class="tag next-tag">Wave 4 next</span>
-              <span class="tag missing-tag">perf gates</span>
-              <span class="tag missing-tag">lod/collision</span>
+              <span class="tag next-tag">perf gates</span>
+              <span class="tag next-tag">lod/collision</span>
+              <span class="tag future-tag">Wave 7 deeper</span>
             </div>
           </article>
 
-          <article class="stage next-stage">
+          <article class="stage partial-stage">
             <div class="stage-index">09</div>
             <h3>Export</h3>
             <p>glTF/GLB export, engine-profile conventions, transform sanity, external asset validation.</p>
             <div class="stage-status">
               <span class="tag done-tag">glTF export</span>
               <span class="tag done-tag">export preflight</span>
-              <span class="tag missing-tag">engine validators</span>
+              <span class="tag future-tag">Wave 6 profiles</span>
+              <span class="tag future-tag">engine validators</span>
             </div>
           </article>
         </div>
@@ -660,7 +723,7 @@
         </section>
 
         <section class="panel layer-card">
-          <p class="eyebrow">Pipeline tool surface <span class="badge next-badge">Wave 2</span></p>
+          <p class="eyebrow">Pipeline tool surface <span class="badge done-badge">Built</span></p>
           <div class="list">
             <div class="chip done-chip"><span>State store</span><span>core.pipeline</span></div>
             <div class="chip done-chip"><span>Start</span><span>pipeline.start</span></div>
@@ -670,9 +733,52 @@
             <div class="chip done-chip"><span>Rollback</span><span>pipeline.rollback</span></div>
             <div class="chip done-chip"><span>Self-critique</span><span>pipeline.self_critique</span></div>
             <div class="chip done-chip"><span>Knowledge</span><span>knowledge.load</span></div>
+            <div class="chip next-chip"><span>Optimize gate</span><span>Wave 4</span></div>
+            <div class="chip future-chip"><span>Engine profiles</span><span>Wave 6</span></div>
           </div>
         </section>
       </aside>
+    </section>
+
+    <section class="stage-map panel" aria-label="Stage to wave map">
+      <p class="eyebrow">Big map <span class="badge base-badge">Layer 2 waves</span></p>
+      <h2>Stage pipeline and roadmap now share one spine</h2>
+      <p class="small">
+        Waves 1-3 made the pipeline observable, gated, resumable, and self-critiquing.
+        Later waves deepen the same spine instead of creating side systems.
+      </p>
+      <div class="map-grid">
+        <div class="map-row done-row">
+          <strong>Intake, repair, retopo, UV</strong>
+          <span>Operational path with perception, quality metrics, gates, checkpoints, and self-critique.</span>
+          <span class="tag done-tag">Waves 1-3</span>
+        </div>
+        <div class="map-row next-row">
+          <strong>Optimize / LOD / collision</strong>
+          <span>Add engine-readiness metrics, LOD basics, collision proxies, and configurable budgets.</span>
+          <span class="tag next-tag">Wave 4</span>
+        </div>
+        <div class="map-row partial-row">
+          <strong>Bake + material production</strong>
+          <span>Turn lookdev into production validation: bake outputs, texture budgets, material slots, atlas readiness.</span>
+          <span class="tag future-tag">Wave 5</span>
+        </div>
+        <div class="map-row partial-row">
+          <strong>Export profiles</strong>
+          <span>Validate generic, Godot, Unreal, or custom conventions through parameters, not hardcoded engine names.</span>
+          <span class="tag future-tag">Wave 6</span>
+        </div>
+        <div class="map-row partial-row">
+          <strong>Advanced LOD/collision quality</strong>
+          <span>Move beyond baseline proxies into silhouette deltas, multi-hull collision, and stronger quality gates.</span>
+          <span class="tag future-tag">Wave 7</span>
+        </div>
+        <div class="map-row partial-row">
+          <strong>Asset-class breadth</strong>
+          <span>Apply the same pipeline to hard-surface, organic/sculpt, generated cleanup, and from-scratch prop briefs.</span>
+          <span class="tag future-tag">Wave 8</span>
+        </div>
+      </div>
     </section>
 
     <section class="wave-band" aria-label="Build waves">
@@ -692,20 +798,20 @@
         <h3>Wave 4 <span class="tag next-tag">next</span></h3>
         <p class="small"><strong>Engine readiness.</strong> Add optimize stage, perf metrics, LOD basics, collision proxies, and budget gates.</p>
       </article>
-      <article class="wave">
-        <h3>Wave 5</h3>
+      <article class="wave future-wave">
+        <h3>Wave 5 <span class="tag future-tag">future</span></h3>
         <p class="small"><strong>Bake + material production.</strong> Normal/AO/cavity checks, material budgets, texture slots, and atlas-ready validation.</p>
       </article>
-      <article class="wave">
-        <h3>Wave 6</h3>
+      <article class="wave future-wave">
+        <h3>Wave 6 <span class="tag future-tag">future</span></h3>
         <p class="small"><strong>Engine profiles.</strong> Parameterized Godot/Unreal/custom validators without hardcoded engine naming.</p>
       </article>
-      <article class="wave">
-        <h3>Wave 7</h3>
+      <article class="wave future-wave">
+        <h3>Wave 7 <span class="tag future-tag">future</span></h3>
         <p class="small"><strong>Advanced LOD/collision.</strong> Silhouette-delta checks, multi-hull collision, and stronger proxy validation.</p>
       </article>
-      <article class="wave">
-        <h3>Wave 8</h3>
+      <article class="wave future-wave">
+        <h3>Wave 8 <span class="tag future-tag">future</span></h3>
         <p class="small"><strong>Asset-class breadth.</strong> Hard-surface, organic/sculpt, generated blob cleanup, and from-scratch prop workflows.</p>
       </article>
     </section>
