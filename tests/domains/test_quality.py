@@ -195,6 +195,15 @@ def test_proportion_and_scale_blocks(env) -> None:
     assert scale["transform_applied"] is True  # identity matrix_world
 
 
+def test_quality_includes_uv_block_with_fake_bpy_degrade(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS, uv_layers=1)))
+    out = _quality(env, "Cube")
+    assert out["uv"]["has_uvs"] is True
+    assert out["uv"]["uv_layer_count"] == 1
+    assert out["uv"]["texel_density_px_per_unit"] is None
+
+
 def test_quality_is_read_only_no_undo(env) -> None:
     ctx, bpy = env
     pushes: list = []

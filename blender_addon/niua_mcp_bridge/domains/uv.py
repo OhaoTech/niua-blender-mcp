@@ -15,6 +15,7 @@ import os
 from typing import Any
 
 from ..context import Ctx
+from ..core.uv_metrics import uv_quality
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
@@ -350,14 +351,19 @@ def report(ctx: Ctx, payload: dict) -> dict:
     uv_layers = list(getattr(mesh, "uv_layers", []) or [])
     layer_names = [getattr(layer, "name", "") for layer in uv_layers]
     active = getattr(getattr(mesh, "uv_layers", None), "active", None)
-    return {
+    island_count = _island_count(obj)
+    out = {
         "object": obj.name,
         "has_uvs": len(uv_layers) > 0,
         "uv_layers": layer_names,
         "uv_layer_count": len(uv_layers),
         "active_uv_layer": getattr(active, "name", None) if active is not None else None,
-        "island_count": _island_count(obj),
+        "island_count": island_count,
     }
+    out.update(uv_quality(obj, island_count=island_count))
+    # Preserve explicit layer names from this handler; uv_quality only reports counts.
+    out["uv_layers"] = layer_names
+    return out
 
 
 COMMANDS = [

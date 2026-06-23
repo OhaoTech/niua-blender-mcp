@@ -201,7 +201,7 @@ def _scale(obj: Any) -> dict:
 
 
 def quality(ctx: Ctx, payload: dict) -> dict:
-    """Objective quality metrics for a mesh: topology, symmetry, proportion, scale.
+    """Objective quality metrics for a mesh: topology, UVs, symmetry, proportion, scale.
 
     The numeric judgment channel that complements the multi-angle images — so the agent's
     do->observe->judge->revert loop converges on facts, not vibes. Read-only; bmesh-derived
@@ -213,6 +213,7 @@ def quality(ctx: Ctx, payload: dict) -> dict:
     return {
         "object": obj.name,
         "topology": _topology_quality(obj, counts),
+        "uv": uv_report(ctx, {"object": obj.name}),
         "symmetry": _symmetry(mesh),
         "proportion": _proportion(obj),
         "scale": _scale(obj),
@@ -232,6 +233,7 @@ def _quality_compact(ctx: Ctx, obj_name: Any) -> dict | None:
         "pole_count": topo["pole_count"],
         "non_manifold_edges": topo["non_manifold_edges"],
         "loose_verts": topo["loose_verts"],
+        "uv": full["uv"],
         "symmetry": full["symmetry"],
         "aspect_ratio": full["proportion"]["aspect_ratio"],
         "transform_applied": full["scale"]["transform_applied"],

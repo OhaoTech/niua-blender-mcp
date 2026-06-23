@@ -72,7 +72,7 @@ SPECS = [
     ToolSpec(
         name="feedback.quality",
         category="feedback",
-        summary="Objective quality metrics for a mesh: topology, symmetry, proportion, scale (read-only)",
+        summary="Objective quality metrics for a mesh: topology, UVs, symmetry, proportion, scale (read-only)",
         command="feedback.quality",
         params={
             "object": Str(summary="Mesh object to measure (defaults to active)"),
