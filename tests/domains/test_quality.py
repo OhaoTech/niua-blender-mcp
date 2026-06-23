@@ -204,6 +204,18 @@ def test_quality_includes_uv_block_with_fake_bpy_degrade(env) -> None:
     assert out["uv"]["texel_density_px_per_unit"] is None
 
 
+def test_quality_includes_orientation_block_with_fake_bpy_degrade(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+    out = _quality(env, "Cube")
+    assert out["orientation"] == {
+        "degenerate_faces": None,
+        "inward_facing_faces": None,
+        "inward_facing_ratio": None,
+        "normal_consistency": None,
+    }
+
+
 def test_quality_is_read_only_no_undo(env) -> None:
     ctx, bpy = env
     pushes: list = []

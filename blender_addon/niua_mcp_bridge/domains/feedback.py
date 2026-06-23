@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..context import Ctx
+from ..core.orientation_metrics import orientation_quality
 from ..dispatch import Command
 from .mesh import (
     _bmesh_for,
@@ -201,7 +202,7 @@ def _scale(obj: Any) -> dict:
 
 
 def quality(ctx: Ctx, payload: dict) -> dict:
-    """Objective quality metrics for a mesh: topology, UVs, symmetry, proportion, scale.
+    """Objective quality metrics for a mesh: topology, UVs, orientation, symmetry, proportion, scale.
 
     The numeric judgment channel that complements the multi-angle images — so the agent's
     do->observe->judge->revert loop converges on facts, not vibes. Read-only; bmesh-derived
@@ -214,6 +215,7 @@ def quality(ctx: Ctx, payload: dict) -> dict:
         "object": obj.name,
         "topology": _topology_quality(obj, counts),
         "uv": uv_report(ctx, {"object": obj.name}),
+        "orientation": orientation_quality(obj),
         "symmetry": _symmetry(mesh),
         "proportion": _proportion(obj),
         "scale": _scale(obj),
@@ -234,6 +236,7 @@ def _quality_compact(ctx: Ctx, obj_name: Any) -> dict | None:
         "non_manifold_edges": topo["non_manifold_edges"],
         "loose_verts": topo["loose_verts"],
         "uv": full["uv"],
+        "orientation": full["orientation"],
         "symmetry": full["symmetry"],
         "aspect_ratio": full["proportion"]["aspect_ratio"],
         "transform_applied": full["scale"]["transform_applied"],
