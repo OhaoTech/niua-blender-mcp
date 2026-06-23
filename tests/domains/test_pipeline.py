@@ -11,6 +11,7 @@ from niua_mcp_bridge.core import pipeline as pipeline_store
 from niua_mcp_bridge.core import session as session_store
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
+from niua_mcp_bridge.errors import PRECONDITION, BridgeError
 
 
 def _identity() -> list[list[float]]:
@@ -152,11 +153,19 @@ def test_pipeline_specs_and_handlers_are_registered():
     spec_names = {spec.name for spec in build_router().specs()}
     reg = build_default_registry()
 
-    for name in ("pipeline.start", "pipeline.status", "pipeline.gate_check"):
+    expected_mutates = {
+        "pipeline.start": False,
+        "pipeline.status": False,
+        "pipeline.gate_check": False,
+        "pipeline.advance": False,
+        "pipeline.rollback": True,
+    }
+
+    for name, mutates in expected_mutates.items():
         assert name in spec_names
         command = reg.get(name)
         assert command is not None
-        assert command.mutates is False
+        assert command.mutates is mutates
 
 
 def test_pipeline_start_creates_state_and_intake_checkpoint(env):
@@ -215,3 +224,50 @@ def test_gate_check_named_stage_uses_stage_gate_profile(env):
     ]
     assert out["gates"][0]["actual"] is None
     assert out["state"]["state"]["gates"]["repair"]["gates_pass"] is False
+
+
+def test_pipeline_advance_creates_next_stage_checkpoint(env):
+    _ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    _dispatch(env, "pipeline.start", {"object": "Cube"})
+
+    out = _dispatch(env, "pipeline.advance", {"object": "Cube"})
+
+    assert out["from_stage"] == "intake"
+    assert out["to_stage"] == "repair"
+    assert out["state"]["state"]["current_stage"] == "repair"
+    assert out["gate"]["gates_pass"] is True
+    assert session_store.get_snapshot("Cube", "pipeline:repair:entry") is not None
+    assert bpy.undo_pushes == []
+
+
+def test_pipeline_advance_is_blocked_by_failing_gate(env):
+    _ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    _dispatch(env, "pipeline.start", {"object": "Cube"})
+    _dispatch(env, "pipeline.advance", {"object": "Cube"})
+
+    with pytest.raises(BridgeError) as exc:
+        _dispatch(env, "pipeline.advance", {"object": "Cube"})
+
+    assert exc.value.code == PRECONDITION
+    assert "repair" in exc.value.message
+    assert session_store.get_snapshot("Cube", "pipeline:retopo:entry") is None
+    assert pipeline_store.get_state("Cube")["current_stage"] == "repair"
+
+
+def test_pipeline_rollback_restores_stage_checkpoint_and_pushes_undo(env):
+    _ctx, bpy = env
+    obj = bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS, tag="base")))
+    _dispatch(env, "pipeline.start", {"object": "Cube"})
+    _dispatch(env, "pipeline.advance", {"object": "Cube"})
+    obj.data = FakeMesh(verts=[], polys=[], tag="edited")
+
+    out = _dispatch(env, "pipeline.rollback", {"object": "Cube", "stage": "repair"})
+
+    assert out["object"] == "Cube"
+    assert out["stage"] == "repair"
+    assert out["state"]["state"]["current_stage"] == "repair"
+    assert obj.data.tag == "base"
+    assert len(obj.data.vertices) == len(_CUBE_VERTS)
+    assert bpy.undo_pushes == ["niua:pipeline.rollback"]

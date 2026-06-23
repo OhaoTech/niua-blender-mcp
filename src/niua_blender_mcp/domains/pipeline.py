@@ -34,4 +34,24 @@ SPECS = [
             "stage": Str(summary="Stage to check; defaults to the object's current stage"),
         },
     ),
+    ToolSpec(
+        name="pipeline.advance",
+        category="pipeline",
+        summary="Gate-check the current stage and advance to the next stage when gates pass",
+        command="pipeline.advance",
+        params={
+            "object": Str(required=True, summary="Object whose pipeline should advance"),
+        },
+    ),
+    ToolSpec(
+        name="pipeline.rollback",
+        category="pipeline",
+        summary="Restore a stage entry checkpoint and move the pipeline pointer back",
+        command="pipeline.rollback",
+        params={
+            "object": Str(required=True, summary="Object whose pipeline checkpoint should be restored"),
+            "stage": Str(summary="Stage checkpoint to restore; defaults to current stage"),
+        },
+        mutates=True,
+    ),
 ]

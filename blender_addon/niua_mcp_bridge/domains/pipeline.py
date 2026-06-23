@@ -6,7 +6,7 @@ from ..context import Ctx
 from ..core import pipeline as store
 from ..core import session as session_store
 from ..dispatch import Command
-from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
+from ..errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 from .feedback import quality
 from .session import _resolve_object
 
@@ -67,8 +67,62 @@ def gate_check(ctx: Ctx, payload: dict) -> dict:
     }
 
 
+def advance(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_object(ctx, payload)
+    checked = gate_check(ctx, {"object": obj.name})
+    if not checked["gates_pass"]:
+        raise BridgeError(
+            PRECONDITION,
+            f"stage gates have not passed: {checked['stage']}",
+            {"stage": checked["stage"], "gates": checked["gates"]},
+        )
+
+    try:
+        state = store.advance(obj.name)
+    except ValueError as exc:
+        raise BridgeError(PRECONDITION, str(exc)) from exc
+
+    to_stage = state["state"]["current_stage"]
+    label = state["state"]["checkpoints"].get(to_stage)
+    if label:
+        session_store.checkpoint(obj, label=label)
+    return {
+        "object": obj.name,
+        "from_stage": checked["stage"],
+        "to_stage": to_stage,
+        "gate": {"gates": checked["gates"], "gates_pass": checked["gates_pass"]},
+        "state": state,
+    }
+
+
+def rollback(ctx: Ctx, payload: dict) -> dict:
+    obj = _resolve_object(ctx, payload)
+    state = store.get_state(obj.name)
+    if state is None:
+        raise BridgeError(PRECONDITION, f"pipeline has not started for object: {obj.name}")
+
+    stage = payload.get("stage")
+    stage = stage if isinstance(stage, str) and stage else state["current_stage"]
+    label = state["checkpoints"].get(stage)
+    if not label:
+        raise BridgeError(NOT_FOUND, f"no pipeline checkpoint for {obj.name} at stage {stage}")
+
+    snapshot = session_store.get_snapshot(obj.name, label)
+    if snapshot is None:
+        raise BridgeError(NOT_FOUND, f"no checkpoint for {obj.name} with label {label}")
+
+    session_store.restore(obj, snapshot)
+    try:
+        state_out = store.rollback_pointer(obj.name, stage)
+    except ValueError as exc:
+        raise BridgeError(INVALID_PARAMS, str(exc)) from exc
+    return {"object": obj.name, "stage": stage, "label": label, "state": state_out}
+
+
 COMMANDS = [
     Command("pipeline.start", start, mutates=False),
     Command("pipeline.status", status, mutates=False),
     Command("pipeline.gate_check", gate_check, mutates=False),
+    Command("pipeline.advance", advance, mutates=False),
+    Command("pipeline.rollback", rollback, mutates=True),
 ]
