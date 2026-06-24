@@ -85,4 +85,27 @@ SPECS = [
         feedback="viewport",
         tier="curated",
     ),
+    ToolSpec(
+        name="model.generated_cleanup_pass",
+        category="modeling",
+        summary="Clean generated mesh noise: normals, duplicate merge, optional loose deletion, and quad conversion",
+        command="model.generated_cleanup_pass",
+        params={
+            "object": Str(required=True, summary="Generated mesh object to clean"),
+            "face_threshold": Float(
+                default=35.0,
+                minimum=0.0,
+                maximum=180.0,
+                summary="Tri-to-quad merge threshold in degrees",
+            ),
+            "merge_distance": Float(
+                default=0.0005,
+                minimum=0.0,
+                summary="Duplicate merge distance",
+            ),
+        },
+        mutates=True,
+        feedback="viewport",
+        tier="curated",
+    ),
 ]

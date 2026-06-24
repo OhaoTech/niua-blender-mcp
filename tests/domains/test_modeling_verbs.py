@@ -88,6 +88,7 @@ class _FakeBpy(types.ModuleType):
             tris_convert_to_quads = _Op(log, "mesh.tris_convert_to_quads")
             normals_make_consistent = _Op(log, "mesh.normals_make_consistent")
             remove_doubles = _Op(log, "mesh.remove_doubles")
+            delete_loose = _Op(log, "mesh.delete_loose")
 
         class _ObjectOps:
             def mode_set(self_inner, mode="OBJECT", **kw):
@@ -257,3 +258,68 @@ def test_panel_detail_pass_is_exposed_in_server_router():
     assert specs["hard_surface.panel_detail_pass"].mutates is True
     assert specs["hard_surface.panel_detail_pass"].feedback == "viewport"
     assert specs["hard_surface.panel_detail_pass"].tier == "curated"
+
+
+def test_generated_cleanup_pass_runs_available_delete_loose_sequence(monkeypatch):
+    bpy = _make_bpy_with_object(monkeypatch)
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "model.generated_cleanup_pass", {"object": "Cube"}, Ctx(bpy))
+
+    assert out["object"] == "Cube"
+    assert out["asset_class"] == "generated_cleanup"
+    assert out["workflow_id"] == "generated_cleanup.rebuild_noisy_mesh"
+    assert out["applied"] == [
+        "select_all",
+        "normals_make_consistent",
+        "remove_doubles",
+        "delete_loose",
+        "tris_convert_to_quads",
+    ]
+    assert out["skipped"] == []
+    assert out["params"] == {"face_threshold": 35.0, "merge_distance": 0.0005}
+    assert out["postcheck_recommended"] == ["feedback.topology", "pipeline.gate_check"]
+    assert out["warnings"] == [
+        "Generated cleanup can erase intentional tiny detail; checkpoint before running."
+    ]
+    assert bpy.op_calls == [
+        ("mesh.select_all", {"action": "SELECT"}),
+        ("mesh.normals_make_consistent", {}),
+        ("mesh.remove_doubles", {"threshold": 0.0005}),
+        ("mesh.delete_loose", {}),
+        (
+            "mesh.tris_convert_to_quads",
+            {"face_threshold": math.radians(35.0), "shape_threshold": math.radians(35.0)},
+        ),
+    ]
+    assert bpy.mode_calls == ["EDIT", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:model.generated_cleanup_pass"]
+
+
+def test_generated_cleanup_pass_reports_unavailable_delete_loose(monkeypatch):
+    bpy = _make_bpy_with_object(monkeypatch)
+    monkeypatch.delattr(type(bpy.ops.mesh), "delete_loose")
+    reg = build_default_registry()
+
+    out = dispatch_on_main(reg, "model.generated_cleanup_pass", {"object": "Cube"}, Ctx(bpy))
+
+    assert "delete_loose" not in out["applied"]
+    assert out["skipped"] == [{"operator": "mesh.delete_loose", "reason": "unavailable"}]
+    assert "mesh.delete_loose was unavailable; inspect for loose generated fragments." in out["warnings"]
+    assert _names(bpy.op_calls) == [
+        "mesh.select_all",
+        "mesh.normals_make_consistent",
+        "mesh.remove_doubles",
+        "mesh.tris_convert_to_quads",
+    ]
+
+
+def test_generated_cleanup_pass_is_exposed_in_server_router():
+    from niua_blender_mcp.domains import build_router
+
+    specs = {s.name: s for s in build_router().specs()}
+    spec = specs["model.generated_cleanup_pass"]
+    assert spec.mutates is True
+    assert spec.feedback == "viewport"
+    assert spec.tier == "curated"
+    assert spec.params["face_threshold"].default == 35.0
+    assert spec.params["merge_distance"].default == 0.0005
