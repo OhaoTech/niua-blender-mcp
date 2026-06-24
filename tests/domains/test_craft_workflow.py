@@ -38,6 +38,33 @@ def test_craft_workflow_list_includes_wave9b_workflows() -> None:
     assert [workflow["id"] for workflow in generated["workflows"]] == ["generated_cleanup.rebuild_noisy_mesh"]
     assert [workflow["id"] for workflow in organic["workflows"]] == ["organic.silhouette_retopo_prep"]
 
+    workflow = generated["workflows"][0]
+    assert set(workflow) == {
+        "id",
+        "label",
+        "asset_class",
+        "stages",
+        "summary",
+        "required_tools",
+    }
+    assert workflow["id"] == "generated_cleanup.rebuild_noisy_mesh"
+    assert workflow["label"] == "Generated cleanup rebuild noisy mesh"
+    assert workflow["asset_class"] == "generated_cleanup"
+    assert workflow["stages"] == ["repair", "retopo"]
+    assert workflow["summary"] == (
+        "Remove common generated-mesh noise, normalize normals, merge duplicates, and rebuild compatible quads."
+    )
+    assert workflow["required_tools"] == [
+        "model.generated_cleanup_pass",
+        "model.retopo_quads",
+        "feedback.topology",
+    ]
+    assert "default_params" not in workflow
+    assert "gate_targets" not in workflow
+    assert "recipe_steps" not in workflow
+    assert "outputs" not in workflow
+    assert "cautions" not in workflow
+
 
 def test_craft_workflow_describe_returns_complete_record() -> None:
     out = _dispatch("craft_workflow.describe", {"workflow": "hard_surface.panel_detail_pass"})
