@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from ..context import Ctx
+from ..core import craft_workflows
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
 
@@ -75,8 +76,77 @@ def recess_panels(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "applied": ["select_all", "inset"], "inset": inset, "depth": depth}
 
 
+def panel_detail_pass(ctx: Ctx, payload: dict) -> dict:
+    obj_name = payload.get("object")
+    if not isinstance(obj_name, str) or not obj_name:
+        raise BridgeError(INVALID_PARAMS, "object is required")
+    obj = ctx.get_object(obj_name)
+    if getattr(obj, "type", None) != "MESH":
+        raise BridgeError(PRECONDITION, f"object is not a mesh: {obj_name}")
+
+    workflow = craft_workflows.get_workflow("hard_surface.panel_detail_pass")
+    defaults = workflow["default_params"]
+    inset = float(payload.get("inset", defaults["inset"]))
+    depth = float(payload.get("depth", defaults["depth"]))
+    angle = float(payload.get("angle", defaults["angle"]))
+    width = float(payload.get("width", defaults["width"]))
+    segments = int(payload.get("segments", defaults["segments"]))
+    face_threshold = float(payload.get("face_threshold", defaults["face_threshold"]))
+    angle_radians = math.radians(angle)
+    threshold_radians = math.radians(face_threshold)
+
+    ops = ctx.bpy.ops
+    with ctx.ensure(active=obj, mode="EDIT", select=[obj]):
+        ctx.check_poll(ops.mesh.select_all)
+        ops.mesh.select_all(action="SELECT")
+        ctx.check_poll(ops.mesh.inset)
+        ops.mesh.inset(thickness=inset, depth=-depth, use_individual=True)
+        ctx.check_poll(ops.mesh.select_all)
+        ops.mesh.select_all(action="DESELECT")
+        ctx.check_poll(ops.mesh.edges_select_sharp)
+        ops.mesh.edges_select_sharp(sharpness=angle_radians)
+        ctx.check_poll(ops.mesh.bevel)
+        ops.mesh.bevel(offset=width, segments=segments, affect="EDGES")
+        ctx.check_poll(ops.mesh.select_all)
+        ops.mesh.select_all(action="SELECT")
+        ctx.check_poll(ops.mesh.tris_convert_to_quads)
+        ops.mesh.tris_convert_to_quads(
+            face_threshold=threshold_radians,
+            shape_threshold=threshold_radians,
+        )
+        ctx.check_poll(ops.mesh.normals_make_consistent)
+        ops.mesh.normals_make_consistent()
+        ctx.check_poll(ops.mesh.remove_doubles)
+        ops.mesh.remove_doubles()
+
+    return {
+        "object": obj.name,
+        "asset_class": workflow["asset_class"],
+        "workflow_id": workflow["id"],
+        "applied": [
+            "select_all",
+            "inset",
+            "edges_select_sharp",
+            "bevel",
+            "tris_convert_to_quads",
+            "normals_make_consistent",
+            "remove_doubles",
+        ],
+        "params": {
+            "inset": inset,
+            "depth": depth,
+            "angle": angle,
+            "width": width,
+            "segments": segments,
+            "face_threshold": face_threshold,
+        },
+        "warnings": [workflow["cautions"][1]],
+    }
+
+
 COMMANDS = [
     Command("model.retopo_quads", retopo_quads, mutates=True, feedback="viewport"),
     Command("model.bevel_edges", bevel_edges, mutates=True, feedback="viewport"),
     Command("model.recess_panels", recess_panels, mutates=True, feedback="viewport"),
+    Command("hard_surface.panel_detail_pass", panel_detail_pass, mutates=True, feedback="viewport"),
 ]

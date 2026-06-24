@@ -1,5 +1,6 @@
 import sys
 import types
+import math
 from contextlib import contextmanager
 
 from niua_mcp_bridge.context import Ctx
@@ -197,3 +198,62 @@ def test_recess_panels_is_exposed_in_server_router():
     specs = {s.name: s for s in build_router().specs()}
     assert "model.recess_panels" in specs
     assert specs["model.recess_panels"].tier == "curated"
+
+
+def test_panel_detail_pass_runs_hard_surface_sequence(monkeypatch):
+    bpy = _make_bpy_with_object(monkeypatch)
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "hard_surface.panel_detail_pass", {"object": "Cube"}, Ctx(bpy))
+
+    assert out["object"] == "Cube"
+    assert out["asset_class"] == "hard_surface_prop"
+    assert out["workflow_id"] == "hard_surface.panel_detail_pass"
+    assert out["applied"] == [
+        "select_all",
+        "inset",
+        "edges_select_sharp",
+        "bevel",
+        "tris_convert_to_quads",
+        "normals_make_consistent",
+        "remove_doubles",
+    ]
+    assert out["params"] == {
+        "inset": 0.08,
+        "depth": 0.04,
+        "angle": 30.0,
+        "width": 0.02,
+        "segments": 2,
+        "face_threshold": 40.0,
+    }
+    assert out["warnings"] == [
+        "Re-check topology gates after the pass; beveling and inset operations can create extra poles."
+    ]
+    assert bpy.op_calls == [
+        ("mesh.select_all", {"action": "SELECT"}),
+        ("mesh.inset", {"thickness": 0.08, "depth": -0.04, "use_individual": True}),
+        ("mesh.select_all", {"action": "DESELECT"}),
+        ("mesh.edges_select_sharp", {"sharpness": math.radians(30.0)}),
+        ("mesh.bevel", {"offset": 0.02, "segments": 2, "affect": "EDGES"}),
+        (
+            "mesh.select_all",
+            {"action": "SELECT"},
+        ),
+        (
+            "mesh.tris_convert_to_quads",
+            {"face_threshold": math.radians(40.0), "shape_threshold": math.radians(40.0)},
+        ),
+        ("mesh.normals_make_consistent", {}),
+        ("mesh.remove_doubles", {}),
+    ]
+    assert bpy.mode_calls == ["EDIT", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:hard_surface.panel_detail_pass"]
+
+
+def test_panel_detail_pass_is_exposed_in_server_router():
+    from niua_blender_mcp.domains import build_router
+
+    specs = {s.name: s for s in build_router().specs()}
+    assert "hard_surface.panel_detail_pass" in specs
+    assert specs["hard_surface.panel_detail_pass"].mutates is True
+    assert specs["hard_surface.panel_detail_pass"].feedback == "viewport"
+    assert specs["hard_surface.panel_detail_pass"].tier == "curated"

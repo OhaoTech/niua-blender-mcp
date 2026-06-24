@@ -57,4 +57,32 @@ SPECS = [
         feedback="viewport",
         tier="curated",
     ),
+    ToolSpec(
+        name="hard_surface.panel_detail_pass",
+        category="modeling",
+        summary="Run a hard-surface panel detail pass: recess panels, bevel sharp edges, and normalize quads",
+        command="hard_surface.panel_detail_pass",
+        params={
+            "object": Str(required=True, summary="Mesh object to detail"),
+            "inset": Float(default=0.08, minimum=0.0, summary="Panel inset thickness"),
+            "depth": Float(default=0.04, minimum=0.0, summary="Inward panel recess depth"),
+            "angle": Float(
+                default=30.0,
+                minimum=0.0,
+                maximum=180.0,
+                summary="Sharp-edge threshold in degrees",
+            ),
+            "width": Float(default=0.02, minimum=0.0, summary="Bevel width"),
+            "segments": Int(default=2, minimum=1, maximum=12, summary="Bevel segment count"),
+            "face_threshold": Float(
+                default=40.0,
+                minimum=0.0,
+                maximum=180.0,
+                summary="Max angle in degrees to merge tri pairs into quads",
+            ),
+        },
+        mutates=True,
+        feedback="viewport",
+        tier="curated",
+    ),
 ]
