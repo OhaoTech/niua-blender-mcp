@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..context import Ctx
+from ..core import asset_classes
 from ..core.engine_metrics import engine_quality
 from ..core.export_profiles import export_profile_quality
 from ..core.material_metrics import material_quality
@@ -212,19 +213,21 @@ def quality(ctx: Ctx, payload: dict) -> dict:
     fields (pole_count, non_manifold_edges, loose_verts) degrade to ``null`` without bmesh.
     """
     obj = _resolve_mesh(ctx, payload)
+    effective_payload, asset_meta = asset_classes.apply_asset_class_defaults(payload)
     mesh = obj.data
     counts = topology_counts(mesh)
     return {
         "object": obj.name,
+        "asset_class": asset_meta,
         "topology": _topology_quality(obj, counts),
         "uv": uv_report(ctx, {"object": obj.name}),
         "orientation": orientation_quality(obj),
         "symmetry": _symmetry(mesh),
         "proportion": _proportion(obj),
         "scale": _scale(obj),
-        "engine": engine_quality(ctx, obj, counts, payload),
-        "material": material_quality(obj, payload),
-        "export_profile": export_profile_quality(ctx, obj, counts, payload),
+        "engine": engine_quality(ctx, obj, counts, effective_payload),
+        "material": material_quality(obj, effective_payload),
+        "export_profile": export_profile_quality(ctx, obj, counts, effective_payload),
     }
 
 
@@ -246,6 +249,7 @@ def _quality_compact(ctx: Ctx, obj_name: Any) -> dict | None:
         "symmetry": full["symmetry"],
         "aspect_ratio": full["proportion"]["aspect_ratio"],
         "transform_applied": full["scale"]["transform_applied"],
+        "asset_class": full["asset_class"],
         "engine": full["engine"],
         "material": full["material"],
         "export_profile": full["export_profile"],

@@ -7,6 +7,7 @@ user's viewport never moves, and degrades to ``available: false`` headless / no-
 
 from __future__ import annotations
 
+from ..asset_classes import ASSET_CLASS_IDS
 from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec
 
 _VIEWS = ["current", "front", "back", "left", "right", "top", "bottom", "persp"]
@@ -76,29 +77,27 @@ SPECS = [
         command="feedback.quality",
         params={
             "object": Str(summary="Mesh object to measure (defaults to active)"),
-            "triangle_budget": Int(default=5000, minimum=0, summary="Maximum triangles for the optimize gate"),
-            "material_budget": Int(default=4, minimum=0, summary="Maximum material slots for the optimize gate"),
-            "texture_budget": Int(default=8, minimum=0, summary="Maximum unique image textures for the optimize gate"),
+            "asset_class": Enum(ASSET_CLASS_IDS, summary="Layer 2 asset-class profile"),
+            "triangle_budget": Int(minimum=0, summary="Maximum triangles for the optimize gate"),
+            "material_budget": Int(minimum=0, summary="Maximum material slots for the optimize gate"),
+            "texture_budget": Int(minimum=0, summary="Maximum unique image textures for the optimize gate"),
             "min_lods": Int(minimum=0, summary="Minimum detected LOD variants for the optimize gate"),
             "max_lod_triangle_ratio": Float(
-                default=0.75,
                 minimum=0.0,
                 maximum=1.0,
                 summary="Maximum allowed triangle ratio for each LOD relative to the source",
             ),
             "max_lod_bounds_delta": Float(
-                default=0.1,
                 minimum=0.0,
                 maximum=1.0,
                 summary="Maximum relative bounds delta allowed for LOD silhouette preservation",
             ),
-            "min_collision_hulls": Int(default=1, minimum=0, summary="Minimum detected collision hull count"),
+            "min_collision_hulls": Int(minimum=0, summary="Minimum detected collision hull count"),
             "max_collision_oversize_ratio": Float(
-                default=0.5,
                 minimum=0.0,
                 summary="Maximum collision union oversize ratio relative to the source bounds",
             ),
-            "max_texture_size": Int(default=2048, minimum=1, summary="Maximum texture dimension for material atlas readiness"),
+            "max_texture_size": Int(minimum=1, summary="Maximum texture dimension for material atlas readiness"),
             "export_profile": Str(default="GENERIC", summary="Export profile: GENERIC, GODOT, UNREAL, or CUSTOM"),
             "export_format": Str(default="GLB", summary="Planned export format for profile validation"),
             "export_y_up": Bool(summary="Planned +Y-up export option for profile validation"),

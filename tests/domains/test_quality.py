@@ -158,6 +158,35 @@ def _quality(env, name, **payload):
     return dispatch_on_main(reg, "feedback.quality", {"object": name, **payload}, ctx)
 
 
+def test_quality_applies_asset_class_defaults(env) -> None:
+    ctx, bpy = env
+    mesh = FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS * 1500)
+    bpy.add(FakeObj("Cube", data=mesh))
+
+    organic = _quality(env, "Cube", asset_class="organic_prop")["engine"]
+    scratch = _quality(env, "Cube", asset_class="from_scratch_prop")["engine"]
+
+    assert organic["triangle_budget"] == 8000
+    assert organic["within_triangle_budget"] is True
+    assert scratch["triangle_budget"] == 4000
+    assert scratch["within_triangle_budget"] is False
+
+
+def test_quality_reports_asset_class_metadata_and_explicit_overrides(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+
+    out = _quality(env, "Cube", asset_class="organic_prop", triangle_budget=1234)
+
+    meta = out["asset_class"]
+    assert meta["id"] == "organic_prop"
+    assert meta["profile_version"] == 1
+    assert meta["asset_class_defaulted"] is False
+    assert meta["effective_defaults"]["triangle_budget"] == 1234
+    assert meta["effective_defaults"]["material_budget"] == 3
+    assert meta["applied_gate_overrides"] == {}
+
+
 def test_topology_ratios_quads_tris_ngons(env) -> None:
     ctx, bpy = env
     mesh = FakeMesh(
