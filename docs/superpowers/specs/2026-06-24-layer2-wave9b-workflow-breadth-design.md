@@ -48,7 +48,20 @@ The existing `craft_workflow.list`, `craft_workflow.describe`, and `craft_workfl
 2. exact asset class, no stage match
 3. no fallback for unsupported asset classes
 
-If multiple workflows match a class and stage in later waves, the registry order is the ranking order. Wave 9B should make this explicit and test it.
+Every recommendation record includes stable `rank`, starting at `1`. Registry order is the ranking order for records with the same match quality. Wave 9B must test rank now so future multi-workflow ordering is not implicit.
+
+Recommendation records have this shape:
+
+```json
+{
+  "id": "generated_cleanup.rebuild_noisy_mesh",
+  "rank": 1,
+  "match": "asset_class+stage",
+  "asset_class": "generated_cleanup",
+  "stages": ["repair", "retopo"],
+  "required_tools": ["model.generated_cleanup_pass", "model.retopo_quads", "feedback.topology"]
+}
+```
 
 ## New Workflow Records
 
@@ -58,7 +71,7 @@ Asset class: `generated_cleanup`
 
 Stages: `repair`, `retopo`
 
-Purpose: strip the most common generated-mesh noise before strict retopo gates.
+Purpose: strip the most common generated-mesh noise before strict retopo gates, while reporting every optional cleanup step that could not run.
 
 Required tools:
 
@@ -95,7 +108,7 @@ Asset class: `organic_prop`
 
 Stages: `repair`, `retopo`
 
-Purpose: prepare organic/sculpt-derived forms for retopo without hard-surface bevel assumptions.
+Purpose: normalize organic/sculpt-derived topology without adding hard-surface detail operations.
 
 Required tools:
 
@@ -120,10 +133,25 @@ Recipe steps:
 4. convert compatible triangles to quads with a more relaxed threshold
 5. leave silhouette-preserving topology decisions to the retopo gate and visual review
 
+Forbidden default operations:
+
+- no bevel
+- no panel inset
+- no loose-fragment deletion
+
 Cautions:
 
 - Do not bevel organic contours as a default cleanup move.
 - Keep poles and triangles away from visible silhouette and deformation-like flow regions.
+
+## Shared Implementation Boundary
+
+Wave 9B may add tiny shared helpers inside `blender_addon/niua_mcp_bridge/domains/modeling_verbs.py` only when they remove direct duplication from the three craft verbs. Acceptable helpers:
+
+- `_mesh_object(ctx, payload) -> object`: validates required `object`, resolves the Blender object, and enforces `type == "MESH"`.
+- `_workflow_defaults(workflow_id) -> dict`: returns workflow defaults from the registry.
+
+Do not add a generic workflow executor. Do not represent workflow recipe steps as callable dynamic instructions. The new verbs remain explicit Python handlers with named Blender operators.
 
 ## Public Tool Surface
 
@@ -165,17 +193,32 @@ Return:
     "delete_loose",
     "tris_convert_to_quads"
   ],
+  "skipped": [],
   "params": {
     "face_threshold": 35.0,
     "merge_distance": 0.0005
   },
   "warnings": [
     "Generated cleanup can erase intentional tiny detail; checkpoint before running."
+  ],
+  "postcheck_recommended": ["feedback.topology", "pipeline.gate_check"]
+}
+```
+
+If `mesh.delete_loose` is unavailable, skip it and make the skipped path visible:
+
+```json
+{
+  "applied": ["select_all", "normals_make_consistent", "remove_doubles", "tris_convert_to_quads"],
+  "skipped": [{"operator": "mesh.delete_loose", "reason": "unavailable"}],
+  "warnings": [
+    "Generated cleanup can erase intentional tiny detail; checkpoint before running.",
+    "mesh.delete_loose was unavailable; inspect for loose generated fragments."
   ]
 }
 ```
 
-If `mesh.delete_loose` is unavailable, skip it and return a warning that it was unavailable. The fake-bpy tests should cover the normal available path; the live smoke test only requires the command to succeed.
+The fake-bpy tests must cover both the normal available path and the unavailable optional-operator path. The live smoke test only requires the command to succeed.
 
 ### `model.organic_retopo_prep`
 
@@ -205,13 +248,15 @@ Return:
     "remove_doubles",
     "tris_convert_to_quads"
   ],
+  "skipped": [],
   "params": {
     "face_threshold": 50.0,
     "merge_distance": 0.0002
   },
   "warnings": [
     "Do not bevel organic contours as a default cleanup move."
-  ]
+  ],
+  "postcheck_recommended": ["feedback.topology", "pipeline.gate_check"]
 }
 ```
 
@@ -227,6 +272,8 @@ Return:
 - `craft_workflow.recommend(asset_class="generated_cleanup", stage="retopo")` returns the generated cleanup workflow.
 - `craft_workflow.recommend(asset_class="organic_prop", stage="retopo")` returns the organic workflow.
 - `craft_workflow.recommend(asset_class="from_scratch_prop", stage="retopo")` returns no fallback.
+- Every returned recommendation includes stable `rank`.
+- When one workflow matches, its `rank` is exactly `1`.
 
 ### Domain Surface
 
@@ -250,6 +297,13 @@ Return:
 ]
 ```
 
+Also test the unavailable optional operator path:
+
+- fake `mesh.delete_loose` is missing or polls false
+- output includes `{"operator": "mesh.delete_loose", "reason": "unavailable"}` in `skipped`
+- output omits `"delete_loose"` from `applied`
+- output includes the warning `mesh.delete_loose was unavailable; inspect for loose generated fragments.`
+
 `model.organic_retopo_prep` asserts:
 
 ```python
@@ -260,6 +314,12 @@ Return:
     ("mesh.tris_convert_to_quads", {"face_threshold": radians(50.0), "shape_threshold": radians(50.0)}),
 ]
 ```
+
+Also assert that organic prep does not call:
+
+- `mesh.bevel`
+- `mesh.inset`
+- `mesh.delete_loose`
 
 ### Headless Acceptance
 
@@ -284,6 +344,9 @@ Update `docs/layer2-architecture.html` so Wave 9B is the current map:
 ## Definition of Done
 
 - Unit tests pass for workflow registry, workflow domain tools, and modeling verbs.
+- Recommendation output includes stable `rank`.
+- Skipped optional Blender operators are visible and tested.
+- Organic prep tests assert no bevel, inset, or delete-loose default operation.
 - Headless Wave 9B smoke acceptance passes or skips under the existing Blender skip rule.
 - `pytest -q` exits 0.
 - `python scripts/audit_blender_coverage.py --fail-on partial` exits 0.
