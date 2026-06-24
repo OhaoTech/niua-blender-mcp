@@ -966,6 +966,48 @@ def test_layer2_wave9a_craft_workflow_acceptance(bridge: BlenderBridge) -> None:
     ]
 
 
+def test_layer2_wave9b_workflow_breadth_acceptance(bridge: BlenderBridge) -> None:
+    bridge.call("object.create", {"type": "CUBE", "name": "GeneratedWorkflowHero"})
+    bridge.call("object.create", {"type": "CUBE", "name": "OrganicWorkflowHero"})
+
+    bridge.call("pipeline.start", {"object": "GeneratedWorkflowHero", "asset_class": "generated_cleanup"})
+    assert bridge.call("pipeline.advance", {"object": "GeneratedWorkflowHero"})["to_stage"] == "repair"
+    assert bridge.call("pipeline.advance", {"object": "GeneratedWorkflowHero"})["to_stage"] == "retopo"
+    generated_recommendation = bridge.call("craft_workflow.recommend", {"object": "GeneratedWorkflowHero"})
+    assert generated_recommendation["recommendations"][0]["id"] == "generated_cleanup.rebuild_noisy_mesh"
+    assert generated_recommendation["recommendations"][0]["rank"] == 1
+    generated = bridge.call("model.generated_cleanup_pass", {"object": "GeneratedWorkflowHero"})
+    assert generated["workflow_id"] == "generated_cleanup.rebuild_noisy_mesh"
+    assert generated["asset_class"] == "generated_cleanup"
+    assert "remove_doubles" in generated["applied"]
+    assert generated["postcheck_recommended"] == ["feedback.topology", "pipeline.gate_check"]
+    generated_quality = bridge.call("feedback.quality", {"object": "GeneratedWorkflowHero"})
+    assert generated_quality["asset_class"]["id"] == "generated_cleanup"
+    generated_gate = bridge.call("pipeline.gate_check", {"object": "GeneratedWorkflowHero", "stage": "retopo"})
+    assert generated_gate["asset_class"]["id"] == "generated_cleanup"
+
+    bridge.call("pipeline.start", {"object": "OrganicWorkflowHero", "asset_class": "organic_prop"})
+    assert bridge.call("pipeline.advance", {"object": "OrganicWorkflowHero"})["to_stage"] == "repair"
+    assert bridge.call("pipeline.advance", {"object": "OrganicWorkflowHero"})["to_stage"] == "retopo"
+    organic_recommendation = bridge.call("craft_workflow.recommend", {"object": "OrganicWorkflowHero"})
+    assert organic_recommendation["recommendations"][0]["id"] == "organic.silhouette_retopo_prep"
+    assert organic_recommendation["recommendations"][0]["rank"] == 1
+    organic = bridge.call("model.organic_retopo_prep", {"object": "OrganicWorkflowHero"})
+    assert organic["workflow_id"] == "organic.silhouette_retopo_prep"
+    assert organic["asset_class"] == "organic_prop"
+    assert organic["applied"] == [
+        "select_all",
+        "normals_make_consistent",
+        "remove_doubles",
+        "tris_convert_to_quads",
+    ]
+    assert organic["skipped"] == []
+    organic_quality = bridge.call("feedback.quality", {"object": "OrganicWorkflowHero"})
+    assert organic_quality["asset_class"]["id"] == "organic_prop"
+    organic_gate = bridge.call("pipeline.gate_check", {"object": "OrganicWorkflowHero", "stage": "retopo"})
+    assert organic_gate["asset_class"]["id"] == "organic_prop"
+
+
 def test_layer2_wave3_self_critique_acceptance(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "CritPipeHero"})
     for layer in bridge.call("uv.layers", {"object": "CritPipeHero"})["layers"]:
