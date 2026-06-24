@@ -5,6 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from . import asset_classes
+
 _PACKS: dict[str, dict[str, Any]] = {
     "repair": {
         "stage": "repair",
@@ -127,12 +129,31 @@ def list_packs() -> list[str]:
     return sorted(_PACKS)
 
 
-def load_pack(name: str) -> dict[str, Any]:
+def _with_asset_class(pack: dict[str, Any], asset_class: str | None) -> dict[str, Any]:
+    if not asset_class:
+        return pack
+    profile = asset_classes.get_asset_class(asset_class)
+    stage = str(pack.get("stage", ""))
+    stage_target = profile.get("stage_targets", {}).get(stage)
+    stage_guidance = profile.get("guidance", {}).get(stage)
+    guidance = " ".join(part for part in (stage_target, stage_guidance) if part) or None
+    pack["asset_class"] = {
+        "id": profile["id"],
+        "profile_version": profile["profile_version"],
+        "label": profile["label"],
+        "summary": profile["summary"],
+        "guidance": guidance,
+    }
+    return pack
+
+
+def load_pack(name: str, asset_class: str | None = None) -> dict[str, Any]:
     try:
-        return deepcopy(_PACKS[name])
+        pack = deepcopy(_PACKS[name])
     except KeyError as exc:
         raise KeyError(f"unknown knowledge pack: {name}") from exc
+    return _with_asset_class(pack, asset_class)
 
 
-def stage_pack(stage: str) -> dict[str, Any]:
-    return load_pack(stage)
+def stage_pack(stage: str, asset_class: str | None = None) -> dict[str, Any]:
+    return load_pack(stage, asset_class=asset_class)

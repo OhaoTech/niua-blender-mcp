@@ -16,8 +16,9 @@ def load(ctx: Ctx, payload: dict) -> dict:
     name = payload.get("name")
     if not isinstance(name, str) or not name:
         raise BridgeError(INVALID_PARAMS, "name is required")
+    asset_class = payload.get("asset_class")
     try:
-        return {"pack": knowledge.load_pack(name)}
+        return {"pack": knowledge.load_pack(name, asset_class=asset_class)}
     except KeyError as exc:
         raise BridgeError(INVALID_PARAMS, str(exc)) from exc
 

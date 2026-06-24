@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ..kernel import Str, ToolSpec
+from ..asset_classes import ASSET_CLASS_IDS
+from ..kernel import Enum, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
@@ -18,6 +19,7 @@ SPECS = [
         command="knowledge.load",
         params={
             "name": Str(required=True, summary="Knowledge pack name"),
+            "asset_class": Enum(ASSET_CLASS_IDS, summary="Layer 2 asset-class profile"),
         },
     ),
 ]

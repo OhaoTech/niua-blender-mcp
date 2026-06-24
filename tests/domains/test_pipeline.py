@@ -438,3 +438,15 @@ def test_pipeline_self_critique_returns_repair_guidance_for_failed_uv(env):
     assert out["gate"]["gates_pass"] is False
     assert out["critique"]["failed_count"] >= 1
     assert any("unwrap" in rec.lower() for rec in out["critique"]["recommendations"])
+
+
+def test_pipeline_self_critique_uses_stored_asset_class_guidance(env):
+    _ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    _dispatch(env, "pipeline.start", {"object": "Cube", "asset_class": "generated_cleanup"})
+
+    out = _dispatch(env, "pipeline.self_critique", {"object": "Cube", "stage": "retopo"})
+
+    assert out["critique"]["stage"] == "retopo"
+    assert out["gate"]["gates_pass"] is False
+    assert out["critique"]["knowledge"]["asset_class"]["id"] == "generated_cleanup"

@@ -149,8 +149,12 @@ def self_critique(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_object(ctx, payload)
     checked = gate_check(ctx, {"object": obj.name, "stage": payload.get("stage")})
     stage = checked["stage"]
+    state = store.get_state(obj.name)
+    asset_class = payload.get("asset_class")
+    if not isinstance(asset_class, str) or not asset_class:
+        asset_class = state.get("asset_class") if state else None
     try:
-        pack = knowledge.stage_pack(stage)
+        pack = knowledge.stage_pack(stage, asset_class=asset_class)
     except KeyError as exc:
         raise BridgeError(INVALID_PARAMS, str(exc)) from exc
     gate = {"gates": checked["gates"], "gates_pass": checked["gates_pass"]}
@@ -161,6 +165,7 @@ def self_critique(ctx: Ctx, payload: dict) -> dict:
         attempt=int(payload.get("attempt", 1)),
         max_attempts=int(payload.get("max_attempts", 3)),
     )
+    critique["knowledge"] = pack
     return {
         "object": obj.name,
         "stage": stage,
