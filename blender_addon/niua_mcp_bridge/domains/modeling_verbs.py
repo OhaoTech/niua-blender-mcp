@@ -44,7 +44,12 @@ def _optional_mesh_op(
 
 
 def retopo_quads(ctx: Ctx, payload: dict) -> dict:
-    obj = _mesh_object(ctx, payload)
+    obj_name = payload.get("object")
+    if not isinstance(obj_name, str) or not obj_name:
+        raise BridgeError(INVALID_PARAMS, "object is required")
+    obj = ctx.get_object(obj_name)
+    if getattr(obj, "type", None) != "MESH":
+        raise BridgeError(PRECONDITION, f"object is not a mesh: {obj_name}")
 
     threshold = math.radians(float(payload.get("face_threshold", 40.0)))
     ops = ctx.bpy.ops
@@ -64,7 +69,12 @@ def retopo_quads(ctx: Ctx, payload: dict) -> dict:
 
 
 def bevel_edges(ctx: Ctx, payload: dict) -> dict:
-    obj = _mesh_object(ctx, payload)
+    obj_name = payload.get("object")
+    if not isinstance(obj_name, str) or not obj_name:
+        raise BridgeError(INVALID_PARAMS, "object is required")
+    obj = ctx.get_object(obj_name)
+    if getattr(obj, "type", None) != "MESH":
+        raise BridgeError(PRECONDITION, f"object is not a mesh: {obj_name}")
 
     angle = math.radians(float(payload.get("angle", 30.0)))
     width = float(payload.get("width", 0.02))
@@ -81,7 +91,12 @@ def bevel_edges(ctx: Ctx, payload: dict) -> dict:
 
 
 def recess_panels(ctx: Ctx, payload: dict) -> dict:
-    obj = _mesh_object(ctx, payload)
+    obj_name = payload.get("object")
+    if not isinstance(obj_name, str) or not obj_name:
+        raise BridgeError(INVALID_PARAMS, "object is required")
+    obj = ctx.get_object(obj_name)
+    if getattr(obj, "type", None) != "MESH":
+        raise BridgeError(PRECONDITION, f"object is not a mesh: {obj_name}")
 
     inset = float(payload.get("inset", 0.08))
     depth = float(payload.get("depth", 0.04))
@@ -95,8 +110,15 @@ def recess_panels(ctx: Ctx, payload: dict) -> dict:
 
 
 def panel_detail_pass(ctx: Ctx, payload: dict) -> dict:
-    obj = _mesh_object(ctx, payload)
-    workflow, defaults = _workflow_defaults("hard_surface.panel_detail_pass")
+    obj_name = payload.get("object")
+    if not isinstance(obj_name, str) or not obj_name:
+        raise BridgeError(INVALID_PARAMS, "object is required")
+    obj = ctx.get_object(obj_name)
+    if getattr(obj, "type", None) != "MESH":
+        raise BridgeError(PRECONDITION, f"object is not a mesh: {obj_name}")
+
+    workflow = craft_workflows.get_workflow("hard_surface.panel_detail_pass")
+    defaults = workflow["default_params"]
     inset = float(payload.get("inset", defaults["inset"]))
     depth = float(payload.get("depth", defaults["depth"]))
     angle = float(payload.get("angle", defaults["angle"]))
