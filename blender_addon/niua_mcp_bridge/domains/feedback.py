@@ -28,6 +28,7 @@ from ..core.export_profiles import export_profile_quality
 from ..core.material_metrics import material_quality
 from ..core.orientation_metrics import orientation_quality
 from ..dispatch import Command
+from ..errors import INVALID_PARAMS, BridgeError
 from .mesh import (
     _bmesh_for,
     _resolve_mesh,
@@ -213,7 +214,10 @@ def quality(ctx: Ctx, payload: dict) -> dict:
     fields (pole_count, non_manifold_edges, loose_verts) degrade to ``null`` without bmesh.
     """
     obj = _resolve_mesh(ctx, payload)
-    effective_payload, asset_meta = asset_classes.apply_asset_class_defaults(payload)
+    try:
+        effective_payload, asset_meta = asset_classes.apply_asset_class_defaults(payload)
+    except KeyError as exc:
+        raise BridgeError(INVALID_PARAMS, str(exc)) from exc
     mesh = obj.data
     counts = topology_counts(mesh)
     return {

@@ -129,7 +129,6 @@ _PROFILES: dict[str, dict[str, Any]] = {
 }
 
 ASSET_CLASS_IDS = sorted(_PROFILES)
-_DEFAULT_KEYS = {"asset_class"}
 
 
 def list_asset_classes() -> list[dict[str, Any]]:
@@ -151,7 +150,7 @@ def _class_from_payload_or_state(payload: dict[str, Any], state: dict[str, Any] 
     if state is not None:
         stored = state.get("asset_class")
         if isinstance(stored, str) and stored:
-            return stored, False
+            return stored, bool(state.get("asset_class_defaulted", False))
     return DEFAULT_ASSET_CLASS, True
 
 

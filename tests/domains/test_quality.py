@@ -17,7 +17,7 @@ import pytest
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import INVALID_PARAMS, PRECONDITION, BridgeError
 
 
 def _identity() -> list[list[float]]:
@@ -185,6 +185,18 @@ def test_quality_reports_asset_class_metadata_and_explicit_overrides(env) -> Non
     assert meta["effective_defaults"]["triangle_budget"] == 1234
     assert meta["effective_defaults"]["material_budget"] == 3
     assert meta["applied_gate_overrides"] == {}
+
+
+def test_quality_unknown_asset_class_fails_cleanly(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+    reg = build_default_registry()
+
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(reg, "feedback.quality", {"object": "Cube", "asset_class": "nope"}, ctx)
+
+    assert exc.value.code == INVALID_PARAMS
+    assert "unknown asset class: nope" in str(exc.value)
 
 
 def test_topology_ratios_quads_tris_ngons(env) -> None:

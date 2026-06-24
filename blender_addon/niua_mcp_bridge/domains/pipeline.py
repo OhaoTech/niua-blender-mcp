@@ -70,7 +70,7 @@ def gate_check(ctx: Ctx, payload: dict) -> dict:
     metrics_payload["object"] = obj.name
     metrics = quality(ctx, metrics_payload)
     asset_meta["applied_gate_overrides"] = applied_gate_overrides
-    metrics["asset_class"]["applied_gate_overrides"] = applied_gate_overrides
+    metrics["asset_class"] = asset_meta
     checked = store.check_gates(metrics, gates)
     gate_record = {
         "stage": stage,
@@ -147,12 +147,19 @@ def rollback(ctx: Ctx, payload: dict) -> dict:
 
 def self_critique(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_object(ctx, payload)
-    checked = gate_check(ctx, {"object": obj.name, "stage": payload.get("stage")})
-    stage = checked["stage"]
     state = store.get_state(obj.name)
-    asset_class = payload.get("asset_class")
-    if not isinstance(asset_class, str) or not asset_class:
+    requested_asset_class = payload.get("asset_class")
+    if not isinstance(requested_asset_class, str) or not requested_asset_class:
+        requested_asset_class = None
+    asset_class = requested_asset_class
+    if asset_class is None:
         asset_class = state.get("asset_class") if state else None
+
+    gate_payload = {"object": obj.name, "stage": payload.get("stage")}
+    if requested_asset_class is not None:
+        gate_payload["asset_class"] = requested_asset_class
+    checked = gate_check(ctx, gate_payload)
+    stage = checked["stage"]
     try:
         pack = knowledge.stage_pack(stage, asset_class=asset_class)
     except KeyError as exc:

@@ -5,6 +5,7 @@ import types
 
 import pytest
 
+from niua_blender_mcp.asset_classes import ASSET_CLASS_IDS
 from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.core import pipeline as pipeline_store
@@ -173,7 +174,8 @@ def _dispatch(env, command: str, payload: dict) -> dict:
 
 
 def test_pipeline_specs_and_handlers_are_registered():
-    spec_names = {spec.name for spec in build_router().specs()}
+    router = build_router()
+    spec_names = {spec.name for spec in router.specs()}
     reg = build_default_registry()
 
     expected_mutates = {
@@ -190,6 +192,10 @@ def test_pipeline_specs_and_handlers_are_registered():
         command = reg.get(name)
         assert command is not None
         assert command.mutates is mutates
+
+    self_critique_asset_class = router.get("pipeline.self_critique").params["asset_class"]
+    assert self_critique_asset_class.kind == "enum"
+    assert self_critique_asset_class.choices == tuple(ASSET_CLASS_IDS)
 
 
 def test_pipeline_start_creates_state_and_intake_checkpoint(env):
@@ -254,7 +260,11 @@ def test_gate_check_intake_passes_and_records_gate(env):
     assert out["gates"] == []
     assert out["gates_pass"] is True
     assert out["metrics"]["object"] == "Cube"
+    assert out["asset_class"]["id"] == "hard_surface_prop"
+    assert out["asset_class"]["asset_class_defaulted"] is True
+    assert out["metrics"]["asset_class"]["asset_class_defaulted"] is True
     assert out["state"]["state"]["gates"]["intake"]["gates_pass"] is True
+    assert out["state"]["state"]["gates"]["intake"]["asset_class"]["asset_class_defaulted"] is True
 
 
 def test_gate_check_named_stage_uses_stage_gate_profile(env):
@@ -453,3 +463,19 @@ def test_pipeline_self_critique_uses_stored_asset_class_guidance(env):
     assert out["gate"]["asset_class"]["effective_defaults"]["triangle_budget"] == 6000
     assert out["gate"]["asset_class"]["applied_gate_overrides"]["retopo"]["topology.quad_ratio"]["value"] == 0.98
     assert out["critique"]["knowledge"]["asset_class"]["id"] == "generated_cleanup"
+
+
+def test_pipeline_self_critique_explicit_asset_class_drives_gate_and_guidance(env):
+    _ctx, bpy = env
+    polys = _CUBE_QUADS + [[0, 1, 2]]
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=polys)))
+    _dispatch(env, "pipeline.start", {"object": "Cube", "asset_class": "hard_surface_prop"})
+
+    out = _dispatch(
+        env,
+        "pipeline.self_critique",
+        {"object": "Cube", "stage": "retopo", "asset_class": "organic_prop"},
+    )
+
+    assert out["gate"]["asset_class"]["id"] == "organic_prop"
+    assert out["critique"]["knowledge"]["asset_class"]["id"] == "organic_prop"

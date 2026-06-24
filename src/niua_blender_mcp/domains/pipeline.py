@@ -92,6 +92,7 @@ SPECS = [
         params={
             "object": Str(required=True, summary="Object whose current stage should be critiqued"),
             "stage": Str(summary="Stage to critique; defaults to current stage"),
+            "asset_class": Enum(ASSET_CLASS_IDS, summary="Layer 2 asset-class profile"),
             "attempt": Int(default=1, minimum=1, maximum=20, summary="Current bounded retry attempt"),
             "max_attempts": Int(default=3, minimum=1, maximum=20, summary="Retry budget for this stage"),
         },
