@@ -68,6 +68,8 @@ def _resolve_target(
     if state is not None:
         if not resolved_asset_class and isinstance(state.get("asset_class"), str):
             resolved_asset_class = state["asset_class"]
+        if not resolved_stage and isinstance(state.get("current_stage"), str):
+            resolved_stage = state["current_stage"]
         if not resolved_stage and isinstance(state.get("stage"), str):
             resolved_stage = state["stage"]
     return resolved_asset_class, resolved_stage

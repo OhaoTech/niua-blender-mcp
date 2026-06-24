@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import pytest
+
+from niua_blender_mcp.domains import build_router
+from niua_mcp_bridge.context import Ctx
+from niua_mcp_bridge.core import pipeline as pipeline_store
+from niua_mcp_bridge.dispatch import dispatch_on_main
+from niua_mcp_bridge.domains import build_default_registry
+from niua_mcp_bridge.errors import INVALID_PARAMS, BridgeError
+
+
+class FakeBpy:
+    pass
+
+
+def _dispatch(command: str, payload: dict | None = None) -> dict:
+    ctx = Ctx(FakeBpy())
+    reg = build_default_registry()
+    return dispatch_on_main(reg, command, payload or {}, ctx)
+
+
+def test_craft_workflow_tools_registered() -> None:
+    names = {spec.name for spec in build_router().specs()}
+    reg = build_default_registry()
+
+    for name in ("craft_workflow.list", "craft_workflow.describe", "craft_workflow.recommend"):
+        assert name in names
+        command = reg.get(name)
+        assert command is not None
+        assert command.mutates is False
+
+
+def test_craft_workflow_list_returns_summaries_and_filters() -> None:
+    out = _dispatch("craft_workflow.list", {"asset_class": "hard_surface_prop", "stage": "retopo"})
+
+    workflows = out["workflows"]
+    assert [workflow["id"] for workflow in workflows] == ["hard_surface.panel_detail_pass"]
+    assert {
+        "id",
+        "label",
+        "asset_class",
+        "stages",
+        "summary",
+        "required_tools",
+    } <= set(workflows[0])
+    assert "default_params" not in workflows[0]
+
+    empty = _dispatch("craft_workflow.list", {"asset_class": "organic_prop", "stage": "retopo"})
+    assert empty["workflows"] == []
+
+
+def test_craft_workflow_describe_returns_complete_record() -> None:
+    out = _dispatch("craft_workflow.describe", {"workflow": "hard_surface.panel_detail_pass"})
+
+    workflow = out["workflow"]
+    assert workflow["id"] == "hard_surface.panel_detail_pass"
+    assert workflow["asset_class"] == "hard_surface_prop"
+    assert workflow["default_params"]["width"] == 0.02
+    assert workflow["gate_targets"] == [
+        "topology.ngons",
+        "topology.quad_ratio",
+        "topology.non_manifold_edges",
+    ]
+
+
+def test_craft_workflow_describe_unknown_id_fails_cleanly() -> None:
+    with pytest.raises(BridgeError) as exc:
+        _dispatch("craft_workflow.describe", {"workflow": "nope"})
+
+    assert exc.value.code == INVALID_PARAMS
+    assert "unknown craft workflow: nope" in str(exc.value)
+
+
+def test_craft_workflow_recommend_returns_hard_surface_match() -> None:
+    out = _dispatch("craft_workflow.recommend", {"asset_class": "hard_surface_prop", "stage": "retopo"})
+
+    assert out["reason"] == "matched asset_class=hard_surface_prop stage=retopo"
+    assert [item["id"] for item in out["recommendations"]] == ["hard_surface.panel_detail_pass"]
+    assert out["recommendations"][0]["match"] == "asset_class+stage"
+
+
+def test_craft_workflow_recommend_returns_no_fallback_for_unsupported_class() -> None:
+    out = _dispatch("craft_workflow.recommend", {"asset_class": "organic_prop", "stage": "retopo"})
+
+    assert out == {
+        "recommendations": [],
+        "reason": "no workflow matched asset_class=organic_prop stage=retopo",
+    }
+
+
+def test_craft_workflow_recommend_uses_pipeline_state() -> None:
+    pipeline_store.reset()
+    pipeline_store.start("Cube", asset_class="hard_surface_prop", profile_version=1)
+    pipeline_store.advance("Cube")
+
+    out = _dispatch("craft_workflow.recommend", {"object": "Cube"})
+
+    assert out["reason"] == "matched asset_class=hard_surface_prop stage=repair"
+    assert [item["id"] for item in out["recommendations"]] == ["hard_surface.panel_detail_pass"]
