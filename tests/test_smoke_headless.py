@@ -827,6 +827,38 @@ def test_layer2_wave2_pipeline_spine_acceptance(bridge: BlenderBridge) -> None:
             os.unlink(path)
 
 
+def test_layer2_wave8_asset_class_profiles_acceptance(bridge: BlenderBridge) -> None:
+    bridge.call("object.create", {"type": "CUBE", "name": "ClassHero"})
+
+    classes = bridge.call("asset_class.list", {})
+    ids = [item["id"] for item in classes["asset_classes"]]
+    assert "generated_cleanup" in ids
+    described = bridge.call("asset_class.describe", {"asset_class": "generated_cleanup"})
+    assert described["asset_class"]["gate_overrides"]["retopo"]["topology.quad_ratio"]["value"] == 0.98
+
+    started = bridge.call("pipeline.start", {"object": "ClassHero", "asset_class": "organic_prop"})
+    assert started["state"]["asset_class"] == "organic_prop"
+    assert started["state"]["profile_version"] == 1
+
+    quality = bridge.call("feedback.quality", {"object": "ClassHero", "asset_class": "from_scratch_prop"})
+    assert quality["asset_class"]["id"] == "from_scratch_prop"
+    assert quality["engine"]["triangle_budget"] == 4000
+
+    organic_retopo = bridge.call(
+        "pipeline.gate_check",
+        {"object": "ClassHero", "stage": "retopo", "asset_class": "organic_prop"},
+    )
+    generated_retopo = bridge.call(
+        "pipeline.gate_check",
+        {"object": "ClassHero", "stage": "retopo", "asset_class": "generated_cleanup"},
+    )
+    assert organic_retopo["gates"][0]["value"] == 0.85
+    assert generated_retopo["gates"][0]["value"] == 0.98
+
+    knowledge = bridge.call("knowledge.load", {"name": "retopo", "asset_class": "generated_cleanup"})
+    assert knowledge["pack"]["asset_class"]["id"] == "generated_cleanup"
+
+
 def test_layer2_wave3_self_critique_acceptance(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "CritPipeHero"})
     for layer in bridge.call("uv.layers", {"object": "CritPipeHero"})["layers"]:

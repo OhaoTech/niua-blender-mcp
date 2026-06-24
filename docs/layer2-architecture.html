@@ -529,13 +529,13 @@
           </p>
           <div class="list">
             <div class="chip done-chip"><span>GUI parity audit</span><span>58/58</span></div>
-            <div class="chip done-chip"><span>Server specs</span><span>320</span></div>
-            <div class="chip done-chip"><span>Add-on commands</span><span>303</span></div>
+            <div class="chip done-chip"><span>Server specs</span><span>322</span></div>
+            <div class="chip done-chip"><span>Add-on commands</span><span>305</span></div>
           </div>
         </section>
 
         <section class="panel layer-card">
-          <p class="eyebrow">Layer 2 built surface <span class="badge done-badge">Waves 1-7</span></p>
+          <p class="eyebrow">Layer 2 built surface <span class="badge done-badge">Waves 1-8</span></p>
           <h2>Surface and roadmap</h2>
           <div class="list">
             <div class="chip done-chip"><span>Topology eye</span><span>feedback.topology</span></div>
@@ -564,7 +564,10 @@
             <div class="chip done-chip"><span>Profile gate</span><span>export preflight</span></div>
             <div class="chip done-chip"><span>LOD quality</span><span>quality.engine</span></div>
             <div class="chip done-chip"><span>Collision hulls</span><span>object.collision_hulls_create</span></div>
-            <div class="chip future-chip"><span>Asset breadth</span><span>Wave 8</span></div>
+            <div class="chip done-chip"><span>Asset class registry</span><span>asset_class.list</span></div>
+            <div class="chip done-chip"><span>Asset class describe</span><span>asset_class.describe</span></div>
+            <div class="chip done-chip"><span>Asset-class gate overrides</span><span>pipeline.gate_check</span></div>
+            <div class="chip next-chip"><span>Class-specific craft workflows</span><span>Next</span></div>
           </div>
         </section>
       </aside>
@@ -575,7 +578,7 @@
             <p class="eyebrow">Stage spine</p>
             <h2 class="pipeline-title">One asset moves through gates, not vibes.</h2>
           </div>
-          <span class="badge done-badge">Waves 1-7 built</span>
+          <span class="badge done-badge">Waves 1-8 built</span>
         </div>
 
         <div class="stages">
@@ -612,7 +615,7 @@
             <p>Optional bevels, panels, sculpt/detail source for later baking.</p>
             <div class="stage-status">
               <span class="tag done-tag">bevel/recess</span>
-              <span class="tag future-tag">Wave 8</span>
+              <span class="tag next-tag">craft workflows</span>
               <span class="tag future-tag">high-low pairing</span>
             </div>
           </article>
@@ -752,6 +755,9 @@
             <div class="chip done-chip"><span>Collision hulls</span><span>object.collision_hulls_create</span></div>
             <div class="chip done-chip"><span>LOD/collision quality</span><span>Wave 7</span></div>
             <div class="chip done-chip"><span>Engine profiles</span><span>io.profile_validate</span></div>
+            <div class="chip done-chip"><span>Asset classes</span><span>asset_class.list</span></div>
+            <div class="chip done-chip"><span>Asset class detail</span><span>asset_class.describe</span></div>
+            <div class="chip done-chip"><span>Class gate overrides</span><span>pipeline.gate_check</span></div>
           </div>
         </section>
       </aside>
@@ -761,9 +767,9 @@
       <p class="eyebrow">Big map <span class="badge base-badge">Layer 2 waves</span></p>
       <h2>Stage pipeline and roadmap now share one spine</h2>
       <p class="small">
-        Waves 1-7 made the pipeline observable, gated, resumable, self-critiquing,
-        material-ready, engine-ready, export-profile aware, and stricter about LOD/collision quality.
-        Later waves deepen the same spine.
+        Waves 1-8 made the pipeline observable, gated, resumable, self-critiquing,
+        material-ready, engine-ready, export-profile aware, stricter about LOD/collision quality,
+        and asset-class aware. Later waves deepen class-specific craft workflows on the same spine.
       </p>
       <div class="map-grid">
         <div class="map-row done-row">
@@ -791,10 +797,15 @@
           <span>Built LOD triangle-ratio checks, bounds-delta silhouette preservation, multi-hull collision creation, and collision coverage/tightness gates.</span>
           <span class="tag done-tag">Wave 7</span>
         </div>
-        <div class="map-row next-row">
+        <div class="map-row done-row">
           <strong>Asset-class breadth</strong>
-          <span>Apply the same pipeline to hard-surface, organic/sculpt, generated cleanup, and from-scratch prop briefs.</span>
-          <span class="tag next-tag">Wave 8</span>
+          <span>Built hard-surface, organic/sculpt, generated cleanup, and from-scratch prop profiles with budgets, gate overrides, and knowledge guidance.</span>
+          <span class="tag done-tag">Wave 8</span>
+        </div>
+        <div class="map-row next-row">
+          <strong>Class-specific craft workflows</strong>
+          <span>Turn asset-class profiles into targeted modeling, cleanup, retopo, material, and optimization recipes.</span>
+          <span class="tag next-tag">Next</span>
         </div>
       </div>
     </section>
@@ -828,14 +839,18 @@
         <h3>Wave 7 <span class="tag done-tag">built</span></h3>
         <p class="small"><strong>Advanced LOD/collision.</strong> Built LOD triangle-ratio checks, bounds-delta preservation, split collision hulls, and stronger proxy validation.</p>
       </article>
+      <article class="wave done-wave">
+        <h3>Wave 8 <span class="tag done-tag">built</span></h3>
+        <p class="small"><strong>Asset-class profiles.</strong> Built class registry, describes, pipeline defaults, quality budgets, gate overrides, and knowledge-pack guidance.</p>
+      </article>
       <article class="wave next-wave">
-        <h3>Wave 8 <span class="tag next-tag">next</span></h3>
-        <p class="small"><strong>Asset-class breadth.</strong> Hard-surface, organic/sculpt, generated blob cleanup, and from-scratch prop workflows.</p>
+        <h3>Next <span class="tag next-tag">roadmap</span></h3>
+        <p class="small"><strong>Class-specific craft workflows.</strong> Hard-surface, organic/sculpt, generated cleanup, and from-scratch prop workflows that go beyond shared profiles.</p>
       </article>
     </section>
 
     <footer>
-      Current source of truth: main after Layer 2 Wave 7. This diagram is explanatory, not an implementation spec.
+      Current source of truth: main after Layer 2 Wave 8. This diagram is explanatory, not an implementation spec.
     </footer>
   </main>
 </body>
