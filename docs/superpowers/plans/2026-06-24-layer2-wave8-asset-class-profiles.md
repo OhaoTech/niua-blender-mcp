@@ -689,8 +689,10 @@ from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec
 Add to `pipeline.start` params:
 
 ```python
-"asset_class": Enum(ASSET_CLASS_IDS, default="hard_surface_prop", summary="Layer 2 asset-class profile"),
+"asset_class": Enum(ASSET_CLASS_IDS, summary="Layer 2 asset-class profile"),
 ```
+
+Do not set a server-side default here: the add-on must see an omitted `asset_class` so it can return `asset_class_defaulted: true`.
 
 - [ ] **Step 6: Run pipeline tests**
 
@@ -1050,7 +1052,7 @@ def test_knowledge_load_unknown_asset_class_fails_cleanly():
     with pytest.raises(BridgeError) as exc:
         dispatch_on_main(reg, "knowledge.load", {"name": "retopo", "asset_class": "nope"}, ctx)
 
-    assert exc.value.code == "invalid_params"
+    assert exc.value.code == INVALID_PARAMS
 ```
 
 If `tests/domains/test_knowledge.py` does not import `pytest`, `BridgeError`, and `INVALID_PARAMS`, add:
@@ -1060,7 +1062,7 @@ import pytest
 from niua_mcp_bridge.errors import INVALID_PARAMS, BridgeError
 ```
 
-Then assert `exc.value.code == INVALID_PARAMS`.
+Then keep the `INVALID_PARAMS` assertion above.
 
 Add to `tests/domains/test_pipeline.py`:
 
