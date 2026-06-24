@@ -274,6 +274,34 @@ def test_gate_check_named_stage_uses_stage_gate_profile(env):
     assert out["state"]["state"]["gates"]["repair"]["gates_pass"] is False
 
 
+def test_gate_check_applies_stored_asset_class_gate_overrides(env):
+    _ctx, bpy = env
+    polys = _CUBE_QUADS + [[0, 1, 2]]
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=polys)))
+    _dispatch(env, "pipeline.start", {"object": "Cube", "asset_class": "generated_cleanup"})
+
+    out = _dispatch(env, "pipeline.gate_check", {"object": "Cube", "stage": "retopo"})
+
+    assert out["asset_class"]["id"] == "generated_cleanup"
+    assert out["asset_class"]["applied_gate_overrides"]["retopo"]["topology.quad_ratio"]["value"] == 0.98
+    assert out["gates"][0]["path"] == "topology.quad_ratio"
+    assert out["gates"][0]["value"] == 0.98
+    assert out["gates"][0]["actual"] < 0.98
+
+
+def test_gate_check_accepts_payload_asset_class_override(env):
+    _ctx, bpy = env
+    polys = _CUBE_QUADS + [[0, 1, 2]]
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=polys)))
+    _dispatch(env, "pipeline.start", {"object": "Cube", "asset_class": "hard_surface_prop"})
+
+    out = _dispatch(env, "pipeline.gate_check", {"object": "Cube", "stage": "retopo", "asset_class": "organic_prop"})
+
+    assert out["asset_class"]["id"] == "organic_prop"
+    assert out["gates"][0]["value"] == 0.85
+    assert out["gates"][0]["pass"] is True
+
+
 def test_gate_check_optimize_uses_engine_readiness_metrics(env):
     _ctx, bpy = env
     bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))

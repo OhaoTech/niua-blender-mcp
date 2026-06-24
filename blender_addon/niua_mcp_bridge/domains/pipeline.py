@@ -56,28 +56,33 @@ def _stage_for_gate_check(object_name: str, payload: dict) -> str:
 
 def gate_check(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_object(ctx, payload)
-    if store.get_state(obj.name) is None:
+    state = store.get_state(obj.name)
+    if state is None:
         raise BridgeError(PRECONDITION, f"pipeline has not started for object: {obj.name}")
 
     stage = _stage_for_gate_check(obj.name, payload)
     try:
-        gates = store.stage_gates(stage)
-    except ValueError as exc:
+        metrics_payload, asset_meta = asset_classes.apply_asset_class_defaults(payload, state=state)
+        gates, applied_gate_overrides = store.stage_gates(stage, asset_class=metrics_payload["asset_class"])
+    except (KeyError, ValueError) as exc:
         raise BridgeError(INVALID_PARAMS, str(exc)) from exc
 
-    metrics_payload = dict(payload)
     metrics_payload["object"] = obj.name
     metrics = quality(ctx, metrics_payload)
+    asset_meta["applied_gate_overrides"] = applied_gate_overrides
+    metrics["asset_class"]["applied_gate_overrides"] = applied_gate_overrides
     checked = store.check_gates(metrics, gates)
     gate_record = {
         "stage": stage,
         "gate_profile": store.gate_profile(stage),
+        "asset_class": asset_meta,
         **checked,
     }
     state = store.record_gate(obj.name, stage, gate_record)
     return {
         "object": obj.name,
         "stage": stage,
+        "asset_class": asset_meta,
         "metrics": metrics,
         **checked,
         "state": state,
@@ -107,7 +112,11 @@ def advance(ctx: Ctx, payload: dict) -> dict:
         "object": obj.name,
         "from_stage": checked["stage"],
         "to_stage": to_stage,
-        "gate": {"gates": checked["gates"], "gates_pass": checked["gates_pass"]},
+        "gate": {
+            "asset_class": checked["asset_class"],
+            "gates": checked["gates"],
+            "gates_pass": checked["gates_pass"],
+        },
         "state": state,
     }
 

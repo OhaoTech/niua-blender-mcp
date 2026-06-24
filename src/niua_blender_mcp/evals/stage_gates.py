@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from typing import Any
+
+from .. import asset_classes
+
 _GATES = {
     "retopo": [
         {"path": "topology.quad_ratio", "op": ">=", "value": 0.95},
@@ -46,8 +51,11 @@ _GATES = {
 }
 
 
-def stage_gates(stage: str) -> list[dict]:
+def stage_gates(stage: str, asset_class: str | None = None) -> list[dict[str, Any]]:
     try:
-        return [dict(gate) for gate in _GATES[stage]]
+        gates = [deepcopy(gate) for gate in _GATES[stage]]
     except KeyError as exc:
-        raise KeyError(f"unknown stage gate profile: {stage}") from exc
+        raise KeyError(stage) from exc
+    profile = asset_classes.get_asset_class(asset_class)
+    out, _applied = asset_classes.apply_gate_overrides(gates, profile, stage)
+    return out

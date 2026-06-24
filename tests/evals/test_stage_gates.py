@@ -100,6 +100,14 @@ def test_export_preflight_gates_include_engine_profile_validation():
     ]
 
 
+def test_stage_gates_apply_asset_class_overrides():
+    organic = stage_gates("retopo", asset_class="organic_prop")
+    generated = stage_gates("retopo", asset_class="generated_cleanup")
+
+    assert organic[0] == {"path": "topology.quad_ratio", "op": ">=", "value": 0.85}
+    assert generated[0] == {"path": "topology.quad_ratio", "op": ">=", "value": 0.98}
+
+
 def test_unknown_stage_raises_key_error():
     with pytest.raises(KeyError, match="nope"):
         stage_gates("nope")

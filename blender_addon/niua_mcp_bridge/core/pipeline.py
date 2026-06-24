@@ -6,6 +6,8 @@ from copy import deepcopy
 import operator
 from typing import Any
 
+from . import asset_classes
+
 _STAGES = [
     {"name": "intake", "gate_profile": None, "terminal": False},
     {"name": "repair", "gate_profile": "orientation", "terminal": False},
@@ -120,14 +122,16 @@ def gate_profile(stage: str) -> str | None:
     return _STAGES[_STAGE_INDEX[stage]]["gate_profile"]
 
 
-def stage_gates(stage: str) -> list[dict[str, Any]]:
+def stage_gates(stage: str, asset_class: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     profile = gate_profile(stage)
     if profile is None:
-        return []
+        return [], {}
     try:
-        return [deepcopy(gate) for gate in _GATES[profile]]
+        base = [deepcopy(gate) for gate in _GATES[profile]]
     except KeyError as exc:
         raise ValueError(f"unknown stage gate profile: {profile}") from exc
+    asset_profile = asset_classes.get_asset_class(asset_class)
+    return asset_classes.apply_gate_overrides(base, asset_profile, stage)
 
 
 def _dig(metrics: dict[str, Any], path: str) -> Any:
