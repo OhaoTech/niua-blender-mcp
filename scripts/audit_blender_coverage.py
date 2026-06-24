@@ -19,7 +19,17 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = REPO_ROOT.parent / "blender-source"
+
+
+def default_blender_source(repo_root: Path) -> Path:
+    parts = repo_root.parts
+    if ".worktrees" in parts:
+        worktrees_index = parts.index(".worktrees")
+        repo_root = Path(*parts[:worktrees_index])
+    return repo_root.parent / "blender-source"
+
+
+DEFAULT_SOURCE = default_blender_source(REPO_ROOT)
 for import_path in (REPO_ROOT / "src", REPO_ROOT / "blender_addon", REPO_ROOT):
     path_text = str(import_path)
     if path_text not in sys.path:

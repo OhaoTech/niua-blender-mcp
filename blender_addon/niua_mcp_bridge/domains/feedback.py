@@ -27,6 +27,7 @@ from ..core.engine_metrics import engine_quality
 from ..core.export_profiles import export_profile_quality
 from ..core.material_metrics import material_quality
 from ..core.orientation_metrics import orientation_quality
+from ..core import pipeline as pipeline_store
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, BridgeError
 from .mesh import (
@@ -214,8 +215,9 @@ def quality(ctx: Ctx, payload: dict) -> dict:
     fields (pole_count, non_manifold_edges, loose_verts) degrade to ``null`` without bmesh.
     """
     obj = _resolve_mesh(ctx, payload)
+    state = pipeline_store.get_state(obj.name)
     try:
-        effective_payload, asset_meta = asset_classes.apply_asset_class_defaults(payload)
+        effective_payload, asset_meta = asset_classes.apply_asset_class_defaults(payload, state=state)
     except KeyError as exc:
         raise BridgeError(INVALID_PARAMS, str(exc)) from exc
     mesh = obj.data

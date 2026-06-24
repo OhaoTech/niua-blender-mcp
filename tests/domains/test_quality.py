@@ -187,6 +187,22 @@ def test_quality_reports_asset_class_metadata_and_explicit_overrides(env) -> Non
     assert meta["applied_gate_overrides"] == {}
 
 
+def test_quality_uses_pipeline_asset_class_state_when_payload_omits_class(env) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS * 1501)))
+    reg = build_default_registry()
+
+    dispatch_on_main(reg, "pipeline.start", {"object": "Cube", "asset_class": "generated_cleanup"}, ctx)
+    out = dispatch_on_main(reg, "feedback.quality", {"object": "Cube"}, ctx)
+
+    meta = out["asset_class"]
+    assert meta["id"] == "generated_cleanup"
+    assert meta["asset_class_defaulted"] is False
+    assert meta["effective_defaults"]["triangle_budget"] == 6000
+    assert out["engine"]["triangle_budget"] == 6000
+    assert out["engine"]["within_triangle_budget"] is False
+
+
 def test_quality_unknown_asset_class_fails_cleanly(env) -> None:
     ctx, bpy = env
     bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))

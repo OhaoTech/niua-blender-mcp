@@ -130,3 +130,12 @@ def test_cli_json_and_fail_on_partial(tmp_path: Path, capsys) -> None:
     assert code == 1
     assert out["summary"]["partial"] > 0
     assert out["source"]["properties_contexts"] == ["OBJECT", "MODIFIER", "CONSTRAINT", "PARTICLES", "STRIP"]
+
+
+def test_default_source_resolves_from_nested_worktree_root() -> None:
+    audit = _load_audit_module()
+    repo_root = Path("/home/frankyin/Desktop/lab/lab-niua-blender/.worktrees/layer2-wave9b-workflow-breadth")
+
+    resolved = audit.default_blender_source(repo_root)
+
+    assert resolved == Path("/home/frankyin/Desktop/lab/blender-source")
