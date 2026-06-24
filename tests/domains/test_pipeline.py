@@ -287,6 +287,7 @@ def test_gate_check_applies_stored_asset_class_gate_overrides(env):
     assert out["gates"][0]["path"] == "topology.quad_ratio"
     assert out["gates"][0]["value"] == 0.98
     assert out["gates"][0]["actual"] < 0.98
+    assert out["gates"][0]["pass"] is False
 
 
 def test_gate_check_accepts_payload_asset_class_override(env):
