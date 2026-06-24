@@ -7,20 +7,18 @@
   <style>
     :root {
       color-scheme: light;
-      --paper: #f6f7f1;
-      --ink: #20262d;
-      --muted: #5f6872;
-      --line: #cfd5cf;
-      --panel: #ffffff;
-      --foundation: #263949;
-      --stage: #2f7e92;
-      --eye: #2d8a6e;
-      --gate: #c9791f;
-      --knowledge: #75613c;
-      --done: #3d7a4b;
-      --partial: #2f7e92;
-      --future: #777f87;
-      --shadow: 0 18px 45px rgba(32, 38, 45, 0.09);
+      --paper: #f4f6ef;
+      --sheet: #fbfcf8;
+      --ink: #1f2a2f;
+      --muted: #667176;
+      --rule: #c8d0c6;
+      --base: #33424a;
+      --built: #397955;
+      --next: #bd6a2b;
+      --future: #778083;
+      --signal: #2f7f8f;
+      --knowledge: #806b39;
+      --shadow: 0 18px 48px rgba(31, 42, 47, 0.10);
     }
 
     * {
@@ -29,55 +27,94 @@
 
     body {
       margin: 0;
-      background:
-        linear-gradient(90deg, rgba(32, 38, 45, 0.035) 1px, transparent 1px),
-        linear-gradient(0deg, rgba(32, 38, 45, 0.035) 1px, transparent 1px),
-        var(--paper);
-      background-size: 28px 28px;
       color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(31, 42, 47, 0.04) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(31, 42, 47, 0.04) 1px, transparent 1px),
+        var(--paper);
+      background-size: 32px 32px;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.45;
+      line-height: 1.42;
     }
 
     main {
-      width: min(1380px, calc(100vw - 32px));
+      width: min(1500px, calc(100vw - 32px));
       margin: 0 auto;
-      padding: 32px 0 56px;
+      padding: 28px 0 48px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
     }
 
     header {
       display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
       gap: 28px;
       align-items: end;
+      margin-bottom: 18px;
+      padding-bottom: 18px;
       border-bottom: 2px solid var(--ink);
-      padding-bottom: 24px;
-      margin-bottom: 28px;
-    }
-
-    h1, h2, h3, p {
-      margin: 0;
     }
 
     h1 {
+      max-width: 980px;
       font-family: Georgia, "Times New Roman", serif;
-      font-size: clamp(2.25rem, 5vw, 5.4rem);
-      line-height: 0.94;
-      font-weight: 700;
-      max-width: 900px;
+      font-size: clamp(2.4rem, 5vw, 5.8rem);
+      line-height: 0.92;
+      letter-spacing: 0;
+    }
+
+    .eyebrow,
+    .badge,
+    .tag,
+    .metric-value,
+    .node-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      letter-spacing: 0;
+    }
+
+    .eyebrow {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 9px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 850;
+      text-transform: uppercase;
     }
 
     .lede {
+      max-width: 650px;
       color: var(--muted);
       font-size: 1rem;
-      max-width: 560px;
+    }
+
+    .hero-panel,
+    .section,
+    .node,
+    .wave,
+    .metric {
+      background: rgba(251, 252, 248, 0.92);
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-panel {
+      padding: 16px;
     }
 
     .legend {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
-      align-self: stretch;
+      margin-top: 14px;
     }
 
     .legend-item {
@@ -86,12 +123,12 @@
       gap: 8px;
       min-height: 34px;
       padding: 7px 9px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--rule);
       border-radius: 8px;
+      background: #fff;
       color: var(--muted);
       font-size: 0.82rem;
-      font-weight: 650;
+      font-weight: 750;
     }
 
     .swatch {
@@ -101,68 +138,52 @@
       flex: 0 0 auto;
     }
 
-    .done { background: var(--done); }
-    .next { background: var(--gate); }
-    .base { background: var(--foundation); }
-    .future { background: var(--future); }
+    .swatch.built { background: var(--built); }
+    .swatch.next { background: var(--next); }
+    .swatch.future { background: var(--future); }
+    .swatch.base { background: var(--base); }
 
-    .board {
+    .metric-grid {
       display: grid;
-      grid-template-columns: minmax(270px, 0.74fr) minmax(0, 1.8fr) minmax(270px, 0.78fr);
-      gap: 18px;
-      align-items: stretch;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
     }
 
-    .rail, .pipeline, .right-rail {
-      min-width: 0;
+    .metric {
+      min-height: 78px;
+      padding: 12px;
+      box-shadow: none;
     }
 
-    .panel {
-      background: rgba(255, 255, 255, 0.86);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-    }
-
-    .layer-card {
-      padding: 18px;
-      margin-bottom: 16px;
-    }
-
-    .eyebrow {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
+    .metric-label {
       color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.72rem;
-      font-weight: 800;
-      letter-spacing: 0;
-      text-transform: uppercase;
-      margin-bottom: 10px;
+      font-size: 0.76rem;
+      font-weight: 750;
     }
 
-    .badge {
-      display: inline-flex;
+    .metric-value {
+      margin-top: 6px;
+      font-size: 1.4rem;
+      font-weight: 900;
+    }
+
+    .section {
+      margin-top: 18px;
+      padding: 18px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 6px;
-      white-space: nowrap;
-      border-radius: 999px;
-      padding: 4px 8px;
-      color: #fff;
-      font-size: 0.68rem;
-      font-weight: 800;
-      text-transform: uppercase;
+      gap: 16px;
+      margin-bottom: 14px;
     }
 
-    .badge.done-badge { background: var(--done); }
-    .badge.next-badge { background: var(--gate); }
-    .badge.base-badge { background: var(--foundation); }
-
-    h2 {
-      font-size: 1.1rem;
-      margin-bottom: 8px;
+    .section h2 {
+      font-size: clamp(1.18rem, 2vw, 1.62rem);
+      line-height: 1.1;
     }
 
     .small {
@@ -170,328 +191,290 @@
       font-size: 0.88rem;
     }
 
-    .list {
-      display: grid;
-      gap: 7px;
-      margin-top: 13px;
-    }
-
-    .chip {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
+    .badge {
+      display: inline-flex;
       align-items: center;
-      min-height: 34px;
-      border: 1px solid var(--line);
-      border-left-width: 5px;
-      border-radius: 8px;
-      padding: 7px 9px;
-      background: #fff;
-      font-size: 0.84rem;
-      font-weight: 650;
-    }
-
-    .chip span:last-child {
-      color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.72rem;
       white-space: nowrap;
-    }
-
-    .chip.done-chip { border-left-color: var(--done); }
-    .chip.next-chip { border-left-color: var(--gate); }
-    .chip.future-chip { border-left-color: var(--future); }
-    .chip.partial-chip { border-left-color: var(--partial); }
-
-    .pipeline {
-      position: relative;
-      padding: 18px;
-      overflow: hidden;
-    }
-
-    .pipeline::before {
-      content: "";
-      position: absolute;
-      left: 50%;
-      top: 84px;
-      bottom: 84px;
-      width: 4px;
-      transform: translateX(-50%);
-      background: linear-gradient(var(--stage), var(--gate), var(--future));
+      min-height: 24px;
+      padding: 4px 8px;
       border-radius: 999px;
-      opacity: 0.4;
+      color: #fff;
+      font-size: 0.68rem;
+      font-weight: 900;
+      text-transform: uppercase;
     }
 
-    .pipeline-head {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      border-bottom: 1px solid var(--line);
-      padding-bottom: 14px;
-      margin-bottom: 16px;
-      background: rgba(255, 255, 255, 0.7);
-    }
+    .badge.built { background: var(--built); }
+    .badge.next { background: var(--next); }
+    .badge.base { background: var(--base); }
+    .badge.future { background: var(--future); }
 
-    .pipeline-title {
-      font-size: 1.28rem;
-      font-weight: 800;
-    }
-
-    .stages {
-      position: relative;
+    .stack {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(220px, 0.8fr);
       gap: 12px;
+      align-items: stretch;
     }
 
-    .stage {
+    .node {
       position: relative;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      min-height: 150px;
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-top: 6px solid var(--stage);
-      background: rgba(255, 255, 255, 0.93);
-      border-radius: 8px;
-      z-index: 1;
+      min-height: 164px;
+      padding: 15px;
+      border-top: 6px solid var(--future);
+      box-shadow: none;
     }
 
-    .stage.done-stage { border-top-color: var(--done); }
-    .stage.next-stage { border-top-color: var(--gate); }
-    .stage.future-stage { border-top-color: var(--future); }
-    .stage.partial-stage { border-top-color: var(--partial); }
+    .node.base { border-top-color: var(--base); }
+    .node.built { border-top-color: var(--built); }
+    .node.next { border-top-color: var(--next); }
 
-    .stage-index {
+    .node h3 {
+      margin-bottom: 8px;
+      font-size: 1.02rem;
+    }
+
+    .node-code {
+      display: block;
+      margin-top: 12px;
       color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.72rem;
       font-weight: 850;
-      margin-bottom: 8px;
     }
 
-    .stage h3 {
-      font-size: 1rem;
-      margin-bottom: 8px;
-    }
-
-    .stage p {
-      color: var(--muted);
-      font-size: 0.82rem;
-    }
-
-    .stage-status {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 14px;
-    }
-
-    .tag {
-      border-radius: 999px;
-      padding: 3px 7px;
-      background: #eef1ed;
-      color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.68rem;
-      font-weight: 800;
-    }
-
-    .tag.done-tag {
-      color: #fff;
-      background: var(--done);
-    }
-
-    .tag.next-tag {
-      color: #fff;
-      background: var(--gate);
-    }
-
-    .tag.future-tag {
-      color: #fff;
-      background: var(--future);
-    }
-
-    .pillar-grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .pillar {
-      border-left: 6px solid var(--eye);
-      padding: 14px;
-    }
-
-    .pillar:nth-child(2) { border-left-color: var(--gate); }
-    .pillar:nth-child(3) { border-left-color: var(--stage); }
-    .pillar:nth-child(4) { border-left-color: var(--knowledge); }
-
-    .pillar h3 {
-      font-size: 0.98rem;
-      margin-bottom: 6px;
-    }
-
-    .flow {
-      margin-top: 18px;
-      padding: 18px;
-      border-radius: 8px;
-      background: var(--foundation);
-      color: #fff;
-    }
-
-    .flow h2 {
-      color: #fff;
-    }
-
-    .flow-grid {
-      display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .flow-step {
-      min-height: 58px;
+    .arrow {
       display: flex;
       align-items: center;
       justify-content: center;
-      text-align: center;
-      padding: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.08);
-      font-size: 0.76rem;
-      font-weight: 800;
+      color: var(--muted);
+      font-weight: 900;
+      font-size: 1.1rem;
     }
 
-    .stage-map {
-      margin-top: 18px;
-      padding: 18px;
-    }
-
-    .stage-map h2 {
-      margin-bottom: 6px;
-    }
-
-    .map-grid {
+    .pipeline {
       display: grid;
+      grid-template-columns: repeat(9, minmax(112px, 1fr));
+      gap: 9px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .stage {
+      min-height: 176px;
+      min-width: 112px;
+      padding: 12px;
+      border: 1px solid var(--rule);
+      border-top: 6px solid var(--built);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .stage.next-stage {
+      border-top-color: var(--next);
+      background: #fff8ef;
+    }
+
+    .stage-index {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 900;
+    }
+
+    .stage h3 {
+      margin: 8px 0;
+      font-size: 0.92rem;
+      line-height: 1.12;
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 12px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      padding: 3px 6px;
+      border-radius: 999px;
+      background: #ecf0ea;
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 850;
+    }
+
+    .tag.built {
+      background: var(--built);
+      color: #fff;
+    }
+
+    .tag.next {
+      background: var(--next);
+      color: #fff;
+    }
+
+    .tag.future {
+      background: var(--future);
+      color: #fff;
+    }
+
+    .stage-contract {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 8px;
       margin-top: 14px;
-    }
-
-    .map-row {
-      display: grid;
-      grid-template-columns: minmax(170px, 0.8fr) minmax(0, 1.2fr) minmax(130px, 0.5fr);
-      gap: 10px;
-      align-items: center;
-      min-height: 46px;
-      border: 1px solid var(--line);
-      border-left: 6px solid var(--future);
+      padding: 12px;
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.84);
-      padding: 9px 11px;
-      font-size: 0.84rem;
+      background: var(--base);
+      color: #fff;
     }
 
-    .map-row.done-row { border-left-color: var(--done); }
-    .map-row.next-row { border-left-color: var(--gate); }
-    .map-row.partial-row { border-left-color: var(--partial); }
-
-    .map-row strong {
-      font-size: 0.88rem;
+    .contract-step {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 7px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 8px;
+      text-align: center;
+      font-size: 0.75rem;
+      font-weight: 850;
     }
 
-    .map-row span {
-      color: var(--muted);
-    }
-
-    .wave-band {
-      margin-top: 18px;
+    .wave-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      padding-bottom: 4px;
     }
 
     .wave {
-      min-height: 136px;
-      padding: 14px;
-      border: 1px solid var(--line);
+      min-height: 142px;
+      min-width: 150px;
+      padding: 13px;
       border-top: 6px solid var(--future);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.82);
+      box-shadow: none;
     }
 
-    .wave.done-wave {
-      border-top-color: var(--done);
-    }
-
-    .wave.next-wave {
-      border-top-color: var(--gate);
-    }
-
-    .wave.future-wave {
-      border-top-color: var(--future);
-    }
+    .wave.built { border-top-color: var(--built); }
+    .wave.next { border-top-color: var(--next); }
 
     .wave h3 {
-      font-size: 0.95rem;
-      margin-bottom: 7px;
+      margin-bottom: 8px;
+      font-size: 0.94rem;
     }
 
-    .wave strong {
-      color: var(--gate);
+    .asset-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .asset {
+      min-height: 162px;
+      padding: 14px;
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .asset h3 {
+      margin-bottom: 8px;
+      font-size: 0.98rem;
+    }
+
+    .asset.next-asset {
+      border-color: rgba(189, 106, 43, 0.55);
+      background: #fff8ef;
+    }
+
+    .surface-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .surface-item {
+      min-height: 74px;
+      padding: 10px;
+      border: 1px solid var(--rule);
+      border-left: 5px solid var(--built);
+      border-radius: 8px;
+      background: #fff;
+      font-size: 0.82rem;
+      font-weight: 750;
+    }
+
+    .surface-item span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.68rem;
+      font-weight: 850;
     }
 
     footer {
-      margin-top: 22px;
+      margin-top: 20px;
       color: var(--muted);
-      font-size: 0.82rem;
       text-align: center;
+      font-size: 0.82rem;
     }
 
-    @media (max-width: 1050px) {
+    @media (max-width: 1180px) {
       header,
-      .board {
-        grid-template-columns: 1fr;
-      }
-
-      .stages {
+      .stack,
+      .asset-grid,
+      .surface-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .flow-grid,
-      .wave-band,
-      .map-row {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
-
-    @media (max-width: 640px) {
-      main {
-        width: min(100vw - 20px, 1380px);
-        padding-top: 18px;
-      }
-
-      header {
-        gap: 18px;
-      }
-
-      .legend,
-      .stages,
-      .flow-grid,
-      .wave-band,
-      .map-row {
-        grid-template-columns: 1fr;
-      }
-
-      .pipeline::before {
-        left: 20px;
+      .pipeline {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        overflow-x: visible;
       }
 
       .stage {
-        min-height: 130px;
+        min-width: 0;
+      }
+
+      .stage-contract {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      main {
+        width: min(100vw - 20px, 1500px);
+        padding-top: 18px;
+      }
+
+      header,
+      .stack,
+      .asset-grid,
+      .surface-grid,
+      .metric-grid,
+      .legend,
+      .pipeline,
+      .wave-grid,
+      .stage-contract {
+        grid-template-columns: 1fr;
+      }
+
+      .stage,
+      .wave {
+        min-width: 0;
+      }
+
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      h1 {
+        font-size: clamp(2.2rem, 13vw, 4.2rem);
       }
     }
   </style>
@@ -501,356 +484,232 @@
     <header>
       <div>
         <p class="eyebrow">Niua Blender MCP / Layer map</p>
-        <h1>Layer 2 is the senior game-asset pipeline.</h1>
+        <h1>Layer 2 is now a gated game-asset factory.</h1>
       </div>
-      <div>
+      <div class="hero-panel">
         <p class="lede">
-          Layer 1 gives the agent full Blender reach. Layer 2 adds senior production discipline:
-          staged work, perception, deterministic gates, knowledge, rollback, engine readiness,
-          baking/material production, engine profiles, and asset-class breadth.
+          Layer 1 gives Blender reach. Layer 2 turns that reach into a senior production loop:
+          perceive, gate, checkpoint, critique, and export. Wave 9A is the next step: class-specific
+          craft workflows, starting with hard-surface props.
         </p>
+        <div class="metric-grid" aria-label="Current coverage metrics">
+          <div class="metric">
+            <div class="metric-label">GUI parity audit</div>
+            <div class="metric-value">58/58</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Server specs</div>
+            <div class="metric-value">322</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Add-on commands</div>
+            <div class="metric-value">305</div>
+          </div>
+        </div>
         <div class="legend" aria-label="Diagram legend">
-          <div class="legend-item"><span class="swatch done"></span>Built</div>
+          <div class="legend-item"><span class="swatch built"></span>Built</div>
           <div class="legend-item"><span class="swatch next"></span>Next wave</div>
-          <div class="legend-item"><span class="swatch future"></span>Future wave</div>
-          <div class="legend-item"><span class="swatch base"></span>Layer 1 foundation</div>
+          <div class="legend-item"><span class="swatch future"></span>Future depth</div>
+          <div class="legend-item"><span class="swatch base"></span>Layer 1 base</div>
         </div>
       </div>
     </header>
 
-    <section class="board" aria-label="Layer 2 architecture board">
-      <aside class="rail">
-        <section class="panel layer-card">
-          <p class="eyebrow">Foundation <span class="badge base-badge">Done</span></p>
-          <h2>Layer 1: Blender control surface</h2>
-          <p class="small">
-            The MCP can inspect and mutate Blender through curated domains, RNA fallback,
-            scene tree access, UI state, undo, file/session tools, and glTF/GLB export.
-          </p>
-          <div class="list">
-            <div class="chip done-chip"><span>GUI parity audit</span><span>58/58</span></div>
-            <div class="chip done-chip"><span>Server specs</span><span>322</span></div>
-            <div class="chip done-chip"><span>Add-on commands</span><span>305</span></div>
-          </div>
-        </section>
-
-        <section class="panel layer-card">
-          <p class="eyebrow">Layer 2 built surface <span class="badge done-badge">Waves 1-8</span></p>
-          <h2>Surface and roadmap</h2>
-          <div class="list">
-            <div class="chip done-chip"><span>Topology eye</span><span>feedback.topology</span></div>
-            <div class="chip done-chip"><span>UV checker eye</span><span>feedback.uv</span></div>
-            <div class="chip done-chip"><span>Orientation eye</span><span>feedback.orientation</span></div>
-            <div class="chip done-chip"><span>Wire shaded eye</span><span>feedback.wire_shaded</span></div>
-            <div class="chip done-chip"><span>Lookdev eye</span><span>feedback.lookdev</span></div>
-            <div class="chip done-chip"><span>Quality metrics</span><span>feedback.quality</span></div>
-            <div class="chip done-chip"><span>UV quality metrics</span><span>quality.uv</span></div>
-            <div class="chip done-chip"><span>UV overlap metric</span><span>gate-ready</span></div>
-            <div class="chip done-chip"><span>Orientation metrics</span><span>quality.orientation</span></div>
-            <div class="chip done-chip"><span>Hard gates</span><span>evals/gates.py</span></div>
-            <div class="chip done-chip"><span>Stage gate profiles</span><span>evals/stage_gates.py</span></div>
-            <div class="chip done-chip"><span>Pipeline registry</span><span>core.pipeline</span></div>
-            <div class="chip done-chip"><span>Knowledge packs</span><span>core.knowledge</span></div>
-            <div class="chip done-chip"><span>Self-critique core</span><span>core.self_critique</span></div>
-            <div class="chip done-chip"><span>Scorecard harness</span><span>evals/harness.py</span></div>
-            <div class="chip done-chip"><span>Modeling recipe</span><span>playbooks</span></div>
-            <div class="chip done-chip"><span>Craft verbs</span><span>model.*</span></div>
-            <div class="chip done-chip"><span>Engine readiness</span><span>quality.engine</span></div>
-            <div class="chip done-chip"><span>Optimize gate</span><span>pipeline optimize</span></div>
-            <div class="chip done-chip"><span>LOD/collision tools</span><span>object.*</span></div>
-            <div class="chip done-chip"><span>Bake/material gates</span><span>quality.material</span></div>
-            <div class="chip done-chip"><span>PBR map prep</span><span>shading.prepare_pbr_maps</span></div>
-            <div class="chip done-chip"><span>Engine profiles</span><span>io.profile_validate</span></div>
-            <div class="chip done-chip"><span>Profile gate</span><span>export preflight</span></div>
-            <div class="chip done-chip"><span>LOD quality</span><span>quality.engine</span></div>
-            <div class="chip done-chip"><span>Collision hulls</span><span>object.collision_hulls_create</span></div>
-            <div class="chip done-chip"><span>Asset class registry</span><span>asset_class.list</span></div>
-            <div class="chip done-chip"><span>Asset class describe</span><span>asset_class.describe</span></div>
-            <div class="chip done-chip"><span>Asset-class gate overrides</span><span>pipeline.gate_check</span></div>
-            <div class="chip next-chip"><span>Class-specific craft workflows</span><span>Next</span></div>
-          </div>
-        </section>
-      </aside>
-
-      <section class="pipeline panel" aria-label="Pipeline stages">
-        <div class="pipeline-head">
-          <div>
-            <p class="eyebrow">Stage spine</p>
-            <h2 class="pipeline-title">One asset moves through gates, not vibes.</h2>
-          </div>
-          <span class="badge done-badge">Waves 1-8 built</span>
+    <section class="section" aria-label="Layer stack">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Readable stack</p>
+          <h2>What exists now, and what Wave 9A adds.</h2>
         </div>
+        <span class="badge next">Wave 9A target</span>
+      </div>
 
-        <div class="stages">
-          <article class="stage done-stage">
-            <div class="stage-index">01</div>
-            <h3>Intake / triage</h3>
-            <p>Read the brief or raw mesh, identify defects, classify the asset, set budgets.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">Wave 2</span>
-              <span class="tag done-tag">pipeline state store</span>
-              <span class="tag done-tag">start/status</span>
-              <span class="tag done-tag">gate check</span>
-              <span class="tag done-tag">advance/rollback</span>
-            </div>
-          </article>
-
-          <article class="stage done-stage">
-            <div class="stage-index">02</div>
-            <h3>Repair / blockout</h3>
-            <p>Fix scale, transforms, broken geometry, rough proportions, and readable shape.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">Waves 1-3</span>
-              <span class="tag done-tag">mesh tools</span>
-              <span class="tag done-tag">orientation metrics</span>
-              <span class="tag done-tag">orientation eye</span>
-              <span class="tag done-tag">orientation gates</span>
-              <span class="tag done-tag">repair gates</span>
-            </div>
-          </article>
-
-          <article class="stage future-stage">
-            <div class="stage-index">03</div>
-            <h3>High-poly detail</h3>
-            <p>Optional bevels, panels, sculpt/detail source for later baking.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">bevel/recess</span>
-              <span class="tag next-tag">craft workflows</span>
-              <span class="tag future-tag">high-low pairing</span>
-            </div>
-          </article>
-
-          <article class="stage done-stage">
-            <div class="stage-index">04</div>
-            <h3>Retopo</h3>
-            <p>Clean topology, no n-gons, controlled poles, no non-manifold edges.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">Wave 1</span>
-              <span class="tag done-tag">topology eye</span>
-              <span class="tag done-tag">wire-shaded eye</span>
-              <span class="tag done-tag">retopo gates</span>
-              <span class="tag done-tag">retopo verb</span>
-            </div>
-          </article>
-
-          <article class="stage done-stage">
-            <div class="stage-index">05</div>
-            <h3>UV unwrap / pack</h3>
-            <p>Seams, unwrap, pack, texel density, stretch, overlap, checker validation.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">Wave 1/2</span>
-              <span class="tag done-tag">uv tools</span>
-              <span class="tag done-tag">uv metrics</span>
-              <span class="tag done-tag">overlap metric</span>
-              <span class="tag done-tag">uv eye</span>
-              <span class="tag done-tag">uv gate profile</span>
-            </div>
-          </article>
-
-          <article class="stage done-stage">
-            <div class="stage-index">06</div>
-            <h3>Bake</h3>
-            <p>Normal/AO/cavity bake, cage sanity, projection errors, silhouette delta.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">Wave 5</span>
-              <span class="tag done-tag">normal/AO/cavity slots</span>
-              <span class="tag done-tag">bake gates</span>
-              <span class="tag future-tag">projection depth</span>
-            </div>
-          </article>
-
-          <article class="stage done-stage">
-            <div class="stage-index">07</div>
-            <h3>Material / lookdev</h3>
-            <p>PBR maps, shader setup, texture slots, lookdev turntable, final sanity check.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">shading tools</span>
-              <span class="tag done-tag">lookdev eye</span>
-              <span class="tag done-tag">Wave 5</span>
-              <span class="tag done-tag">PBR map gates</span>
-              <span class="tag done-tag">atlas readiness</span>
-            </div>
-          </article>
-
-          <article class="stage done-stage">
-            <div class="stage-index">08</div>
-            <h3>Optimize / LOD</h3>
-            <p>Triangle budget, material count, texture budget, LOD reduction, bounds preservation, and collision hull coverage.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">Wave 4</span>
-              <span class="tag done-tag">perf gates</span>
-              <span class="tag done-tag">lod/collision</span>
-              <span class="tag done-tag">advanced gates</span>
-              <span class="tag done-tag">multi-hull gates</span>
-            </div>
-          </article>
-
-          <article class="stage done-stage">
-            <div class="stage-index">09</div>
-            <h3>Export</h3>
-            <p>glTF/GLB export, engine-profile conventions, transform sanity, external asset validation.</p>
-            <div class="stage-status">
-              <span class="tag done-tag">glTF export</span>
-              <span class="tag done-tag">export preflight</span>
-              <span class="tag done-tag">Wave 6 profiles</span>
-              <span class="tag done-tag">profile gate</span>
-              <span class="tag future-tag">external validation</span>
-            </div>
-          </article>
-        </div>
-
-        <section class="flow" aria-label="Inside each stage">
-          <h2>Every stage has the same internal contract</h2>
-          <div class="flow-grid">
-            <div class="flow-step">Entry preconditions</div>
-            <div class="flow-step">Work tools</div>
-            <div class="flow-step">Perception eye</div>
-            <div class="flow-step">Objective metrics</div>
-            <div class="flow-step">Hard gate</div>
-            <div class="flow-step">Checkpoint / rollback</div>
-          </div>
-        </section>
-      </section>
-
-      <aside class="right-rail">
-        <section class="panel layer-card">
-          <p class="eyebrow">Four pillars <span class="badge next-badge">Layer 2</span></p>
-          <div class="pillar-grid">
-            <article class="pillar panel">
-              <h3>1. Perception</h3>
-              <p class="small">Eyes return both image evidence and structured analytics: topology, UV checker, normals, silhouette, AO/cavity, lookdev.</p>
-            </article>
-            <article class="pillar panel">
-              <h3>2. Objective verification</h3>
-              <p class="small">Deterministic metrics decide whether the asset may advance. The judge cannot talk gates into passing.</p>
-            </article>
-            <article class="pillar panel">
-              <h3>3. Pipeline state</h3>
-              <p class="small">A lightweight registry tracks stage, gates, checkpoint, rollback, and next allowed actions.</p>
-            </article>
-            <article class="pillar panel">
-              <h3>4. Grounded knowledge</h3>
-              <p class="small">Human-reviewed stage standards are loaded as versioned packs; exemplar targets and deeper sources continue in later waves.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="panel layer-card">
-          <p class="eyebrow">Pipeline tool surface <span class="badge done-badge">Built</span></p>
-          <div class="list">
-            <div class="chip done-chip"><span>State store</span><span>core.pipeline</span></div>
-            <div class="chip done-chip"><span>Start</span><span>pipeline.start</span></div>
-            <div class="chip done-chip"><span>Status</span><span>pipeline.status</span></div>
-            <div class="chip done-chip"><span>Gate check</span><span>pipeline.gate_check</span></div>
-            <div class="chip done-chip"><span>Advance</span><span>pipeline.advance</span></div>
-            <div class="chip done-chip"><span>Rollback</span><span>pipeline.rollback</span></div>
-            <div class="chip done-chip"><span>Self-critique</span><span>pipeline.self_critique</span></div>
-            <div class="chip done-chip"><span>Knowledge</span><span>knowledge.load</span></div>
-            <div class="chip done-chip"><span>Bake gate</span><span>Wave 5</span></div>
-            <div class="chip done-chip"><span>Material gate</span><span>Wave 5</span></div>
-            <div class="chip done-chip"><span>PBR map prep</span><span>shading.prepare_pbr_maps</span></div>
-            <div class="chip done-chip"><span>Optimize gate</span><span>Wave 4</span></div>
-            <div class="chip done-chip"><span>LOD create</span><span>object.lod_create</span></div>
-            <div class="chip done-chip"><span>Collision proxy</span><span>object.collision_proxy_create</span></div>
-            <div class="chip done-chip"><span>Collision hulls</span><span>object.collision_hulls_create</span></div>
-            <div class="chip done-chip"><span>LOD/collision quality</span><span>Wave 7</span></div>
-            <div class="chip done-chip"><span>Engine profiles</span><span>io.profile_validate</span></div>
-            <div class="chip done-chip"><span>Asset classes</span><span>asset_class.list</span></div>
-            <div class="chip done-chip"><span>Asset class detail</span><span>asset_class.describe</span></div>
-            <div class="chip done-chip"><span>Class gate overrides</span><span>pipeline.gate_check</span></div>
-          </div>
-        </section>
-      </aside>
-    </section>
-
-    <section class="stage-map panel" aria-label="Stage to wave map">
-      <p class="eyebrow">Big map <span class="badge base-badge">Layer 2 waves</span></p>
-      <h2>Stage pipeline and roadmap now share one spine</h2>
-      <p class="small">
-        Waves 1-8 made the pipeline observable, gated, resumable, self-critiquing,
-        material-ready, engine-ready, export-profile aware, stricter about LOD/collision quality,
-        and asset-class aware. Later waves deepen class-specific craft workflows on the same spine.
-      </p>
-      <div class="map-grid">
-        <div class="map-row done-row">
-          <strong>Intake, repair, retopo, UV</strong>
-          <span>Operational path with perception, quality metrics, gates, checkpoints, and self-critique.</span>
-          <span class="tag done-tag">Waves 1-3</span>
-        </div>
-        <div class="map-row done-row">
-          <strong>Optimize / LOD / collision</strong>
-          <span>Built engine-readiness metrics, LOD creation, collision proxies, split collision hulls, and configurable quality gates.</span>
-          <span class="tag done-tag">Waves 4/7</span>
-        </div>
-        <div class="map-row done-row">
-          <strong>Bake + material production</strong>
-          <span>Built PBR map preparation, normal/AO/cavity checks, material gates, texture-size checks, and atlas readiness.</span>
-          <span class="tag done-tag">Wave 5</span>
-        </div>
-        <div class="map-row done-row">
-          <strong>Export profiles</strong>
-          <span>Built generic, Godot, Unreal, and custom convention validation through parameters, not hardcoded engine names.</span>
-          <span class="tag done-tag">Wave 6</span>
-        </div>
-        <div class="map-row done-row">
-          <strong>Advanced LOD/collision quality</strong>
-          <span>Built LOD triangle-ratio checks, bounds-delta silhouette preservation, multi-hull collision creation, and collision coverage/tightness gates.</span>
-          <span class="tag done-tag">Wave 7</span>
-        </div>
-        <div class="map-row done-row">
-          <strong>Asset-class breadth</strong>
-          <span>Built hard-surface, organic/sculpt, generated cleanup, and from-scratch prop profiles with budgets, gate overrides, and knowledge guidance.</span>
-          <span class="tag done-tag">Wave 8</span>
-        </div>
-        <div class="map-row next-row">
-          <strong>Class-specific craft workflows</strong>
-          <span>Turn asset-class profiles into targeted modeling, cleanup, retopo, material, and optimization recipes.</span>
-          <span class="tag next-tag">Next</span>
-        </div>
+      <div class="stack">
+        <article class="node base">
+          <p class="eyebrow">Layer 1 <span class="badge base">Built</span></p>
+          <h3>Full Blender control surface</h3>
+          <p class="small">Curated domains, RNA fallback, properties, scene tree, context, files, undo, export, and GUI parity.</p>
+          <span class="node-code">capabilities.search -> describe -> invoke</span>
+        </article>
+        <article class="node built">
+          <p class="eyebrow">Layer 2 Waves 1-8 <span class="badge built">Built</span></p>
+          <h3>Senior gated pipeline</h3>
+          <p class="small">Perception, objective metrics, stage gates, rollback, knowledge, material/bake checks, LOD/collision, export profiles, asset classes.</p>
+          <span class="node-code">pipeline.* + feedback.* + quality.*</span>
+        </article>
+        <article class="node next">
+          <p class="eyebrow">Wave 9A <span class="badge next">Next</span></p>
+          <h3>Hard-surface craft workflow</h3>
+          <p class="small">Registry-driven recipes plus one real composite verb that turns class guidance into repeatable modeling action.</p>
+          <span class="node-code">craft_workflow.* + hard_surface.*</span>
+        </article>
+        <article class="node">
+          <p class="eyebrow">Later waves <span class="badge future">Future</span></p>
+          <h3>Class breadth and deeper judgment</h3>
+          <p class="small">Generated cleanup, organic/sculpt, from-scratch workflows, high-low pairing, external validation, reference exemplars.</p>
+          <span class="node-code">workflow breadth + exemplar standards</span>
+        </article>
       </div>
     </section>
 
-    <section class="wave-band" aria-label="Build waves">
-      <article class="wave done-wave">
-        <h3>Wave 1 <span class="tag done-tag">built</span></h3>
-        <p class="small"><strong>Perception + verification.</strong> Built Wave 1 eyes, metrics, gate profiles, and live acceptance.</p>
-      </article>
-      <article class="wave done-wave">
-        <h3>Wave 2 <span class="tag done-tag">built</span></h3>
-        <p class="small"><strong>Pipeline spine.</strong> Stage registry, state, gates, checkpoints, rollback, and one live GLB asset path.</p>
-      </article>
-      <article class="wave done-wave">
-        <h3>Wave 3 <span class="tag done-tag">built</span></h3>
-        <p class="small"><strong>Self-critique + knowledge.</strong> Grounded packs and deterministic stage critique are live on the pipeline.</p>
-      </article>
-      <article class="wave done-wave">
-        <h3>Wave 4 <span class="tag done-tag">built</span></h3>
-        <p class="small"><strong>Engine readiness.</strong> Built optimize stage, engine metrics, LOD basics, collision proxies, and budget gates.</p>
-      </article>
-      <article class="wave done-wave">
-        <h3>Wave 5 <span class="tag done-tag">built</span></h3>
-        <p class="small"><strong>Bake + material production.</strong> Built PBR map slots, normal/AO/cavity checks, material gates, texture-size checks, and atlas readiness.</p>
-      </article>
-      <article class="wave done-wave">
-        <h3>Wave 6 <span class="tag done-tag">built</span></h3>
-        <p class="small"><strong>Engine profiles.</strong> Built parameterized generic/Godot/Unreal/custom validators without hardcoded engine tool names.</p>
-      </article>
-      <article class="wave done-wave">
-        <h3>Wave 7 <span class="tag done-tag">built</span></h3>
-        <p class="small"><strong>Advanced LOD/collision.</strong> Built LOD triangle-ratio checks, bounds-delta preservation, split collision hulls, and stronger proxy validation.</p>
-      </article>
-      <article class="wave done-wave">
-        <h3>Wave 8 <span class="tag done-tag">built</span></h3>
-        <p class="small"><strong>Asset-class profiles.</strong> Built class registry, describes, pipeline defaults, quality budgets, gate overrides, and knowledge-pack guidance.</p>
-      </article>
-      <article class="wave next-wave">
-        <h3>Next <span class="tag next-tag">roadmap</span></h3>
-        <p class="small"><strong>Class-specific craft workflows.</strong> Hard-surface, organic/sculpt, generated cleanup, and from-scratch prop workflows that go beyond shared profiles.</p>
-      </article>
+    <section class="section" aria-label="Pipeline stages">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Stage spine</p>
+          <h2>One asset moves left to right through gates.</h2>
+        </div>
+        <span class="badge built">Waves 1-8 built</span>
+      </div>
+
+      <div class="pipeline">
+        <article class="stage">
+          <div class="stage-index">01</div>
+          <h3>Intake</h3>
+          <p class="small">Classify asset, choose profile, set budgets.</p>
+          <div class="tag-row"><span class="tag built">asset_class</span><span class="tag built">pipeline.start</span></div>
+        </article>
+        <article class="stage">
+          <div class="stage-index">02</div>
+          <h3>Repair / blockout</h3>
+          <p class="small">Fix transforms, normals, scale, rough form.</p>
+          <div class="tag-row"><span class="tag built">orientation</span><span class="tag built">rollback</span></div>
+        </article>
+        <article class="stage next-stage">
+          <div class="stage-index">03</div>
+          <h3>High-poly detail</h3>
+          <p class="small">Hard-surface panels, bevels, support normals.</p>
+          <div class="tag-row"><span class="tag built">bevel</span><span class="tag next">Wave 9A</span></div>
+        </article>
+        <article class="stage">
+          <div class="stage-index">04</div>
+          <h3>Retopo</h3>
+          <p class="small">Clean quads, no n-gons, controlled poles.</p>
+          <div class="tag-row"><span class="tag built">topology eye</span><span class="tag built">gates</span></div>
+        </article>
+        <article class="stage">
+          <div class="stage-index">05</div>
+          <h3>UV</h3>
+          <p class="small">Seams, unwrap, pack, stretch, overlap.</p>
+          <div class="tag-row"><span class="tag built">checker</span><span class="tag built">uv gates</span></div>
+        </article>
+        <article class="stage">
+          <div class="stage-index">06</div>
+          <h3>Bake</h3>
+          <p class="small">Normal, AO, cavity slots and checks.</p>
+          <div class="tag-row"><span class="tag built">Wave 5</span><span class="tag future">projection</span></div>
+        </article>
+        <article class="stage">
+          <div class="stage-index">07</div>
+          <h3>Material</h3>
+          <p class="small">PBR maps, atlas readiness, lookdev.</p>
+          <div class="tag-row"><span class="tag built">PBR</span><span class="tag built">lookdev</span></div>
+        </article>
+        <article class="stage">
+          <div class="stage-index">08</div>
+          <h3>Optimize</h3>
+          <p class="small">Triangle, LOD, bounds, collision hulls.</p>
+          <div class="tag-row"><span class="tag built">LOD</span><span class="tag built">collision</span></div>
+        </article>
+        <article class="stage">
+          <div class="stage-index">09</div>
+          <h3>Export</h3>
+          <p class="small">glTF/GLB, profile validation, transforms.</p>
+          <div class="tag-row"><span class="tag built">profiles</span><span class="tag built">preflight</span></div>
+        </article>
+      </div>
+
+      <div class="stage-contract" aria-label="Stage contract">
+        <div class="contract-step">Entry preconditions</div>
+        <div class="contract-step">Work tools</div>
+        <div class="contract-step">Perception eye</div>
+        <div class="contract-step">Objective metrics</div>
+        <div class="contract-step">Hard gate</div>
+        <div class="contract-step">Checkpoint / rollback</div>
+      </div>
+    </section>
+
+    <section class="section" aria-label="Wave roadmap">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Roadmap</p>
+          <h2>Waves 1-8 built the spine. Wave 9A starts craft specialization.</h2>
+        </div>
+        <span class="badge next">Class workflows</span>
+      </div>
+
+      <div class="wave-grid">
+        <article class="wave built"><h3>Wave 1</h3><p class="small">Perception eyes and objective metrics.</p></article>
+        <article class="wave built"><h3>Wave 2</h3><p class="small">Pipeline state, gates, checkpoints, rollback.</p></article>
+        <article class="wave built"><h3>Wave 3</h3><p class="small">Knowledge packs and self-critique.</p></article>
+        <article class="wave built"><h3>Wave 4</h3><p class="small">Engine readiness and optimize gates.</p></article>
+        <article class="wave built"><h3>Wave 5</h3><p class="small">Bake and material production gates.</p></article>
+        <article class="wave built"><h3>Wave 6</h3><p class="small">Parameterized export profiles.</p></article>
+        <article class="wave built"><h3>Wave 7</h3><p class="small">Advanced LOD and collision quality.</p></article>
+        <article class="wave built"><h3>Wave 8</h3><p class="small">Asset classes, budgets, overrides, guidance.</p></article>
+        <article class="wave next"><h3>Wave 9A</h3><p class="small">Hard-surface craft workflow registry and composite verb.</p></article>
+      </div>
+    </section>
+
+    <section class="section" aria-label="Asset class workflows">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Asset classes</p>
+          <h2>The profile tells the pipeline what good means. Wave 9A tells it what to do.</h2>
+        </div>
+        <span class="badge built">Wave 8 profiles</span>
+      </div>
+
+      <div class="asset-grid">
+        <article class="asset next-asset">
+          <p class="eyebrow">Hard-surface prop <span class="badge next">9A</span></p>
+          <h3>Panel detail pass</h3>
+          <p class="small">Bevel readable edges, recess panels, preserve support normals, prepare for clean retopo and collision-friendly blockout.</p>
+        </article>
+        <article class="asset">
+          <p class="eyebrow">Generated cleanup <span class="badge future">Later</span></p>
+          <h3>Noise removal workflow</h3>
+          <p class="small">Rebuild generated topology, remove accidental triangulation, reunwrap inherited UVs, tighten gates.</p>
+        </article>
+        <article class="asset">
+          <p class="eyebrow">Organic prop <span class="badge future">Later</span></p>
+          <h3>Silhouette-preserving workflow</h3>
+          <p class="small">Respect broad form, relaxed quad ratio, seam placement on natural creases, LODs that keep contour.</p>
+        </article>
+        <article class="asset">
+          <p class="eyebrow">From-scratch prop <span class="badge future">Later</span></p>
+          <h3>Blockout-to-game workflow</h3>
+          <p class="small">Start simple, budget early, plan trims/seams while modeling, bake detail instead of spending triangles.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-label="Built surface summary">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Built surface</p>
+          <h2>Compact inventory of the Layer 2 control plane.</h2>
+        </div>
+        <span class="badge built">Current</span>
+      </div>
+
+      <div class="surface-grid">
+        <div class="surface-item">Pipeline state<span>pipeline.start/status/gate_check/advance/rollback</span></div>
+        <div class="surface-item">Perception eyes<span>topology, UV, orientation, wire, lookdev</span></div>
+        <div class="surface-item">Quality metrics<span>feedback.quality + stage gates</span></div>
+        <div class="surface-item">Knowledge and critique<span>knowledge.load + pipeline.self_critique</span></div>
+        <div class="surface-item">Bake and materials<span>PBR slots, AO/cavity/normal, atlas readiness</span></div>
+        <div class="surface-item">Optimization<span>tri budgets, LOD ratios, bounds delta</span></div>
+        <div class="surface-item">Collision quality<span>proxy and multi-hull coverage gates</span></div>
+        <div class="surface-item">Export profiles<span>generic, Godot, Unreal, custom</span></div>
+        <div class="surface-item">Asset classes<span>hard_surface, organic, generated, scratch</span></div>
+        <div class="surface-item">Class gate overrides<span>retopo/UV tolerances per profile</span></div>
+        <div class="surface-item">Seed craft verbs<span>model.retopo_quads, bevel_edges, recess_panels</span></div>
+        <div class="surface-item">Next craft layer<span>craft_workflow.* + hard_surface.*</span></div>
+      </div>
     </section>
 
     <footer>
-      Current source of truth: main after Layer 2 Wave 8. This diagram is explanatory, not an implementation spec.
+      Source of truth: main after Layer 2 Wave 8. Next approved direction: Wave 9A hard-surface craft workflows.
     </footer>
   </main>
 </body>
