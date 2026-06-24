@@ -828,11 +828,15 @@ def test_layer2_wave2_pipeline_spine_acceptance(bridge: BlenderBridge) -> None:
 
 
 def test_layer2_wave8_asset_class_profiles_acceptance(bridge: BlenderBridge) -> None:
+    from niua_blender_mcp.bridge import BridgeError
+    from niua_mcp_bridge.core import asset_classes as addon_asset_classes
+
     bridge.call("object.create", {"type": "CUBE", "name": "ClassHero"})
+    bridge.call("object.create", {"type": "CUBE", "name": "DefaultClassHero"})
 
     classes = bridge.call("asset_class.list", {})
     ids = [item["id"] for item in classes["asset_classes"]]
-    assert "generated_cleanup" in ids
+    assert ids == ["from_scratch_prop", "generated_cleanup", "hard_surface_prop", "organic_prop"]
     described = bridge.call("asset_class.describe", {"asset_class": "generated_cleanup"})
     assert described["asset_class"]["gate_overrides"]["retopo"]["topology.quad_ratio"]["value"] == 0.98
 
@@ -840,9 +844,24 @@ def test_layer2_wave8_asset_class_profiles_acceptance(bridge: BlenderBridge) -> 
     assert started["state"]["asset_class"] == "organic_prop"
     assert started["state"]["profile_version"] == 1
 
+    defaulted = bridge.call("pipeline.start", {"object": "DefaultClassHero"})
+    assert defaulted["state"]["asset_class"] == "hard_surface_prop"
+    assert defaulted["state"]["profile_version"] == 1
+    assert defaulted["state"]["asset_class_defaulted"] is True
+
     quality = bridge.call("feedback.quality", {"object": "ClassHero", "asset_class": "from_scratch_prop"})
     assert quality["asset_class"]["id"] == "from_scratch_prop"
+    assert quality["asset_class"]["profile_version"] == 1
+    assert quality["asset_class"]["effective_defaults"]["triangle_budget"] == 4000
+    assert quality["asset_class"]["applied_gate_overrides"] == {}
     assert quality["engine"]["triangle_budget"] == 4000
+
+    override_quality = bridge.call(
+        "feedback.quality",
+        {"object": "ClassHero", "asset_class": "organic_prop", "triangle_budget": 1234},
+    )
+    assert override_quality["engine"]["triangle_budget"] == 1234
+    assert override_quality["asset_class"]["effective_defaults"]["triangle_budget"] == 1234
 
     organic_retopo = bridge.call(
         "pipeline.gate_check",
@@ -852,11 +871,42 @@ def test_layer2_wave8_asset_class_profiles_acceptance(bridge: BlenderBridge) -> 
         "pipeline.gate_check",
         {"object": "ClassHero", "stage": "retopo", "asset_class": "generated_cleanup"},
     )
+    assert organic_retopo["asset_class"]["profile_version"] == 1
+    assert organic_retopo["asset_class"]["effective_defaults"]["triangle_budget"] == 8000
+    assert organic_retopo["asset_class"]["applied_gate_overrides"]["retopo"]["topology.quad_ratio"]["value"] == 0.85
     assert organic_retopo["gates"][0]["value"] == 0.85
+    assert organic_retopo["gates"][0]["pass"] is True
+    assert organic_retopo["gates_pass"] is True
+    assert generated_retopo["asset_class"]["profile_version"] == 1
+    assert generated_retopo["asset_class"]["effective_defaults"]["triangle_budget"] == 6000
+    assert generated_retopo["asset_class"]["applied_gate_overrides"]["retopo"]["topology.quad_ratio"]["value"] == 0.98
     assert generated_retopo["gates"][0]["value"] == 0.98
+    assert generated_retopo["gates"][0]["pass"] is True
+    assert generated_retopo["gates_pass"] is True
 
     knowledge = bridge.call("knowledge.load", {"name": "retopo", "asset_class": "generated_cleanup"})
     assert knowledge["pack"]["asset_class"]["id"] == "generated_cleanup"
+
+    with pytest.raises(BridgeError) as exc:
+        bridge.call("asset_class.describe", {"asset_class": "nope"})
+    assert exc.value.code == "invalid_params"
+
+    bad_profile = {
+        "id": "bad",
+        "profile_version": 1,
+        "label": "Bad",
+        "summary": "Bad profile",
+        "defaults": {},
+        "gate_overrides": {"retopo": {"topology.missing": {"op": ">=", "value": 1}}},
+        "stage_targets": {},
+        "guidance": {},
+    }
+    with pytest.raises(ValueError, match="invalid gate override path for retopo: topology.missing"):
+        addon_asset_classes.apply_gate_overrides(
+            [{"path": "topology.quad_ratio", "op": ">=", "value": 0.95}],
+            bad_profile,
+            "retopo",
+        )
 
 
 def test_layer2_wave3_self_critique_acceptance(bridge: BlenderBridge) -> None:
