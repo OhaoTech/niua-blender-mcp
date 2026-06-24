@@ -159,10 +159,19 @@ def check_gates(metrics: dict[str, Any], gates: list[dict[str, Any]]) -> dict[st
     return {"gates": results, "gates_pass": all_pass}
 
 
-def start(object_name: str, profile: str = "game_asset") -> dict[str, Any]:
+def start(
+    object_name: str,
+    profile: str = "game_asset",
+    asset_class: str = "hard_surface_prop",
+    profile_version: int = 1,
+    asset_class_defaulted: bool = False,
+) -> dict[str, Any]:
     state = {
         "object": object_name,
         "profile": profile,
+        "asset_class": asset_class,
+        "profile_version": profile_version,
+        "asset_class_defaulted": asset_class_defaulted,
         "current_stage": "intake",
         "completed": [],
         "complete": False,

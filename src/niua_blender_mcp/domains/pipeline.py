@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ..kernel import Bool, Float, Int, Str, ToolSpec
+from ..asset_classes import ASSET_CLASS_IDS
+from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec
 
 SPECS = [
     ToolSpec(
@@ -13,6 +14,7 @@ SPECS = [
         params={
             "object": Str(required=True, summary="Object to track through the pipeline"),
             "profile": Str(default="game_asset", summary="Pipeline profile"),
+            "asset_class": Enum(ASSET_CLASS_IDS, summary="Layer 2 asset-class profile"),
         },
     ),
     ToolSpec(

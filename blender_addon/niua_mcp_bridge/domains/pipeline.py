@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..context import Ctx
+from ..core import asset_classes
 from ..core import knowledge
 from ..core import pipeline as store
 from ..core.self_critique import critique_stage
@@ -22,9 +23,21 @@ def start(ctx: Ctx, payload: dict) -> dict:
     obj = _resolve_object(ctx, payload)
     profile = payload.get("profile")
     profile = profile if isinstance(profile, str) and profile else "game_asset"
+    raw_asset_class = payload.get("asset_class")
+    asset_class_defaulted = not (isinstance(raw_asset_class, str) and raw_asset_class)
+    try:
+        asset_profile = asset_classes.get_asset_class(raw_asset_class)
+    except KeyError as exc:
+        raise BridgeError(INVALID_PARAMS, str(exc)) from exc
     label = "pipeline:intake:entry"
     session_store.checkpoint(obj, label=label)
-    return store.start(obj.name, profile=profile)
+    return store.start(
+        obj.name,
+        profile=profile,
+        asset_class=asset_profile["id"],
+        profile_version=int(asset_profile["profile_version"]),
+        asset_class_defaulted=asset_class_defaulted,
+    )
 
 
 def status(ctx: Ctx, payload: dict) -> dict:

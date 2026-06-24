@@ -205,6 +205,30 @@ def test_pipeline_start_creates_state_and_intake_checkpoint(env):
     assert bpy.undo_pushes == []
 
 
+def test_pipeline_start_persists_explicit_asset_class(env):
+    _ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+
+    out = _dispatch(env, "pipeline.start", {"object": "Cube", "asset_class": "generated_cleanup"})
+
+    state = out["state"]
+    assert state["asset_class"] == "generated_cleanup"
+    assert state["profile_version"] == 1
+    assert state["asset_class_defaulted"] is False
+
+
+def test_pipeline_start_defaults_asset_class_visibly(env):
+    _ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+
+    out = _dispatch(env, "pipeline.start", {"object": "Cube"})
+
+    state = out["state"]
+    assert state["asset_class"] == "hard_surface_prop"
+    assert state["profile_version"] == 1
+    assert state["asset_class_defaulted"] is True
+
+
 def test_pipeline_status_returns_one_run_or_all_runs(env):
     _ctx, bpy = env
     bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
