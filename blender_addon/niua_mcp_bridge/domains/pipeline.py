@@ -157,7 +157,11 @@ def self_critique(ctx: Ctx, payload: dict) -> dict:
         pack = knowledge.stage_pack(stage, asset_class=asset_class)
     except KeyError as exc:
         raise BridgeError(INVALID_PARAMS, str(exc)) from exc
-    gate = {"gates": checked["gates"], "gates_pass": checked["gates_pass"]}
+    gate = {
+        "asset_class": checked["asset_class"],
+        "gates": checked["gates"],
+        "gates_pass": checked["gates_pass"],
+    }
     critique = critique_stage(
         stage,
         gate,

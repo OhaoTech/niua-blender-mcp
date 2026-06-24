@@ -449,4 +449,7 @@ def test_pipeline_self_critique_uses_stored_asset_class_guidance(env):
 
     assert out["critique"]["stage"] == "retopo"
     assert out["gate"]["gates_pass"] is False
+    assert out["gate"]["asset_class"]["profile_version"] == 1
+    assert out["gate"]["asset_class"]["effective_defaults"]["triangle_budget"] == 6000
+    assert out["gate"]["asset_class"]["applied_gate_overrides"]["retopo"]["topology.quad_ratio"]["value"] == 0.98
     assert out["critique"]["knowledge"]["asset_class"]["id"] == "generated_cleanup"
