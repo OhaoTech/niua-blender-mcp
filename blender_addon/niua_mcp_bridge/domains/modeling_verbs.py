@@ -225,10 +225,49 @@ def generated_cleanup_pass(ctx: Ctx, payload: dict) -> dict:
     }
 
 
+def organic_retopo_prep(ctx: Ctx, payload: dict) -> dict:
+    obj = _mesh_object(ctx, payload)
+    workflow, defaults = _workflow_defaults("organic.silhouette_retopo_prep")
+    face_threshold = float(payload.get("face_threshold", defaults["face_threshold"]))
+    merge_distance = float(payload.get("merge_distance", defaults["merge_distance"]))
+    threshold_radians = math.radians(face_threshold)
+    applied: list[str] = []
+    ops = ctx.bpy.ops
+
+    with ctx.ensure(active=obj, mode="EDIT", select=[obj]):
+        ctx.check_poll(ops.mesh.select_all)
+        ops.mesh.select_all(action="SELECT")
+        applied.append("select_all")
+        ctx.check_poll(ops.mesh.normals_make_consistent)
+        ops.mesh.normals_make_consistent()
+        applied.append("normals_make_consistent")
+        ctx.check_poll(ops.mesh.remove_doubles)
+        ops.mesh.remove_doubles(threshold=merge_distance)
+        applied.append("remove_doubles")
+        ctx.check_poll(ops.mesh.tris_convert_to_quads)
+        ops.mesh.tris_convert_to_quads(
+            face_threshold=threshold_radians,
+            shape_threshold=threshold_radians,
+        )
+        applied.append("tris_convert_to_quads")
+
+    return {
+        "object": obj.name,
+        "asset_class": workflow["asset_class"],
+        "workflow_id": workflow["id"],
+        "applied": applied,
+        "skipped": [],
+        "params": {"face_threshold": face_threshold, "merge_distance": merge_distance},
+        "warnings": [workflow["cautions"][0]],
+        "postcheck_recommended": ["feedback.topology", "pipeline.gate_check"],
+    }
+
+
 COMMANDS = [
     Command("model.retopo_quads", retopo_quads, mutates=True, feedback="viewport"),
     Command("model.bevel_edges", bevel_edges, mutates=True, feedback="viewport"),
     Command("model.recess_panels", recess_panels, mutates=True, feedback="viewport"),
     Command("hard_surface.panel_detail_pass", panel_detail_pass, mutates=True, feedback="viewport"),
     Command("model.generated_cleanup_pass", generated_cleanup_pass, mutates=True, feedback="viewport"),
+    Command("model.organic_retopo_prep", organic_retopo_prep, mutates=True, feedback="viewport"),
 ]

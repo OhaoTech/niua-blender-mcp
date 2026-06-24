@@ -108,4 +108,27 @@ SPECS = [
         feedback="viewport",
         tier="curated",
     ),
+    ToolSpec(
+        name="model.organic_retopo_prep",
+        category="modeling",
+        summary="Normalize organic topology without hard-surface bevel, inset, or loose-fragment deletion",
+        command="model.organic_retopo_prep",
+        params={
+            "object": Str(required=True, summary="Organic mesh object to prepare for retopo"),
+            "face_threshold": Float(
+                default=50.0,
+                minimum=0.0,
+                maximum=180.0,
+                summary="Tri-to-quad merge threshold in degrees",
+            ),
+            "merge_distance": Float(
+                default=0.0002,
+                minimum=0.0,
+                summary="Light duplicate merge distance",
+            ),
+        },
+        mutates=True,
+        feedback="viewport",
+        tier="curated",
+    ),
 ]

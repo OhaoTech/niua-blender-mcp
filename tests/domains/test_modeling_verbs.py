@@ -323,3 +323,49 @@ def test_generated_cleanup_pass_is_exposed_in_server_router():
     assert spec.tier == "curated"
     assert spec.params["face_threshold"].default == 35.0
     assert spec.params["merge_distance"].default == 0.0005
+
+
+def test_organic_retopo_prep_runs_non_hard_surface_sequence(monkeypatch):
+    bpy = _make_bpy_with_object(monkeypatch)
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "model.organic_retopo_prep", {"object": "Cube"}, Ctx(bpy))
+
+    assert out["object"] == "Cube"
+    assert out["asset_class"] == "organic_prop"
+    assert out["workflow_id"] == "organic.silhouette_retopo_prep"
+    assert out["applied"] == [
+        "select_all",
+        "normals_make_consistent",
+        "remove_doubles",
+        "tris_convert_to_quads",
+    ]
+    assert out["skipped"] == []
+    assert out["params"] == {"face_threshold": 50.0, "merge_distance": 0.0002}
+    assert out["warnings"] == ["Do not bevel organic contours as a default cleanup move."]
+    assert out["postcheck_recommended"] == ["feedback.topology", "pipeline.gate_check"]
+    assert bpy.op_calls == [
+        ("mesh.select_all", {"action": "SELECT"}),
+        ("mesh.normals_make_consistent", {}),
+        ("mesh.remove_doubles", {"threshold": 0.0002}),
+        (
+            "mesh.tris_convert_to_quads",
+            {"face_threshold": math.radians(50.0), "shape_threshold": math.radians(50.0)},
+        ),
+    ]
+    assert "mesh.bevel" not in _names(bpy.op_calls)
+    assert "mesh.inset" not in _names(bpy.op_calls)
+    assert "mesh.delete_loose" not in _names(bpy.op_calls)
+    assert bpy.mode_calls == ["EDIT", "OBJECT"]
+    assert bpy.undo_pushes == ["niua:model.organic_retopo_prep"]
+
+
+def test_organic_retopo_prep_is_exposed_in_server_router():
+    from niua_blender_mcp.domains import build_router
+
+    specs = {s.name: s for s in build_router().specs()}
+    spec = specs["model.organic_retopo_prep"]
+    assert spec.mutates is True
+    assert spec.feedback == "viewport"
+    assert spec.tier == "curated"
+    assert spec.params["face_threshold"].default == 50.0
+    assert spec.params["merge_distance"].default == 0.0002
