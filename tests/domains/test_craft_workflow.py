@@ -31,23 +31,12 @@ def test_craft_workflow_tools_registered() -> None:
         assert command.mutates is False
 
 
-def test_craft_workflow_list_returns_summaries_and_filters() -> None:
-    out = _dispatch("craft_workflow.list", {"asset_class": "hard_surface_prop", "stage": "retopo"})
+def test_craft_workflow_list_includes_wave9b_workflows() -> None:
+    generated = _dispatch("craft_workflow.list", {"asset_class": "generated_cleanup", "stage": "retopo"})
+    organic = _dispatch("craft_workflow.list", {"asset_class": "organic_prop", "stage": "retopo"})
 
-    workflows = out["workflows"]
-    assert [workflow["id"] for workflow in workflows] == ["hard_surface.panel_detail_pass"]
-    assert {
-        "id",
-        "label",
-        "asset_class",
-        "stages",
-        "summary",
-        "required_tools",
-    } <= set(workflows[0])
-    assert "default_params" not in workflows[0]
-
-    empty = _dispatch("craft_workflow.list", {"asset_class": "organic_prop", "stage": "retopo"})
-    assert empty["workflows"] == []
+    assert [workflow["id"] for workflow in generated["workflows"]] == ["generated_cleanup.rebuild_noisy_mesh"]
+    assert [workflow["id"] for workflow in organic["workflows"]] == ["organic.silhouette_retopo_prep"]
 
 
 def test_craft_workflow_describe_returns_complete_record() -> None:
@@ -72,20 +61,22 @@ def test_craft_workflow_describe_unknown_id_fails_cleanly() -> None:
     assert "unknown craft workflow: nope" in str(exc.value)
 
 
-def test_craft_workflow_recommend_returns_hard_surface_match() -> None:
-    out = _dispatch("craft_workflow.recommend", {"asset_class": "hard_surface_prop", "stage": "retopo"})
+def test_craft_workflow_recommend_returns_wave9b_ranks() -> None:
+    generated = _dispatch("craft_workflow.recommend", {"asset_class": "generated_cleanup", "stage": "retopo"})
+    organic = _dispatch("craft_workflow.recommend", {"asset_class": "organic_prop", "stage": "retopo"})
 
-    assert out["reason"] == "matched asset_class=hard_surface_prop stage=retopo"
-    assert [item["id"] for item in out["recommendations"]] == ["hard_surface.panel_detail_pass"]
-    assert out["recommendations"][0]["match"] == "asset_class+stage"
+    assert generated["recommendations"][0]["id"] == "generated_cleanup.rebuild_noisy_mesh"
+    assert generated["recommendations"][0]["rank"] == 1
+    assert organic["recommendations"][0]["id"] == "organic.silhouette_retopo_prep"
+    assert organic["recommendations"][0]["rank"] == 1
 
 
 def test_craft_workflow_recommend_returns_no_fallback_for_unsupported_class() -> None:
-    out = _dispatch("craft_workflow.recommend", {"asset_class": "organic_prop", "stage": "retopo"})
+    out = _dispatch("craft_workflow.recommend", {"asset_class": "from_scratch_prop", "stage": "retopo"})
 
     assert out == {
         "recommendations": [],
-        "reason": "no workflow matched asset_class=organic_prop stage=retopo",
+        "reason": "no workflow matched asset_class=from_scratch_prop stage=retopo",
     }
 
 

@@ -10,7 +10,11 @@ def test_server_and_addon_craft_workflow_registries_match() -> None:
     server = {workflow["id"]: workflow for workflow in server_workflows.list_workflows()}
     addon = {workflow["id"]: workflow for workflow in addon_workflows.list_workflows()}
 
-    assert sorted(server) == ["hard_surface.panel_detail_pass"]
+    assert sorted(server) == [
+        "generated_cleanup.rebuild_noisy_mesh",
+        "hard_surface.panel_detail_pass",
+        "organic.silhouette_retopo_prep",
+    ]
     assert server == addon
 
 
@@ -24,20 +28,30 @@ def test_workflow_records_are_returned_as_copies() -> None:
 
 
 def test_list_workflows_filters_by_asset_class_and_stage() -> None:
-    hard_surface = addon_workflows.list_workflows(asset_class="hard_surface_prop", stage="retopo")
+    generated = addon_workflows.list_workflows(asset_class="generated_cleanup", stage="retopo")
     organic = addon_workflows.list_workflows(asset_class="organic_prop", stage="retopo")
-    wrong_stage = addon_workflows.list_workflows(asset_class="hard_surface_prop", stage="uv")
+    scratch = addon_workflows.list_workflows(asset_class="from_scratch_prop", stage="retopo")
 
-    assert [workflow["id"] for workflow in hard_surface] == ["hard_surface.panel_detail_pass"]
-    assert organic == []
-    assert wrong_stage == []
+    assert [workflow["id"] for workflow in generated] == ["generated_cleanup.rebuild_noisy_mesh"]
+    assert [workflow["id"] for workflow in organic] == ["organic.silhouette_retopo_prep"]
+    assert scratch == []
 
 
-def test_recommend_workflows_returns_hard_surface_retopo_match() -> None:
-    out = addon_workflows.recommend_workflows(asset_class="hard_surface_prop", stage="retopo")
+def test_recommend_workflows_returns_generated_cleanup_match_with_rank() -> None:
+    out = addon_workflows.recommend_workflows(asset_class="generated_cleanup", stage="retopo")
 
-    assert out["reason"] == "matched asset_class=hard_surface_prop stage=retopo"
-    assert [item["id"] for item in out["recommendations"]] == ["hard_surface.panel_detail_pass"]
+    assert out["reason"] == "matched asset_class=generated_cleanup stage=retopo"
+    assert out["recommendations"][0]["id"] == "generated_cleanup.rebuild_noisy_mesh"
+    assert out["recommendations"][0]["rank"] == 1
+    assert out["recommendations"][0]["match"] == "asset_class+stage"
+
+
+def test_recommend_workflows_returns_organic_match_with_rank() -> None:
+    out = addon_workflows.recommend_workflows(asset_class="organic_prop", stage="retopo")
+
+    assert out["reason"] == "matched asset_class=organic_prop stage=retopo"
+    assert out["recommendations"][0]["id"] == "organic.silhouette_retopo_prep"
+    assert out["recommendations"][0]["rank"] == 1
     assert out["recommendations"][0]["match"] == "asset_class+stage"
 
 
@@ -48,14 +62,15 @@ def test_recommend_workflows_uses_state_when_explicit_values_are_missing() -> No
 
     assert out["reason"] == "matched asset_class=hard_surface_prop stage=repair"
     assert [item["id"] for item in out["recommendations"]] == ["hard_surface.panel_detail_pass"]
+    assert out["recommendations"][0]["rank"] == 1
 
 
-def test_recommend_workflows_returns_no_fallback_for_unsupported_class() -> None:
-    out = addon_workflows.recommend_workflows(asset_class="organic_prop", stage="retopo")
+def test_recommend_workflows_returns_no_fallback_for_from_scratch_class() -> None:
+    out = addon_workflows.recommend_workflows(asset_class="from_scratch_prop", stage="retopo")
 
     assert out == {
         "recommendations": [],
-        "reason": "no workflow matched asset_class=organic_prop stage=retopo",
+        "reason": "no workflow matched asset_class=from_scratch_prop stage=retopo",
     }
 
 
