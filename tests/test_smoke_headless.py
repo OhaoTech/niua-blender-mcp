@@ -909,6 +909,63 @@ def test_layer2_wave8_asset_class_profiles_acceptance(bridge: BlenderBridge) -> 
         )
 
 
+def test_layer2_wave9a_craft_workflow_acceptance(bridge: BlenderBridge) -> None:
+    bridge.call("object.create", {"type": "CUBE", "name": "WorkflowHero"})
+
+    started = bridge.call(
+        "pipeline.start",
+        {"object": "WorkflowHero", "asset_class": "hard_surface_prop"},
+    )
+    assert started["state"]["asset_class"] == "hard_surface_prop"
+
+    assert bridge.call("pipeline.advance", {"object": "WorkflowHero"})["to_stage"] == "repair"
+    assert bridge.call("pipeline.advance", {"object": "WorkflowHero"})["to_stage"] == "retopo"
+
+    listed = bridge.call(
+        "craft_workflow.list",
+        {"asset_class": "hard_surface_prop", "stage": "retopo"},
+    )
+    assert [workflow["id"] for workflow in listed["workflows"]] == ["hard_surface.panel_detail_pass"]
+
+    described = bridge.call(
+        "craft_workflow.describe",
+        {"workflow": "hard_surface.panel_detail_pass"},
+    )
+    assert described["workflow"]["default_params"]["segments"] == 2
+
+    recommended = bridge.call("craft_workflow.recommend", {"object": "WorkflowHero"})
+    assert recommended["reason"] == "matched asset_class=hard_surface_prop stage=retopo"
+    assert [item["id"] for item in recommended["recommendations"]] == [
+        "hard_surface.panel_detail_pass"
+    ]
+
+    applied = bridge.call("hard_surface.panel_detail_pass", {"object": "WorkflowHero"})
+    assert applied["workflow_id"] == "hard_surface.panel_detail_pass"
+    assert applied["asset_class"] == "hard_surface_prop"
+    assert applied["applied"] == [
+        "select_all",
+        "inset",
+        "edges_select_sharp",
+        "bevel",
+        "tris_convert_to_quads",
+        "normals_make_consistent",
+        "remove_doubles",
+    ]
+
+    quality = bridge.call("feedback.quality", {"object": "WorkflowHero"})
+    assert quality["asset_class"]["id"] == "hard_surface_prop"
+    assert "topology" in quality
+
+    retopo_gate = bridge.call("pipeline.gate_check", {"object": "WorkflowHero", "stage": "retopo"})
+    assert retopo_gate["stage"] == "retopo"
+    assert retopo_gate["asset_class"]["id"] == "hard_surface_prop"
+    assert [gate["path"] for gate in retopo_gate["gates"]] == [
+        "topology.quad_ratio",
+        "topology.ngons",
+        "topology.non_manifold_edges",
+    ]
+
+
 def test_layer2_wave3_self_critique_acceptance(bridge: BlenderBridge) -> None:
     bridge.call("scene.create_object", {"type": "CUBE", "name": "CritPipeHero"})
     for layer in bridge.call("uv.layers", {"object": "CritPipeHero"})["layers"]:
