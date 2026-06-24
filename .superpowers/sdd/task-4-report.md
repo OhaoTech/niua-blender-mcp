@@ -119,3 +119,40 @@ Green verification command summaries:
 Remaining concerns:
 - No functional concerns in the fixed scope.
 - Existing unstaged `.gitignore` change adding `.gstack/` was preserved and not modified.
+
+---
+
+Status: DONE
+
+Files changed:
+- `tests/domains/test_quality.py`
+- `tests/test_smoke_headless.py`
+
+Review-fix summary:
+- Hardened the generated-cleanup smoke acceptance test so it always asserts the `skipped` payload contract for the optional `mesh.delete_loose` step.
+- Reset pipeline global state in the `tests/domains/test_quality.py` fake-bpy fixture before each test so pipeline-backed asset-class inference cannot leak across tests.
+
+Focused verification:
+- `pytest tests/domains/test_quality.py::test_quality_uses_pipeline_asset_class_state_when_payload_omits_class tests/test_smoke_headless.py::test_layer2_wave9b_workflow_breadth_acceptance -q`
+  - Exit `0`
+  - Result: `2 passed`
+
+Targeted verification:
+- `pytest tests/test_craft_workflows.py tests/domains/test_craft_workflow.py tests/domains/test_modeling_verbs.py tests/test_smoke_headless.py::test_layer2_wave9b_workflow_breadth_acceptance -q`
+  - Exit `0`
+  - Result: `28 passed`
+- `python scripts/audit_blender_coverage.py --fail-on partial`
+  - Exit `0`
+  - Summary: `{'covered': 58, 'partial': 0, 'missing': 0}`
+- `git diff --check`
+  - Exit `0`
+
+Failure encountered while hardening the smoke assertion:
+- Initial exact assertion of `generated["skipped"] == [{"operator": "mesh.delete_loose", "reason": "unavailable"}]` failed under real headless Blender because this environment exposes `mesh.delete_loose`, so `generated["skipped"]` was `[]`.
+- Updated the acceptance test to assert the real command contract instead:
+  - when `delete_loose` is applied, `skipped == []`
+  - otherwise `skipped` must contain the unavailable-operator record
+
+Remaining concerns:
+- No functional concerns in the fixed scope.
+- Existing unstaged `.gitignore` change remains untouched and unstaged.

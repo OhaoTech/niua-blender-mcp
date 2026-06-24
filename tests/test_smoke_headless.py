@@ -980,6 +980,10 @@ def test_layer2_wave9b_workflow_breadth_acceptance(bridge: BlenderBridge) -> Non
     assert generated["workflow_id"] == "generated_cleanup.rebuild_noisy_mesh"
     assert generated["asset_class"] == "generated_cleanup"
     assert "remove_doubles" in generated["applied"]
+    if "delete_loose" in generated["applied"]:
+        assert generated["skipped"] == []
+    else:
+        assert generated["skipped"] == [{"operator": "mesh.delete_loose", "reason": "unavailable"}]
     assert generated["postcheck_recommended"] == ["feedback.topology", "pipeline.gate_check"]
     generated_quality = bridge.call("feedback.quality", {"object": "GeneratedWorkflowHero"})
     assert generated_quality["asset_class"]["id"] == "generated_cleanup"

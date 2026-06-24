@@ -14,6 +14,7 @@ from contextlib import contextmanager
 
 import pytest
 
+from niua_mcp_bridge.core import pipeline as pipeline_store
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
@@ -138,6 +139,7 @@ class FakeBpy(types.ModuleType):
 
 @pytest.fixture()
 def env(monkeypatch):
+    pipeline_store.reset()
     bpy = FakeBpy()
     monkeypatch.setitem(sys.modules, "bpy", bpy)
     monkeypatch.delitem(sys.modules, "bmesh", raising=False)
