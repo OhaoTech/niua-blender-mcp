@@ -1,0 +1,15 @@
+{
+  "id": "generated_blob",
+  "asset_class": "generated_cleanup",
+  "brief": "A noisy photogrammetry-style blob: triangulated, uneven density, needs retopo into a clean production mesh.",
+  "input": {
+    "recipe": [
+      {"tool": "scene.create_object", "args": {"type": "CUBE"}},
+      {"tool": "mesh.subdivide", "args": {"cuts": 3}},
+      {"tool": "mesh.quads_to_tris", "args": {"quad_method": "BEAUTY", "ngon_method": "BEAUTY"}}
+    ]
+  },
+  "stages": ["repair", "retopo", "uv", "bake", "material", "optimize", "export_preflight"],
+  "rubric": "generated_cleanup",
+  "senior_threshold": 7.0
+}

@@ -1,0 +1,13 @@
+{
+  "id": "from_scratch_barrel",
+  "asset_class": "from_scratch_prop",
+  "brief": "A wooden storage barrel: bulged profile, banded rings, chamfered rims - authored almost entirely from a bare cylinder primitive.",
+  "input": {
+    "recipe": [
+      {"tool": "scene.create_object", "args": {"type": "CYLINDER"}}
+    ]
+  },
+  "stages": ["repair", "retopo", "uv", "bake", "material", "optimize", "export_preflight"],
+  "rubric": "from_scratch_prop",
+  "senior_threshold": 7.0
+}

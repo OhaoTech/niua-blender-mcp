@@ -1,0 +1,15 @@
+{
+  "id": "organic_pumpkin",
+  "asset_class": "organic_prop",
+  "brief": "A pumpkin: squashed uv-sphere silhouette with visible n-gon poles, ribbed sides, natural rounded form, game-ready.",
+  "input": {
+    "recipe": [
+      {"tool": "scene.create_object", "args": {"type": "SPHERE"}},
+      {"tool": "scene.set_transform", "args": {"scale": [1.3, 1.3, 0.85]}},
+      {"tool": "mesh.dissolve", "args": {"type": "EDGES"}}
+    ]
+  },
+  "stages": ["repair", "retopo", "uv", "bake", "material", "optimize", "export_preflight"],
+  "rubric": "organic_prop",
+  "senior_threshold": 7.0
+}

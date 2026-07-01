@@ -19,3 +19,13 @@ def test_load_item_unknown_raises():
     import pytest
     with pytest.raises(KeyError):
         load_item("does_not_exist")
+
+
+def test_benchmark_is_diverse():
+    items = [load_item(i) for i in list_items()]
+    classes = {i["asset_class"] for i in items}
+    assert classes >= {"hard_surface_prop", "organic_prop", "generated_cleanup", "from_scratch_prop"}
+    assert len(items) >= 7
+    for i in items:
+        assert i["input"]["recipe"], f"{i['id']} has empty recipe"
+        assert "0-10" in i["rubric_text"]

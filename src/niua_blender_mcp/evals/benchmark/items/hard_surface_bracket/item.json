@@ -1,0 +1,14 @@
+{
+  "id": "hard_surface_bracket",
+  "asset_class": "hard_surface_prop",
+  "brief": "A steel L-bracket mounting plate: flat mounting faces, bolt-hole bosses, crisp beveled edges, game-ready.",
+  "input": {
+    "recipe": [
+      {"tool": "scene.create_object", "args": {"type": "CUBE"}},
+      {"tool": "scene.set_transform", "args": {"scale": [2.2, 0.35, 1.1]}}
+    ]
+  },
+  "stages": ["repair", "retopo", "uv", "bake", "material", "optimize", "export_preflight"],
+  "rubric": "hard_surface_prop",
+  "senior_threshold": 7.0
+}

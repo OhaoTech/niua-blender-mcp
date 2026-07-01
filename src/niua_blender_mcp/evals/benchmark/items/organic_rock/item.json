@@ -1,0 +1,15 @@
+{
+  "id": "organic_rock",
+  "asset_class": "organic_prop",
+  "brief": "A weathered granite rock: irregular lumpy silhouette, no hard edges, natural asymmetric bulges, game-ready.",
+  "input": {
+    "recipe": [
+      {"tool": "capabilities.invoke", "args": {"idname": "mesh.primitive_ico_sphere_add", "args": "{\"subdivisions\": 3}"}},
+      {"tool": "mesh.subdivide", "args": {"cuts": 2}},
+      {"tool": "capabilities.invoke", "args": {"idname": "transform.vertex_random", "args": "{\"offset\": 0.35, \"seed\": 7}", "mode": "EDIT"}}
+    ]
+  },
+  "stages": ["repair", "retopo", "uv", "bake", "material", "optimize", "export_preflight"],
+  "rubric": "organic_prop",
+  "senior_threshold": 7.0
+}
