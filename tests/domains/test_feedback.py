@@ -1,9 +1,12 @@
 """Feedback domain unit tests (fake-bpy).
 
 Covers (1) the pure-Python framing math -- camera placement / orientation / ortho-scale
-for each named view and orbit angle given a known bbox -- and (2) the graceful-degrade
-path through the actual handlers when rendering fails (headless / no GPU), plus a
-happy-path render against a recording fake bpy. The framing math needs no bpy at all.
+for each named view and orbit angle given a known bbox, plus the view-name -> viewport
+mapping -- and (2) the graceful-degrade path through the actual handlers when rendering
+fails (headless / no VIEW_3D area), plus a happy-path render against a recording fake
+bpy that models the LIVE-VIEWPORT render path (``core.capture._render_viewport``: drive
+``bpy.ops.view3d.view_axis``/``view_orbit``/``view_selected``/``view_all``, then capture
+via ``bpy.ops.render.opengl(view_context=True)``). The framing math needs no bpy at all.
 """
 
 from __future__ import annotations
@@ -109,79 +112,49 @@ def test_orbit_elevation_raises_camera() -> None:
     assert frame["location"][2] > 0  # elevated above the object
 
 
-# -- view_matrix_from_frame: the pure-python core of the multi-angle fix ------------
+# -- view-name -> viewport-render mapping (pure function, no bpy) -------------------
 #
-# docs/reports/capture-multiangle-bug.md: reading cam.matrix_world right after setting
-# cam.location/rotation_euler returns a STALE transform within one bridge call, so
-# every render collapsed to the same angle. The fix computes the view matrix directly
-# from the frame dict instead. No real ``mathutils`` is installed in this dev/test
-# environment, so this exercises the pure-python fallback in
-# ``core.capture.view_matrix_from_frame`` -- verified byte-for-byte against real
-# ``mathutils.Matrix`` output from a live headless Blender (see the plan report).
+# core.capture._view_render_kwargs is the single source of truth translating a named
+# view into what _render_viewport needs to drive the live viewport: either an
+# ``axis=`` for the six bpy.ops.view3d.view_axis(type=...) enum values, or an
+# ``azimuth_deg=``/``elevation_deg=`` pair for the 3/4 "persp" look built from FRONT via
+# bpy.ops.view3d.view_orbit.
+
+@pytest.mark.parametrize(
+    "view,expected",
+    [
+        ("front", {"axis": "FRONT"}),
+        ("back", {"axis": "BACK"}),
+        ("left", {"axis": "LEFT"}),
+        ("right", {"axis": "RIGHT"}),
+        ("top", {"axis": "TOP"}),
+        ("bottom", {"axis": "BOTTOM"}),
+        ("persp", {"azimuth_deg": cap.PERSP_AZIMUTH_DEG, "elevation_deg": cap.PERSP_ELEVATION_DEG}),
+    ],
+)
+def test_view_render_kwargs_maps_named_views(view, expected) -> None:
+    assert cap._view_render_kwargs(view) == expected
 
 
-def test_view_matrix_known_frame_matches_hand_computed_value() -> None:
-    # front-ish frame: camera sits on -Y at distance 5, rotated +90deg about X so its
-    # local -Z looks back at the origin along +Y. Hand-computed (and cross-checked
-    # against real mathutils.Matrix in a live headless Blender):
-    #   [[1, 0, 0,  0], [0, 0, 1, 0], [0, -1, 0, -5], [0, 0, 0, 1]]
-    frame = {"location": (0.0, -5.0, 0.0), "rotation_euler": (math.pi / 2, 0.0, 0.0)}
-    vm = cap.view_matrix_from_frame(frame)
-    expected = (
-        (1.0, 0.0, 0.0, 0.0),
-        (0.0, 0.0, 1.0, 0.0),
-        (0.0, -1.0, 0.0, -5.0),
-        (0.0, 0.0, 0.0, 1.0),
-    )
-    for row, erow in zip(vm, expected):
-        for value, evalue in zip(row, erow):
-            assert value == pytest.approx(evalue, abs=1e-9)
-
-
-def test_view_matrix_front_and_top_frames_are_distinct() -> None:
-    center, size = (0.0, 0.0, 0.0), (2.0, 2.0, 2.0)
-    front = cap.view_camera(center, size, "front")
-    top = cap.view_camera(center, size, "top")
-    vm_front = cap.view_matrix_from_frame(front)
-    vm_top = cap.view_matrix_from_frame(top)
-    flat_front = [v for row in vm_front for v in row]
-    flat_top = [v for row in vm_top for v in row]
-    assert any(abs(a - b) > 1e-6 for a, b in zip(flat_front, flat_top))
-
-
-def test_view_matrix_right_and_persp_frames_are_distinct_from_front() -> None:
-    center, size = (1.0, 2.0, 3.0), (4.0, 4.0, 4.0)
-    front = cap.view_matrix_from_frame(cap.view_camera(center, size, "front"))
-    right = cap.view_matrix_from_frame(cap.view_camera(center, size, "right"))
-    persp = cap.view_matrix_from_frame(cap.view_camera(center, size, "persp"))
-    flat_front = [v for row in front for v in row]
-    flat_right = [v for row in right for v in row]
-    flat_persp = [v for row in persp for v in row]
-    assert any(abs(a - b) > 1e-6 for a, b in zip(flat_front, flat_right))
-    assert any(abs(a - b) > 1e-6 for a, b in zip(flat_front, flat_persp))
-
-
-def test_view_matrix_is_orthonormal_rigid_transform() -> None:
-    # Sanity: the fallback's rotation block should be a valid rotation (R @ R^T = I),
-    # i.e. the inverse-of-a-rigid-transform math is actually correct, not just "different".
-    frame = cap.orbit_camera((0.0, 0.0, 0.0), (3.0, 3.0, 3.0), 37.0, elevation_deg=18.0)
-    vm = cap.view_matrix_from_frame(frame)
-    r = [[vm[i][j] for j in range(3)] for i in range(3)]
-    rt = [[r[j][i] for j in range(3)] for i in range(3)]
-    product = [[sum(r[i][k] * rt[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
-    for i in range(3):
-        for j in range(3):
-            expected = 1.0 if i == j else 0.0
-            assert product[i][j] == pytest.approx(expected, abs=1e-6)
-    assert vm[3] == (0.0, 0.0, 0.0, 1.0)
-
-
-def test_projection_is_ortho_reflects_frame_type() -> None:
-    assert cap.projection_is_ortho(cap.view_camera((0, 0, 0), (2, 2, 2), "front")) is True
-    assert cap.projection_is_ortho(cap.view_camera((0, 0, 0), (2, 2, 2), "persp")) is False
+@pytest.mark.parametrize("view", ["diagonal", "current", "", "FRONT"])
+def test_view_render_kwargs_rejects_unknown_view(view) -> None:
+    # 'current' is a real view name, but it is handled separately by render() via the
+    # scene camera -- _view_render_kwargs only knows the six axes + persp.
+    with pytest.raises(ValueError):
+        cap._view_render_kwargs(view)
 
 
 # -- fake bpy for the handler / render path -----------------------------------------
+#
+# core.capture._render_viewport drives the LIVE 3D viewport (view3d.view_axis/
+# view_orbit/view_selected/view_all inside bpy.context.temp_override) then captures it
+# with bpy.ops.render.opengl(view_context=True). This fake bpy models that surface: a
+# single fake VIEW_3D area/region whose space carries shading/overlay/region_3d state,
+# fake view3d.* ops that record every call (and mutate region_3d.view_matrix to a
+# distinct sentinel string per view, so tests can assert genuinely different framing was
+# applied), and a fake render.opengl that writes a tiny PNG file to
+# scene.render.filepath.
+
 
 class _Mat:
     """4x4 identity-ish matrix supporting ``@ seq`` -> translated tuple (no rotation)."""
@@ -209,12 +182,13 @@ class FakeObj:
         self.hide_viewport = False
         self.hide_render = False
         self.data = None
+        self._selected = False
 
-    def calc_matrix_camera(self, depsgraph, x=1, y=1, scale_x=1.0, scale_y=1.0):
-        # Real bpy.types.Object.calc_matrix_camera reads camera DATA (lens/ortho_scale/
-        # sensor), not the transform; a fake sentinel is enough since the fake
-        # draw_view3d below only records it, never interprets it.
-        return ("FAKE_PROJ_MATRIX", self.name, getattr(self.data, "type", None), x, y)
+    def select_get(self) -> bool:
+        return self._selected
+
+    def select_set(self, value) -> None:
+        self._selected = bool(value)
 
 
 class FakeCamData:
@@ -224,86 +198,16 @@ class FakeCamData:
         self.ortho_scale = 1.0
 
 
-# -- fake gpu module + fake VIEW_3D window/area (GPUOffScreen render path) ----------
-#
-# core.capture._render_offscreen does `import gpu` and walks
-# bpy.context.window_manager.windows -> screen.areas -> VIEW_3D -> space/region. Real
-# `gpu` is Blender-only (no PyPI package providing real GL), so tests that want the
-# happy path inject a fake module into sys.modules, mirroring how `bpy` itself is
-# faked. This does not prove real pixels render correctly (that needs live Blender --
-# see docs/reports/gpu_offscreen_verified_prototype.py) but it does prove the WIRING:
-# the right matrices/args reach draw_view3d, and overlay/shading state is toggled and
-# restored around it.
+# -- fake VIEW_3D area/region + view3d/render ops (viewport-driven render path) -----
 
 
-class _FakeGPUBuffer(list):
-    """list subclass so ``buf.dimensions = ...`` (real Buffer supports this) works."""
-
-
-class _FakeFramebuffer:
-    @staticmethod
-    def read_color(x, y, w, h, channels, slot, dtype):
-        return _FakeGPUBuffer([21] * (w * h * channels))
-
-
-class _FakeGPUState:
-    @staticmethod
-    def active_framebuffer_get():
-        return _FakeFramebuffer()
-
-
-class _NullBind:
-    def __enter__(self):
-        return None
-
-    def __exit__(self, *exc):
-        return False
-
-
-def _make_fake_gpu(draw_raises: bool = False):
-    """A fake ``gpu`` module. Returns ``(module, draw_calls)`` -- ``draw_calls`` records
-    every ``draw_view3d(...)`` invocation's kwargs for assertions."""
-    draw_calls: list = []
-
-    class _FakeGPUOffScreen:
-        def __init__(self, width, height):
-            self.width = width
-            self.height = height
-            self.freed = False
-
-        def draw_view3d(self, scene, view_layer, space, region, view_matrix, proj_matrix, do_color_management=False):
-            draw_calls.append(
-                {
-                    "scene": scene,
-                    "view_layer": view_layer,
-                    "space": space,
-                    "region": region,
-                    "view_matrix": view_matrix,
-                    "proj_matrix": proj_matrix,
-                    "do_color_management": do_color_management,
-                    # Snapshot state AS SEEN DURING the render (overlay/shading must be
-                    # mutated by now and restored only after draw_view3d returns).
-                    "overlay_show_overlays": getattr(space.overlay, "show_overlays", None),
-                    "shading_type": getattr(space.shading, "type", None),
-                }
-            )
-            if draw_raises:
-                raise RuntimeError("no GPU / headless")
-
-        def bind(self):
-            return _NullBind()
-
-        def free(self):
-            self.freed = True
-
-    class _Types:
-        GPUOffScreen = _FakeGPUOffScreen
-
-    mod = types.ModuleType("gpu")
-    mod.types = _Types
-    mod.state = _FakeGPUState
-    mod._draw_calls = draw_calls
-    return mod, draw_calls
+class _FakeRegion3D:
+    def __init__(self) -> None:
+        self.view_perspective = "PERSP"
+        self.view_distance = 12.0
+        self.view_location = (1.0, 2.0, 3.0)
+        self.view_rotation = (0.5, 0.5, 0.5, 0.5)
+        self.view_matrix = "ORIGINAL_VIEW_MATRIX"
 
 
 class _FakeOverlay:
@@ -320,6 +224,7 @@ class _FakeView3DSpace:
     def __init__(self) -> None:
         self.overlay = _FakeOverlay()
         self.shading = _FakeSpaceShading()
+        self.region_3d = _FakeRegion3D()
 
 
 class _FakeRegion:
@@ -333,25 +238,40 @@ class _FakeArea:
         self.regions = [_FakeRegion()]
 
 
-class _FakeScreen:
-    def __init__(self) -> None:
-        self.areas = [_FakeArea()]
-
-
 class _FakeWindow:
-    def __init__(self) -> None:
-        self.screen = _FakeScreen()
+    def __init__(self, area) -> None:
+        self.screen = types.SimpleNamespace(areas=[area])
 
 
-class _FakeWindowManager:
-    def __init__(self, with_view3d: bool = True) -> None:
-        self.windows = [_FakeWindow()] if with_view3d else []
+class _FakeView3DOps:
+    """Fake ``bpy.ops.view3d.*``. Records every call (order matters) into ``calls`` and
+    mutates ``region_3d.view_matrix``/``view_perspective`` so a render's final view
+    state is distinguishable per view/orbit angle."""
+
+    def __init__(self, region_3d, calls: list) -> None:
+        self._r3d = region_3d
+        self._calls = calls
+
+    def view_axis(self, type):  # noqa: A002 - mirrors bpy.ops.view3d.view_axis(type=...)
+        self._calls.append(("view_axis", type))
+        self._r3d.view_matrix = f"AXIS:{type}"
+        self._r3d.view_perspective = "PERSP" if type == "PERSP" else "ORTHO"
+
+    def view_orbit(self, angle, type):  # noqa: A002 - mirrors bpy.ops.view3d.view_orbit
+        self._calls.append(("view_orbit", type, angle))
+        self._r3d.view_matrix = f"{self._r3d.view_matrix}+ORBIT:{type}:{angle:.6f}"
+        self._r3d.view_perspective = "PERSP"
+
+    def view_selected(self):
+        self._calls.append(("view_selected",))
+
+    def view_all(self):
+        self._calls.append(("view_all",))
 
 
 def _make_bpy(render_raises: bool = False, write_file: bool = True, with_view3d: bool = True):
     bpy = types.ModuleType("bpy")
     objects: dict = {}
-    cameras: dict = {}
     scene_objs: list = []
 
     obj = FakeObj("Cube")
@@ -389,13 +309,29 @@ def _make_bpy(render_raises: bool = False, write_file: bool = True, with_view3d:
                 scene_objs.append(o)
 
     scene.collection = types.SimpleNamespace(objects=_Coll())
-    view_layer = types.SimpleNamespace(update=lambda: None)
-    window_manager = _FakeWindowManager(with_view3d=with_view3d)
+
+    class _ViewLayerObjects:
+        active = None
+
+    view_layer = types.SimpleNamespace(update=lambda: None, objects=_ViewLayerObjects())
+
+    view3d_area = _FakeArea() if with_view3d else None
+    windows = [_FakeWindow(view3d_area)] if with_view3d else []
+    window_manager = types.SimpleNamespace(windows=windows)
+
+    override_calls: list = []
+
+    @contextmanager
+    def temp_override(**kw):
+        override_calls.append(kw)
+        yield
+
     bpy.context = types.SimpleNamespace(
         scene=scene,
         view_layer=view_layer,
         window_manager=window_manager,
         evaluated_depsgraph_get=lambda: "FAKE_DEPSGRAPH",
+        temp_override=temp_override,
     )
 
     class _DataObjects:
@@ -412,9 +348,7 @@ def _make_bpy(render_raises: bool = False, write_file: bool = True, with_view3d:
     class _DataCameras:
         @staticmethod
         def new(name):
-            c = FakeCamData(name)
-            cameras[name] = c
-            return c
+            return FakeCamData(name)
 
     bpy.data = types.SimpleNamespace(objects=_DataObjects(), cameras=_DataCameras())
 
@@ -423,33 +357,28 @@ def _make_bpy(render_raises: bool = False, write_file: bool = True, with_view3d:
     class _RenderOps:
         @staticmethod
         def opengl(write_still=False, **kw):
-            render_calls.append(write_still)
+            render_calls.append({"write_still": write_still, **kw})
             if render_raises:
                 raise RuntimeError("no GPU / headless")
             if write_file:
                 with open(scene.render.filepath, "wb") as fh:
                     fh.write(b"\x89PNG\r\n\x1a\n" + b"fakepng")
 
-    bpy.ops = types.SimpleNamespace(render=_RenderOps())
+    view3d_calls: list = []
+    region_3d = view3d_area.spaces.active.region_3d if view3d_area is not None else None
+    view3d_ops = _FakeView3DOps(region_3d, view3d_calls) if with_view3d else None
+
+    bpy.ops = types.SimpleNamespace(render=_RenderOps(), view3d=view3d_ops)
     bpy._render_calls = render_calls
+    bpy._view3d_calls = view3d_calls
+    bpy._override_calls = override_calls
     bpy._scene = scene
     bpy._objects = objects
-    gpu_module, gpu_draw_calls = _make_fake_gpu(draw_raises=render_raises)
-    bpy._gpu_module = gpu_module
-    bpy._gpu_draw_calls = gpu_draw_calls
     return bpy
 
 
 def _install_bpy(bpy, monkeypatch) -> None:
-    """Inject the fake ``bpy`` AND its matching fake ``gpu`` into sys.modules.
-
-    ``core.capture._render_offscreen`` does a plain top-level ``import gpu`` (real
-    ``gpu`` is Blender-only and not pip-installable), so tests exercising the
-    GPUOffScreen render path must patch ``sys.modules['gpu']`` exactly like ``bpy``
-    itself is patched.
-    """
     monkeypatch.setitem(sys.modules, "bpy", bpy)
-    monkeypatch.setitem(sys.modules, "gpu", bpy._gpu_module)
 
 
 @pytest.fixture()
@@ -461,7 +390,7 @@ def ctx_env(monkeypatch):
 
 # -- handler happy path + degrade ---------------------------------------------------
 
-def test_capture_named_view_renders_and_creates_hidden_camera(ctx_env) -> None:
+def test_capture_named_view_renders_via_viewport(ctx_env) -> None:
     ctx, bpy = ctx_env
     reg = build_default_registry()
     out = dispatch_on_main(reg, "feedback.capture", {"object": "Cube", "view": "front"}, ctx)
@@ -469,19 +398,32 @@ def test_capture_named_view_renders_and_creates_hidden_camera(ctx_env) -> None:
     assert out["view"] == "front"
     assert out["mimeType"] == "image/png"
     assert out["data"]  # base64 of the fake png
-    cam = bpy._objects.get(cap.CAPTURE_CAM)
-    assert cam is not None and cam.hide_viewport is True
-    # User's scene camera was restored (was None before).
+
+    # Drove the viewport to FRONT, then framed the (selected) object -- never a hidden
+    # capture camera, which this render path no longer creates at all.
+    assert bpy._view3d_calls[0] == ("view_axis", "FRONT")
+    assert ("view_selected",) in bpy._view3d_calls
+    assert bpy._objects.get(cap.CAPTURE_CAM) is None
+
+    # render.opengl was asked to capture the VIEWPORT (view_context=True), not a camera.
+    assert bpy._render_calls[-1]["write_still"] is True
+    assert bpy._render_calls[-1]["view_context"] is True
+
+    # User's scene camera untouched (this path never sets scene.camera).
     assert bpy._scene.camera is None
 
 
-def test_capture_reuses_capture_camera(ctx_env) -> None:
+def test_capture_persp_view_orbits_from_front(ctx_env) -> None:
+    # The 3/4 look: FRONT, then orbit right (azimuth) and up (elevation), each converted
+    # from degrees to radians -- mirrors the retired view_camera() persp direction.
     ctx, bpy = ctx_env
     reg = build_default_registry()
-    dispatch_on_main(reg, "feedback.capture", {"object": "Cube", "view": "front"}, ctx)
-    first = bpy._objects.get(cap.CAPTURE_CAM)
-    dispatch_on_main(reg, "feedback.capture", {"object": "Cube", "view": "top"}, ctx)
-    assert bpy._objects.get(cap.CAPTURE_CAM) is first  # not recreated
+    out = dispatch_on_main(reg, "feedback.capture", {"object": "Cube", "view": "persp"}, ctx)
+    assert out["available"] is True
+    assert bpy._view3d_calls[0] == ("view_axis", "FRONT")
+    assert bpy._view3d_calls[1] == ("view_orbit", "ORBITRIGHT", pytest.approx(math.radians(cap.PERSP_AZIMUTH_DEG)))
+    assert bpy._view3d_calls[2] == ("view_orbit", "ORBITUP", pytest.approx(math.radians(cap.PERSP_ELEVATION_DEG)))
+    assert bpy._view3d_calls[3] == ("view_selected",)
 
 
 def test_capture_views_returns_one_image_per_preset_view(ctx_env) -> None:
@@ -492,6 +434,21 @@ def test_capture_views_returns_one_image_per_preset_view(ctx_env) -> None:
     views = [img["view"] for img in out["images"]]
     assert views == ["front", "right", "top", "persp"]
     assert all(img["data"] for img in out["images"])
+    # Each preset view issued its own view_axis call, in order.
+    axis_calls = [c for c in bpy._view3d_calls if c[0] == "view_axis"]
+    assert [c[1] for c in axis_calls[:3]] == ["FRONT", "RIGHT", "TOP"]
+
+
+def test_capture_views_orbit4_orbits_four_azimuth_steps(ctx_env) -> None:
+    ctx, bpy = ctx_env
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "feedback.capture_views", {"object": "Cube", "preset": "orbit4"}, ctx)
+    assert out["available"] is True
+    assert [img["view"] for img in out["images"]] == ["orbit_0", "orbit_90", "orbit_180", "orbit_270"]
+    orbit_right_angles = [c[2] for c in bpy._view3d_calls if c[0] == "view_orbit" and c[1] == "ORBITRIGHT"]
+    # orbit_0 has azimuth 0 -> no ORBITRIGHT call at all (falsy angle is skipped, same as
+    # a plain FRONT view); the remaining three each orbit by their azimuth in radians.
+    assert orbit_right_angles == [pytest.approx(math.radians(90.0)), pytest.approx(math.radians(180.0)), pytest.approx(math.radians(270.0))]
 
 
 def test_turntable_clamps_count_and_orbits(ctx_env) -> None:
@@ -525,14 +482,14 @@ def test_capture_views_degrades_when_render_fails(monkeypatch) -> None:
 
 def test_capture_degrades_when_no_view3d_area(monkeypatch) -> None:
     # Real headless Blender (`--background`) has no windows at all -- this is the
-    # "no VIEW_3D area" branch of _render_offscreen, distinct from a GPU draw failure.
+    # "no VIEW_3D area" branch of _render_viewport, distinct from a render failure.
     bpy = _make_bpy(with_view3d=False)
     _install_bpy(bpy, monkeypatch)
     ctx = Ctx(bpy)
     reg = build_default_registry()
     out = dispatch_on_main(reg, "feedback.capture", {"object": "Cube", "view": "front"}, ctx)
     assert out["available"] is False
-    assert "VIEW_3D" in out["reason"] or "GPU" in out["reason"]
+    assert "VIEW_3D" in out["reason"]
 
 
 def test_capture_missing_object_degrades(ctx_env) -> None:
@@ -551,18 +508,18 @@ def test_capture_current_without_scene_camera_degrades(ctx_env) -> None:
     assert "camera" in out["reason"].lower()
 
 
-# -- _render_offscreen wiring: overlay/shading toggled+restored, correct matrices ---
+# -- _render_viewport wiring: overlay/shading/selection/view-state toggled+restored -
 
 
-def test_render_offscreen_toggles_overlay_and_shading_then_restores(monkeypatch) -> None:
+def test_render_viewport_toggles_overlay_and_shading_then_restores(monkeypatch) -> None:
     bpy = _make_bpy()
     _install_bpy(bpy, monkeypatch)
-    space = bpy.context.window_manager.windows[0].screen.areas[0].spaces.active
+    area = bpy.context.window_manager.windows[0].screen.areas[0]
+    space = area.spaces.active
     space.overlay.show_overlays = True
     space.shading.type = "SOLID"
 
-    frame = cap.view_camera((0.0, 0.0, 0.0), (2.0, 2.0, 2.0), "top")
-    data = cap._render_offscreen(bpy, frame, "MATERIAL", 64)
+    data = cap._render_viewport(bpy, "MATERIAL", 64, "Cube", axis="TOP")
 
     assert data  # base64 PNG came back
     png_bytes = base64.b64decode(data)
@@ -572,38 +529,79 @@ def test_render_offscreen_toggles_overlay_and_shading_then_restores(monkeypatch)
     assert space.overlay.show_overlays is True
     assert space.shading.type == "SOLID"
 
-    # But DURING the draw_view3d call, overlays were off and shading was the requested mode.
-    assert len(bpy._gpu_draw_calls) == 1
-    call = bpy._gpu_draw_calls[0]
-    assert call["overlay_show_overlays"] is False
-    assert call["shading_type"] == "MATERIAL"
-    assert call["do_color_management"] is False
+    # The right ops ran, in order: orient, frame, capture.
+    assert bpy._view3d_calls == [("view_axis", "TOP"), ("view_selected",)]
+    assert bpy._render_calls[-1] == {"write_still": True, "view_context": True}
 
-    # The view matrix handed to draw_view3d is exactly the pure-python computation --
-    # never a (possibly stale) cam.matrix_world read.
-    expected_vm = cap.view_matrix_from_frame(frame)
-    assert call["view_matrix"] == expected_vm
+    # temp_override was entered with this exact area/region.
+    assert bpy._override_calls[-1] == {"area": area, "region": area.regions[0]}
 
 
-def test_render_offscreen_restores_state_even_when_draw_raises(monkeypatch) -> None:
+def test_render_viewport_restores_selection_and_active_object(monkeypatch) -> None:
+    bpy = _make_bpy()
+    _install_bpy(bpy, monkeypatch)
+    other = FakeObj("Other")
+    bpy._objects["Other"] = other
+    bpy._scene.objects.append(other)
+    other.select_set(True)
+    bpy.context.view_layer.objects.active = other
+
+    cap._render_viewport(bpy, "SOLID", 64, "Cube", axis="FRONT")
+
+    cube = bpy._objects["Cube"]
+    # During the render only Cube was selected+active (proven by the FRONT axis call
+    # succeeding via view_selected); afterward the ORIGINAL selection is back exactly.
+    assert cube.select_get() is False
+    assert other.select_get() is True
+    assert bpy.context.view_layer.objects.active is other
+
+
+def test_render_viewport_restores_region_3d_view_state(monkeypatch) -> None:
+    bpy = _make_bpy()
+    _install_bpy(bpy, monkeypatch)
+    r3d = bpy.context.window_manager.windows[0].screen.areas[0].spaces.active.region_3d
+    before = (r3d.view_perspective, r3d.view_distance, r3d.view_location, r3d.view_rotation, r3d.view_matrix)
+
+    cap._render_viewport(bpy, "SOLID", 64, "Cube", axis="RIGHT")
+
+    after = (r3d.view_perspective, r3d.view_distance, r3d.view_location, r3d.view_rotation, r3d.view_matrix)
+    assert after == before
+
+
+def test_render_viewport_uses_view_all_when_no_object_name(monkeypatch) -> None:
+    bpy = _make_bpy()
+    _install_bpy(bpy, monkeypatch)
+    cap._render_viewport(bpy, "SOLID", 64, None, axis="TOP")
+    assert ("view_all",) in bpy._view3d_calls
+    assert ("view_selected",) not in bpy._view3d_calls
+
+
+def test_render_viewport_restores_state_even_when_render_raises(monkeypatch) -> None:
     bpy = _make_bpy(render_raises=True)
     _install_bpy(bpy, monkeypatch)
     space = bpy.context.window_manager.windows[0].screen.areas[0].spaces.active
     space.overlay.show_overlays = True
     space.shading.type = "SOLID"
 
-    frame = cap.view_camera((0.0, 0.0, 0.0), (2.0, 2.0, 2.0), "front")
     with pytest.raises(RuntimeError):
-        cap._render_offscreen(bpy, frame, "MATERIAL", 64)
+        cap._render_viewport(bpy, "MATERIAL", 64, "Cube", axis="FRONT")
 
     assert space.overlay.show_overlays is True
     assert space.shading.type == "SOLID"
+    assert bpy._objects["Cube"].select_get() is False
 
 
-def test_render_offscreen_no_view3d_raises() -> None:
+def test_render_viewport_no_view3d_raises() -> None:
     bpy = _make_bpy(with_view3d=False)
     with pytest.raises(RuntimeError):
-        cap._render_offscreen(bpy, cap.view_camera((0, 0, 0), (2, 2, 2), "front"), "SOLID", 64)
+        cap._render_viewport(bpy, "SOLID", 64, "Cube", axis="FRONT")
+
+
+def test_render_viewport_requires_axis_or_orbit_kwargs(monkeypatch) -> None:
+    bpy = _make_bpy()
+    _install_bpy(bpy, monkeypatch)
+    with pytest.raises(ValueError):
+        cap._render_viewport(bpy, "SOLID", 64, "Cube")
 
 
 # -- critique bundle (images + report + uv in one observe call) ---------------------

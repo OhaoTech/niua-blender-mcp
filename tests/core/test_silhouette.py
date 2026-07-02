@@ -1,25 +1,26 @@
 """Silhouette core render/restore unit tests (fake-bpy).
 
-Mirrors the fake-bpy patterns already used in the repo: the object/camera/render
-plumbing from ``tests/domains/test_feedback.py`` (bound_box + matrix_world + a fake
-``gpu`` module + fake VIEW_3D window/area so ``core.capture._render_offscreen`` can
-run headless -- see that file's comment on why ``gpu`` must be faked, not just
-``bpy``) and the material/node-tree plumbing from ``tests/domains/test_shading.py``
-(materials with a node_tree whose nodes carry named ``inputs``/``outputs`` sockets, so
-the flat EMISSION fill material can be built exactly like ``core/overlay.py`` does).
+Mirrors the fake-bpy patterns already used in the repo: the object/render plumbing from
+``tests/domains/test_feedback.py`` (bound_box + matrix_world + a fake VIEW_3D window/area
+with view3d.*/render.opengl ops so ``core.capture._render_viewport`` can drive the "live"
+viewport headless) and the material/node-tree plumbing from ``tests/domains/
+test_shading.py`` (materials with a node_tree whose nodes carry named ``inputs``/
+``outputs`` sockets, so the flat EMISSION fill material can be built exactly like
+``core/overlay.py`` does).
 """
 
 from __future__ import annotations
 
 import sys
 import types
+from contextlib import contextmanager
 
 import pytest
 
 from niua_mcp_bridge.core import silhouette
 
 
-# -- fake bpy: object/camera/render plumbing (from tests/domains/test_feedback.py) --
+# -- fake bpy: object/render plumbing (from tests/domains/test_feedback.py) ---------
 
 
 class _Mat:
@@ -32,92 +33,16 @@ class _Mat:
         return tuple(vec[i] + self.offset[i] for i in range(3))
 
 
-class FakeCamData:
-    def __init__(self, name) -> None:
-        self.name = name
-        self.type = "PERSP"
-        self.ortho_scale = 1.0
+# -- fake VIEW_3D area/region + view3d/render ops (viewport-driven render path) -----
 
 
-class FakeCamObj:
-    def __init__(self, name, data) -> None:
-        self.name = name
-        self.type = "CAMERA"
-        self.data = data
-        self.location = (0.0, 0.0, 0.0)
-        self.rotation_mode = "XYZ"
-        self.rotation_euler = (0.0, 0.0, 0.0)
-        self.hide_viewport = False
-        self.hide_render = False
-
-    def calc_matrix_camera(self, depsgraph, x=1, y=1, scale_x=1.0, scale_y=1.0):
-        # See tests/domains/test_feedback.py::FakeObj.calc_matrix_camera -- a sentinel
-        # is enough since the fake draw_view3d below only records it.
-        return ("FAKE_PROJ_MATRIX", self.name, getattr(self.data, "type", None), x, y)
-
-
-# -- fake gpu module + fake VIEW_3D window/area (from tests/domains/test_feedback.py) --
-
-
-class _FakeGPUBuffer(list):
-    """list subclass so ``buf.dimensions = ...`` (real Buffer supports this) works."""
-
-
-class _FakeFramebuffer:
-    @staticmethod
-    def read_color(x, y, w, h, channels, slot, dtype):
-        return _FakeGPUBuffer([21] * (w * h * channels))
-
-
-class _FakeGPUState:
-    @staticmethod
-    def active_framebuffer_get():
-        return _FakeFramebuffer()
-
-
-class _NullBind:
-    def __enter__(self):
-        return None
-
-    def __exit__(self, *exc):
-        return False
-
-
-def _make_fake_gpu(draw_raises: bool = False):
-    draw_calls: list = []
-
-    class _FakeGPUOffScreen:
-        def __init__(self, width, height):
-            self.width = width
-            self.height = height
-
-        def draw_view3d(self, scene, view_layer, space, region, view_matrix, proj_matrix, do_color_management=False):
-            draw_calls.append(
-                {
-                    "space": space,
-                    "view_matrix": view_matrix,
-                    "proj_matrix": proj_matrix,
-                    "shading_type": getattr(space.shading, "type", None),
-                    "overlay_show_overlays": getattr(space.overlay, "show_overlays", None),
-                }
-            )
-            if draw_raises:
-                raise RuntimeError("no GPU / headless")
-
-        def bind(self):
-            return _NullBind()
-
-        def free(self):
-            pass
-
-    class _Types:
-        GPUOffScreen = _FakeGPUOffScreen
-
-    mod = types.ModuleType("gpu")
-    mod.types = _Types
-    mod.state = _FakeGPUState
-    mod._draw_calls = draw_calls
-    return mod, draw_calls
+class _FakeRegion3D:
+    def __init__(self) -> None:
+        self.view_perspective = "PERSP"
+        self.view_distance = 12.0
+        self.view_location = (1.0, 2.0, 3.0)
+        self.view_rotation = (0.5, 0.5, 0.5, 0.5)
+        self.view_matrix = "ORIGINAL_VIEW_MATRIX"
 
 
 class _FakeOverlay:
@@ -134,6 +59,7 @@ class _FakeView3DSpace:
     def __init__(self) -> None:
         self.overlay = _FakeOverlay()
         self.shading = _FakeSpaceShading()
+        self.region_3d = _FakeRegion3D()
 
 
 class _FakeRegion:
@@ -147,19 +73,37 @@ class _FakeArea:
         self.regions = [_FakeRegion()]
 
 
-class _FakeScreen:
-    def __init__(self) -> None:
-        self.areas = [_FakeArea()]
-
-
 class _FakeWindow:
-    def __init__(self) -> None:
-        self.screen = _FakeScreen()
+    def __init__(self, area) -> None:
+        self.screen = types.SimpleNamespace(areas=[area])
 
 
 class _FakeWindowManager:
-    def __init__(self) -> None:
-        self.windows = [_FakeWindow()]
+    def __init__(self, area, with_view3d: bool = True) -> None:
+        self.windows = [_FakeWindow(area)] if with_view3d else []
+
+
+class _FakeView3DOps:
+    """Fake ``bpy.ops.view3d.*``: records every call, mutates ``region_3d.view_matrix``
+    so a render's final view state is distinguishable per view/orbit angle."""
+
+    def __init__(self, region_3d, calls: list) -> None:
+        self._r3d = region_3d
+        self._calls = calls
+
+    def view_axis(self, type):  # noqa: A002
+        self._calls.append(("view_axis", type))
+        self._r3d.view_matrix = f"AXIS:{type}"
+
+    def view_orbit(self, angle, type):  # noqa: A002
+        self._calls.append(("view_orbit", type, angle))
+        self._r3d.view_matrix = f"{self._r3d.view_matrix}+ORBIT:{type}:{angle:.6f}"
+
+    def view_selected(self):
+        self._calls.append(("view_selected",))
+
+    def view_all(self):
+        self._calls.append(("view_all",))
 
 
 # -- fake bpy: material/node-tree plumbing (from tests/domains/test_shading.py) -----
@@ -255,13 +199,20 @@ class FakeMeshObj:
             (-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1),
         ]
         self.data = FakeMeshData(materials, polygons)
+        self._selected = False
 
     @property
     def material_slots(self):
         return [FakeSlot(m) for m in self.data.materials]
 
+    def select_get(self) -> bool:
+        return self._selected
 
-def _make_bpy(mesh_obj, draw_raises: bool = False):
+    def select_set(self, value) -> None:
+        self._selected = bool(value)
+
+
+def _make_bpy(mesh_obj, render_raises: bool = False, with_view3d: bool = True):
     bpy = types.ModuleType("bpy")
     objects: dict = {mesh_obj.name: mesh_obj}
     materials: dict = {}
@@ -298,26 +249,33 @@ def _make_bpy(mesh_obj, draw_raises: bool = False):
                 scene_objs.append(o)
 
     scene.collection = types.SimpleNamespace(objects=_Coll())
+
+    class _ViewLayerObjects:
+        active = None
+
+    view_layer = types.SimpleNamespace(update=lambda: None, objects=_ViewLayerObjects())
+    area = _FakeArea() if with_view3d else None
+    window_manager = _FakeWindowManager(area, with_view3d=with_view3d)
+
+    override_calls: list = []
+
+    @contextmanager
+    def temp_override(**kw):
+        override_calls.append(kw)
+        yield
+
     bpy.context = types.SimpleNamespace(
         scene=scene,
-        view_layer=types.SimpleNamespace(update=lambda: None),
-        window_manager=_FakeWindowManager(),
+        view_layer=view_layer,
+        window_manager=window_manager,
         evaluated_depsgraph_get=lambda: "FAKE_DEPSGRAPH",
+        temp_override=temp_override,
     )
 
     class _DataObjects:
         @staticmethod
         def get(name):
             return objects.get(name)
-
-        @staticmethod
-        def new(name, data):
-            return FakeCamObj(name, data)
-
-    class _DataCameras:
-        @staticmethod
-        def new(name):
-            return FakeCamData(name)
 
     class _DataMaterials:
         @staticmethod
@@ -332,7 +290,6 @@ def _make_bpy(mesh_obj, draw_raises: bool = False):
 
     bpy.data = types.SimpleNamespace(
         objects=_DataObjects(),
-        cameras=_DataCameras(),
         materials=_DataMaterials(),
     )
 
@@ -341,32 +298,33 @@ def _make_bpy(mesh_obj, draw_raises: bool = False):
     class _RenderOps:
         @staticmethod
         def opengl(write_still=False, **kw):
-            render_calls.append(write_still)
+            render_calls.append({"write_still": write_still, **kw})
+            if render_raises:
+                raise RuntimeError("no GPU / headless")
             with open(scene.render.filepath, "wb") as fh:
                 fh.write(b"\x89PNG\r\n\x1a\n" + b"fakepng")
 
-    bpy.ops = types.SimpleNamespace(render=_RenderOps())
+    view3d_calls: list = []
+    view3d_ops = _FakeView3DOps(area.spaces.active.region_3d, view3d_calls) if with_view3d else None
+
+    bpy.ops = types.SimpleNamespace(render=_RenderOps(), view3d=view3d_ops)
     bpy._render_calls = render_calls
+    bpy._view3d_calls = view3d_calls
+    bpy._override_calls = override_calls
     bpy._objects = objects
     bpy._materials = materials
-    gpu_module, gpu_draw_calls = _make_fake_gpu(draw_raises=draw_raises)
-    bpy._gpu_module = gpu_module
-    bpy._gpu_draw_calls = gpu_draw_calls
     return bpy
 
 
 def _install_bpy(bpy, monkeypatch) -> None:
-    """Inject the fake ``bpy`` AND its matching fake ``gpu`` into sys.modules -- see
-    tests/domains/test_feedback.py::_install_bpy for why both are needed."""
     monkeypatch.setitem(sys.modules, "bpy", bpy)
-    monkeypatch.setitem(sys.modules, "gpu", bpy._gpu_module)
 
 
 @pytest.fixture()
 def fake_bpy_recording_mesh(monkeypatch):
     """A fake bpy exposing one mesh object ('Cube') with 2 material slots and 6 faces
-    split across both slots, plus a fake ``gpu`` module (installed into sys.modules).
-    Mirrors the object the plan's test drives ``silhouette.render_silhouette`` against.
+    split across both slots. Mirrors the object the plan's test drives
+    ``silhouette.render_silhouette`` against.
     """
     orig_mat_a = FakeMaterial("OrigA")
     orig_mat_b = FakeMaterial("OrigB")
@@ -393,22 +351,27 @@ def test_render_silhouette_assigns_flat_fill_and_restores(fake_bpy_recording_mes
     # materials + indices restored byte-identical
     assert [s.material for s in obj.material_slots] == before_slots
     assert [p.material_index for p in obj.data.polygons] == before_idx
+    # Selection was cleared again after framing (non-intrusive).
+    assert obj.select_get() is False
 
 
-def test_render_silhouette_views_get_distinct_view_matrices(fake_bpy_recording_mesh):
-    # The anti-blob check: each ortho4 view must reach _render_offscreen with a
-    # genuinely different pure-python view matrix (never a shared/stale one) -- the
-    # class of bug docs/reports/capture-multiangle-bug.md fixed.
+def test_render_silhouette_views_get_distinct_viewport_orientations(fake_bpy_recording_mesh):
+    # The anti-blob check: each ortho4 view must drive the viewport to a genuinely
+    # different bpy.ops.view3d.view_axis type (or orbit) -- never a shared/stale one --
+    # the class of bug docs/reports/capture-multiangle-bug.md fixed.
     bpy = fake_bpy_recording_mesh
     out = silhouette.render_silhouette(bpy, "Cube", preset="ortho4", res=256)
     assert out["available"] is True
-    assert len(bpy._gpu_draw_calls) == 4
-    matrices = [call["view_matrix"] for call in bpy._gpu_draw_calls]
-    flat = [tuple(v for row in m for v in row) for m in matrices]
-    assert len(set(flat)) == 4  # all four distinct
+    axis_calls = [c for c in bpy._view3d_calls if c[0] == "view_axis"]
+    # front, right, top axes, then persp's FRONT-then-orbit look.
+    assert [c[1] for c in axis_calls] == ["FRONT", "RIGHT", "TOP", "FRONT"]
+    orbit_calls = [c for c in bpy._view3d_calls if c[0] == "view_orbit"]
+    assert len(orbit_calls) == 2  # persp: one ORBITRIGHT + one ORBITUP
+    # Every render actually captured the viewport, not a positioned camera.
+    assert len(bpy._render_calls) == 4
+    assert all(call["view_context"] is True for call in bpy._render_calls)
     # MATERIAL shading (for the flat emission fill) was active during every render.
-    assert all(call["shading_type"] == "MATERIAL" for call in bpy._gpu_draw_calls)
-    assert all(call["overlay_show_overlays"] is False for call in bpy._gpu_draw_calls)
+    assert bpy.context.window_manager.windows[0].screen.areas[0].spaces.active.shading.type == "SOLID"
 
 
 def test_render_silhouette_restores_materials_even_when_render_fails(monkeypatch):
@@ -416,7 +379,7 @@ def test_render_silhouette_restores_materials_even_when_render_fails(monkeypatch
     orig_mat_b = FakeMaterial("OrigB")
     polygons = [FakePoly(i % 2) for i in range(6)]
     mesh_obj = FakeMeshObj("Cube", materials=[orig_mat_a, orig_mat_b], polygons=polygons)
-    bpy = _make_bpy(mesh_obj, draw_raises=True)
+    bpy = _make_bpy(mesh_obj, render_raises=True)
     _install_bpy(bpy, monkeypatch)
     obj = bpy.data.objects.get("Cube")
     before_slots = [s.material for s in obj.material_slots]
@@ -428,6 +391,19 @@ def test_render_silhouette_restores_materials_even_when_render_fails(monkeypatch
     assert "reason" in out
     assert [s.material for s in obj.material_slots] == before_slots
     assert [p.material_index for p in obj.data.polygons] == before_idx
+
+
+def test_render_silhouette_degrades_with_no_view3d_area(monkeypatch):
+    orig_mat_a = FakeMaterial("OrigA")
+    polygons = [FakePoly(0) for _ in range(6)]
+    mesh_obj = FakeMeshObj("Cube", materials=[orig_mat_a], polygons=polygons)
+    bpy = _make_bpy(mesh_obj, with_view3d=False)
+    _install_bpy(bpy, monkeypatch)
+
+    out = silhouette.render_silhouette(bpy, "Cube", preset="ortho4", res=256)
+
+    assert out["available"] is False
+    assert "VIEW_3D" in out["reason"]
 
 
 def test_render_silhouette_non_mesh_degrades():
