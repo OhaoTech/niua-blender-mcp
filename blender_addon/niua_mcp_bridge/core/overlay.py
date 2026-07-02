@@ -1,9 +1,10 @@
 """Topology overlay: mark defects with real materials instead of viewport overlays.
 
-Renders through ``core.capture._render_offscreen`` (GPUOffScreen + a pure-Python view
-matrix -- see docs/reports/capture-multiangle-bug.md), which disables viewport
-overlays for the duration of the render. The topology eye therefore assigns temporary
-materials to mesh faces, renders, then restores the user's mesh exactly.
+Renders through ``core.capture._render_viewport`` (drives the live 3D viewport, then
+captures it -- see docs/reports/capture-multiangle-bug.md "RESOLUTION 2"), which
+disables the viewport's own overlays for the duration of the render. The topology eye
+therefore assigns temporary materials to mesh faces, renders, then restores the user's
+mesh exactly.
 """
 
 from __future__ import annotations
@@ -82,8 +83,10 @@ def topology_overlay(bpy: Any, obj_name: str | None, view: str = "persp", res: i
 
         orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
         orig_index = [p.material_index for p in mesh.polygons]
-        center, size = cap.scene_bbox(bpy, obj_name)
-        frame = cap.view_camera(center, size, view)
+        # ``size`` still drives the wireframe-modifier thickness below; framing itself
+        # now comes from the live viewport (view_selected), not this bbox.
+        _center, size = cap.scene_bbox(bpy, obj.name)
+        render_kwargs = cap._view_render_kwargs(view)
 
         # Two distinct, verifiable passes:
         #   facetype -> FACETYPE shading (flat per-material colour): quads blue, tris orange,
@@ -101,7 +104,7 @@ def topology_overlay(bpy: Any, obj_name: str | None, view: str = "persp", res: i
             for p in mesh.polygons:
                 sides = len(p.vertices)
                 p.material_index = 0 if sides == 4 else (1 if sides == 3 else 2)
-            facetype = cap._render_offscreen(bpy, frame, "MATERIAL", res)
+            facetype = cap._render_viewport(bpy, "MATERIAL", res, obj.name, **render_kwargs)
             # Add a thin Wireframe modifier so edges become real, render-visible geometry
             # (Workbench WIREFRAME shading is a viewport-overlay look, not real geometry,
             # so we materialise the edges instead of relying on a shading mode).
@@ -113,7 +116,7 @@ def topology_overlay(bpy: Any, obj_name: str | None, view: str = "persp", res: i
                 wire_mod.material_offset = 3  # dark wire emission material slot for contrast
             except Exception:  # noqa: BLE001 - fall back to plain solid if modifier fails
                 wire_mod = None
-            wire = cap._render_offscreen(bpy, frame, "MATERIAL", res)
+            wire = cap._render_viewport(bpy, "MATERIAL", res, obj.name, **render_kwargs)
         finally:
             if wire_mod is not None:
                 try:

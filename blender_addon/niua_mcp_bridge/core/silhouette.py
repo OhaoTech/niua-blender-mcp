@@ -1,9 +1,9 @@
 """Silhouette eye: render the object as a flat, unlit fill so FORM/proportion read cleanly.
 
-Renders through ``core.capture._render_offscreen`` (GPUOffScreen + a pure-Python view
-matrix -- see docs/reports/capture-multiangle-bug.md), so (like the topology overlay) we
-assign a flat EMISSION material and render under MATERIAL shading, then restore the
-object exactly.
+Renders through ``core.capture._render_viewport`` (drives the live 3D viewport, then
+captures it -- see docs/reports/capture-multiangle-bug.md "RESOLUTION 2"), so (like the
+topology overlay) we assign a flat EMISSION material and render under MATERIAL shading,
+then restore the object exactly.
 """
 from __future__ import annotations
 
@@ -47,13 +47,15 @@ def render_silhouette(bpy: Any, obj_name: str | None, preset: str = "ortho4", re
         mesh = obj.data
         orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
         orig_index = [p.material_index for p in mesh.polygons]
-        center, size = cap.scene_bbox(bpy, obj_name)
 
         if preset == "orbit4":
-            frames = [("orbit_%d" % a, cap.orbit_camera(center, size, a)) for a in (0, 90, 180, 270)]
+            specs = [
+                ("orbit_%d" % a, {"azimuth_deg": float(a), "elevation_deg": cap.ORBIT_ELEVATION_DEG})
+                for a in (0, 90, 180, 270)
+            ]
         else:
             names = cap.PRESETS.get(preset, cap.PRESETS["ortho4"])
-            frames = [(n, cap.view_camera(center, size, n)) for n in names]
+            specs = [(n, cap._view_render_kwargs(n)) for n in names]
 
         images: list[dict] = []
         try:
@@ -61,8 +63,8 @@ def render_silhouette(bpy: Any, obj_name: str | None, preset: str = "ortho4", re
             obj.data.materials.append(_ensure_fill_material(bpy))
             for p in mesh.polygons:
                 p.material_index = 0
-            for name, frame in frames:
-                data = cap._render_offscreen(bpy, frame, "MATERIAL", res)
+            for name, render_kwargs in specs:
+                data = cap._render_viewport(bpy, "MATERIAL", res, obj.name, **render_kwargs)
                 images.append({"view": name, "mode": "silhouette", "mimeType": "image/png", "encoding": "base64", "data": data})
         finally:
             obj.data.materials.clear()

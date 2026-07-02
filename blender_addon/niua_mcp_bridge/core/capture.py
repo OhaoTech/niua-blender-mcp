@@ -1,27 +1,35 @@
 """The rendering engine behind the feedback subsystem -- the agent's eyes.
 
 The anti-blob principle from the project's origin: to judge *form* you must see it from
-several angles, not one lucky shot. This module owns a dedicated, hidden capture camera
-so the user's viewport and view never move, computes faithful framing for named views
-(front/back/left/right/top/bottom/persp) around an object's (or the whole scene's) world
-bounding box, and renders it deterministically.
+several angles, not one lucky shot. The render path drives the LIVE 3D viewport to each
+named angle and captures exactly what is drawn -- the way a human artist would frame a
+shot -- rather than rendering an offscreen buffer from a synthetic camera.
 
 Two layers:
 
-* **Pure-Python framing + view-matrix math** (``bbox_*`` / ``view_camera`` /
-  ``orbit_camera`` / ``view_matrix_from_frame``) takes a bbox center + size and returns
-  a camera ``location``, ``rotation_euler`` and (for orthographic views) an
-  ``ortho_scale`` -- and can turn that frame into a world->view matrix without ever
-  reading ``cam.matrix_world`` (see ``_render_offscreen`` below for why). No ``bpy``
-  involved, so it is unit-testable against a fake bpy / plain numbers.
-* **bpy-bound rendering** (``render`` / ``capture_views`` / ``turntable``) which creates
-  or reuses the hidden camera, then renders each frame via ``_render_offscreen`` --
-  ``gpu.types.GPUOffScreen.draw_view3d`` fed the pure-Python view matrix -- to a base64
-  PNG. Every failure (headless, no GPU, no VIEW_3D area) degrades to
+* **Pure-Python framing math** (``bbox_*`` / ``view_camera`` / ``orbit_camera``) takes a
+  bbox center + size and returns a camera ``location``/``rotation_euler``/``ortho_scale``.
+  No ``bpy`` involved, so it is unit-testable against a fake bpy / plain numbers. It is
+  no longer used to *render* (``view3d.view_selected`` frames the live viewport instead)
+  but stays available for the hidden-capture-camera path used by ``domains/eyes.py``
+  (``feedback.uv`` / ``feedback.orientation`` / ``feedback.wire_shaded``) and for
+  ``size``-derived quantities such as wireframe-modifier thickness in ``core/overlay.py``.
+* **bpy-bound viewport rendering** (``render`` / ``capture_views`` / ``turntable``, all
+  backed by ``_render_viewport``) drives a live ``VIEW_3D`` area/region through
+  ``bpy.ops.view3d.view_axis`` / ``view_orbit`` / ``view_selected`` / ``view_all``, then
+  captures it via ``bpy.ops.render.opengl(view_context=True)`` -- see
+  ``docs/reports/capture-multiangle-bug.md`` ("RESOLUTION 2") and the canonical recipe in
+  ``docs/reports/viewport_capture_verified_prototype.py`` (proven live: Suzanne
+  FRONT=face, RIGHT=profile, TOP=head, 3/3 distinct). This REPLACES an earlier
+  ``gpu.types.GPUOffScreen.draw_view3d`` offscreen path that rendered blank/unreliably in
+  live testing. Every failure (headless, no VIEW_3D area, missing object) degrades to
   ``{"available": False, "reason": ...}`` exactly like the original ``feedback.capture``.
-  (``_render_to_b64``, the older ``bpy.ops.render.opengl``-based renderer, is kept only
-  for ``view="current"``, which renders the user's own already-positioned scene camera
-  and so never hits the stale-matrix bug -- see its docstring.)
+  The viewport's own view state, selection/active object, shading/overlay, and
+  ``scene.render`` settings are snapshotted before and restored in ``finally`` -- the
+  user's viewport is never left mutated. (``_render_to_b64``, the hidden-capture-camera
+  ``bpy.ops.render.opengl``-based renderer, is kept for ``view="current"`` -- which
+  renders the user's own already-positioned scene camera -- and for the eyes in
+  ``domains/eyes.py``; see its docstring.)
 
 ``bpy`` is imported lazily inside the bpy-bound functions, never at module top, so the
 framing math stays importable under fake-bpy unit tests.
@@ -32,9 +40,7 @@ from __future__ import annotations
 import base64
 import math
 import os
-import struct
 import tempfile
-import zlib
 from typing import Any, Iterable
 
 CAPTURE_CAM = "__niua_capture_cam"
@@ -164,93 +170,6 @@ def orbit_camera(
 
 
 # --------------------------------------------------------------------------------------
-# Pure-Python view-matrix math (unit-testable, no bpy) -- the core of the multi-angle fix
-# --------------------------------------------------------------------------------------
-#
-# ROOT CAUSE (docs/reports/capture-multiangle-bug.md): setting ``cam.location`` /
-# ``cam.rotation_euler`` does NOT synchronously update ``cam.matrix_world`` -- the
-# recompute is deferred to a depsgraph pass that never lands inside a single bridge
-# call. Every render path that read ``cam.matrix_world`` right after positioning the
-# camera therefore rendered a STALE transform, collapsing distinct angles (front/top/
-# right) into the same image. The fix: never read ``cam.matrix_world`` for the render
-# transform -- compute the view matrix directly, in pure Python, from the frame dict
-# that ``view_camera``/``orbit_camera`` already produced.
-
-
-def _matmul4(a: tuple, b: tuple) -> tuple:
-    """4x4 matrix multiply on plain nested tuples (the no-mathutils fallback path)."""
-    return tuple(
-        tuple(sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4))
-        for i in range(4)
-    )
-
-
-def _euler_xyz_to_matrix4(rot: tuple[float, float, float]) -> tuple:
-    """Rotation matrix for Blender's 'XYZ' Euler order: R = Rz(z) @ Ry(y) @ Rx(x).
-
-    Verified against ``mathutils.Euler(rot, 'XYZ').to_matrix()`` for arbitrary angles
-    (see the plan's Task 1 investigation) -- Blender's intrinsic X-then-Y-then-Z order
-    is the extrinsic Z-Y-X composition applied to a column vector.
-    """
-    x, y, z = rot
-    cx, sx = math.cos(x), math.sin(x)
-    cy, sy = math.cos(y), math.sin(y)
-    cz, sz = math.cos(z), math.sin(z)
-    rx = ((1.0, 0.0, 0.0, 0.0), (0.0, cx, -sx, 0.0), (0.0, sx, cx, 0.0), (0.0, 0.0, 0.0, 1.0))
-    ry = ((cy, 0.0, sy, 0.0), (0.0, 1.0, 0.0, 0.0), (-sy, 0.0, cy, 0.0), (0.0, 0.0, 0.0, 1.0))
-    rz = ((cz, -sz, 0.0, 0.0), (sz, cz, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0))
-    return _matmul4(_matmul4(rz, ry), rx)
-
-
-def _translation_matrix4(loc: tuple[float, float, float]) -> tuple:
-    x, y, z = loc
-    return ((1.0, 0.0, 0.0, x), (0.0, 1.0, 0.0, y), (0.0, 0.0, 1.0, z), (0.0, 0.0, 0.0, 1.0))
-
-
-def _invert_affine4(m: tuple) -> tuple:
-    """Invert a rigid transform (rotation + translation, no scale/shear): for
-    ``M = [R t; 0 1]``, ``inverse = [R^T  -R^T@t; 0 1]``.
-    """
-    r = tuple(tuple(m[i][j] for j in range(3)) for i in range(3))
-    rt = tuple(tuple(r[j][i] for j in range(3)) for i in range(3))
-    t = (m[0][3], m[1][3], m[2][3])
-    neg_rt_t = tuple(-sum(rt[i][k] * t[k] for k in range(3)) for i in range(3))
-    return (
-        (rt[0][0], rt[0][1], rt[0][2], neg_rt_t[0]),
-        (rt[1][0], rt[1][1], rt[1][2], neg_rt_t[1]),
-        (rt[2][0], rt[2][1], rt[2][2], neg_rt_t[2]),
-        (0.0, 0.0, 0.0, 1.0),
-    )
-
-
-def view_matrix_from_frame(frame: dict[str, Any]) -> Any:
-    """The capture camera's WORLD->VIEW matrix, computed PURE-PYTHON from a frame dict.
-
-    ``frame`` is exactly what ``view_camera``/``orbit_camera`` return: ``location`` +
-    ``rotation_euler`` (radians, 'XYZ' order). NEVER reads ``cam.matrix_world`` -- see
-    the module-level note above. Uses real ``mathutils`` when available (inside
-    Blender, returns a ``mathutils.Matrix``); falls back to an equivalent hand-rolled
-    4x4 (nested tuples) so this stays unit-testable under fake-bpy with no real
-    ``mathutils`` installed.
-    """
-    loc = frame["location"]
-    rot = frame["rotation_euler"]
-    try:
-        import mathutils  # noqa: PLC0415 - real Blender only
-
-        cam_world = mathutils.Matrix.Translation(mathutils.Vector(loc)) @ mathutils.Euler(rot, "XYZ").to_matrix().to_4x4()
-        return cam_world.inverted()
-    except Exception:  # noqa: BLE001 - fake-bpy unit tests: pure-python fallback
-        cam_world = _matmul4(_translation_matrix4(loc), _euler_xyz_to_matrix4(rot))
-        return _invert_affine4(cam_world)
-
-
-def projection_is_ortho(frame: dict[str, Any]) -> bool:
-    """Whether a frame calls for an orthographic projection (vs. perspective)."""
-    return frame.get("type") == "ORTHO"
-
-
-# --------------------------------------------------------------------------------------
 # bpy-bound rendering (degrades gracefully headless / no GPU)
 # --------------------------------------------------------------------------------------
 
@@ -343,15 +262,17 @@ def _configure_engine(bpy: Any, scene: Any, shading: str) -> None:
 
 
 def _render_to_b64(bpy: Any, cam_obj: Any, shading: str, res: int) -> str:
-    """Render ``cam_obj`` as-is via ``bpy.ops.render.opengl`` (the pre-fix path).
+    """Render ``cam_obj`` as-is via ``bpy.ops.render.opengl`` (the hidden-camera path).
 
-    Kept ONLY for ``_render_current`` (``view="current"``): that path renders the
-    user's own scene camera exactly as it already sits, without this call setting its
-    transform first, so it never hits the stale-``matrix_world`` bug that motivated
-    ``_render_offscreen`` below (docs/reports/capture-multiangle-bug.md). Every other
-    caller that positions the hidden capture camera from a frame -- ``render``/
-    ``capture_views``/``turntable`` and the topology/silhouette eyes -- uses
-    ``_render_offscreen`` instead.
+    Kept for two kinds of callers: ``_render_current`` (``view="current"``), which
+    renders the user's own scene camera exactly as it already sits, without this call
+    setting its transform first, so it never hits the stale-``matrix_world`` bug
+    documented in docs/reports/capture-multiangle-bug.md; and the hidden-capture-camera
+    eyes in ``domains/eyes.py`` (``feedback.uv``/``feedback.orientation``/
+    ``feedback.wire_shaded``), which position ``__niua_capture_cam`` via
+    ``_apply_frame``/``view_camera`` and are out of scope for the viewport-driven
+    rewrite -- see ``_render_viewport`` below for the render path used by ``render``/
+    ``capture_views``/``turntable`` and the topology/silhouette eyes.
     """
     scene = bpy.context.scene
     render = scene.render
@@ -430,166 +351,258 @@ def _render_to_b64(bpy: Any, cam_obj: Any, shading: str, res: int) -> str:
 
 
 # --------------------------------------------------------------------------------------
-# GPUOffScreen rendering (THE fix): deterministic, view-context-independent.
+# Viewport-driven rendering (THE fix): drive the live 3D viewport, capture what's drawn.
 # --------------------------------------------------------------------------------------
 #
-# Ports docs/reports/gpu_offscreen_verified_prototype.py, the canonical live-verified
-# reference (proven: a cone's front renders a triangle, top a circle, 4/4 distinct
-# angles). Renders via gpu.types.GPUOffScreen.draw_view3d fed an explicit view + proj
-# matrix, so it is independent of scene.camera / viewport state / depsgraph timing --
-# the class of bug that sank every render.opengl-based attempt.
+# Ports docs/reports/viewport_capture_verified_prototype.py, the canonical live-verified
+# reference (proven live on Suzanne: FRONT=face, RIGHT=profile, TOP=head -- 3/3 distinct,
+# correct, ~55KB each, not blank). This REPLACES an earlier gpu.types.GPUOffScreen.
+# draw_view3d path fed an explicit view+projection matrix: that path rendered
+# blank/unreliably in live testing with no error logged (see
+# docs/reports/capture-multiangle-bug.md "RESOLUTION 2"). Driving the actual viewport --
+# ``view3d.view_axis``/``view_orbit`` to orient it, ``view3d.view_selected``/``view_all``
+# to frame the subject, then ``render.opengl(view_context=True)`` to capture exactly what
+# is on screen -- is what proved reliable.
+
+#: Named ortho views -> bpy.ops.view3d.view_axis(type=...) enum values.
+_AXIS_VIEWS: dict[str, str] = {
+    "front": "FRONT",
+    "back": "BACK",
+    "left": "LEFT",
+    "right": "RIGHT",
+    "top": "TOP",
+    "bottom": "BOTTOM",
+}
+
+#: The 3/4 "persp" look: FRONT, then orbit this many degrees right (azimuth) and up
+#: (elevation) -- mirrors the retired view_camera()'s persp direction (1, -1, 0.7): a
+#: classic front-right-top 3/4 look.
+PERSP_AZIMUTH_DEG = 45.0
+PERSP_ELEVATION_DEG = 30.0
+#: Elevation used for the turntable/orbit4 steps (mirrors orbit_camera's default).
+ORBIT_ELEVATION_DEG = 25.0
 
 
-def _find_view3d_space_region(bpy: Any) -> tuple[Any, Any]:
-    """Locate a live VIEW_3D space + WINDOW region across all open windows.
+def _view_render_kwargs(view: str) -> dict[str, Any]:
+    """Translate a named view ('front'/'back'/'left'/'right'/'top'/'bottom'/'persp')
+    into ``_render_viewport`` keyword arguments. Raises ``ValueError`` for anything else
+    (including 'current', which callers handle separately via the scene camera)."""
+    axis = _AXIS_VIEWS.get(view)
+    if axis is not None:
+        return {"axis": axis}
+    if view == "persp":
+        return {"azimuth_deg": PERSP_AZIMUTH_DEG, "elevation_deg": PERSP_ELEVATION_DEG}
+    raise ValueError(f"unknown view: {view}")
 
-    ``GPUOffScreen.draw_view3d`` needs a real viewport space/region to borrow shading
-    settings and GL state from. Headless Blender (``--background``, no GUI) has no
-    windows at all, so this returns ``(None, None)`` and the caller degrades
-    gracefully -- exactly the prototype's search pattern.
+
+def _find_view3d_area_region(bpy: Any) -> tuple[Any, Any]:
+    """Locate a live VIEW_3D area + WINDOW region across all open windows.
+
+    The viewport render needs a real area+region to ``temp_override`` into for
+    ``view3d.view_axis``/``view_orbit``/``view_selected``/``render.opengl
+    (view_context=True)``. Headless Blender (``--background``, no GUI) has no windows at
+    all, so this returns ``(None, None)`` and the caller raises -- callers already
+    degrade to ``{"available": False, "reason": ...}``.
     """
     wm = getattr(bpy.context, "window_manager", None)
     for win in getattr(wm, "windows", []) if wm is not None else []:
         screen = getattr(win, "screen", None)
         for area in getattr(screen, "areas", []) if screen is not None else []:
             if getattr(area, "type", None) == "VIEW_3D":
-                space = area.spaces.active
                 region = next(
                     (r for r in getattr(area, "regions", []) if getattr(r, "type", None) == "WINDOW"),
                     None,
                 )
-                if space is not None and region is not None:
-                    return space, region
+                if region is not None:
+                    return area, region
     return None, None
 
 
-def _png_bytes(width: int, height: int, flat_ubyte: Any) -> bytes:
-    """Pure-Python RGBA8 PNG encoder -- ports the verified prototype's encoder verbatim.
-
-    GPU framebuffers are read bottom-up; PNG rows are top-down, so rows are emitted in
-    reverse to flip the image right-side-up.
-    """
-    stride = width * 4
-    rows = [b"\x00" + bytes(flat_ubyte[y * stride:(y + 1) * stride]) for y in range(height - 1, -1, -1)]
-    raw = b"".join(rows)
-
-    def chunk(tag: bytes, data: bytes) -> bytes:
-        body = tag + data
-        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
-
-    return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
-        + chunk(b"IDAT", zlib.compress(raw, 9))
-        + chunk(b"IEND", b"")
-    )
+def _copy_maybe(value: Any) -> Any:
+    """``value.copy()`` for real mathutils Vector/Quaternion/Matrix values; anything
+    without a ``.copy()`` (plain values used by fake-bpy unit tests) passes through
+    unchanged."""
+    copy_fn = getattr(value, "copy", None)
+    return copy_fn() if callable(copy_fn) else value
 
 
-def _read_offscreen_png(offscreen: Any, res: int) -> str:
-    """Bind the offscreen, read RGBA8 pixels, PNG-encode, return base64."""
-    import gpu  # noqa: PLC0415 - real Blender only
+def _snapshot_region_3d(r3d: Any) -> dict[str, Any]:
+    """Copy the 5 view-state fields the viewport render is allowed to disturb."""
+    return {
+        "view_perspective": getattr(r3d, "view_perspective", None),
+        "view_distance": getattr(r3d, "view_distance", None),
+        "view_location": _copy_maybe(getattr(r3d, "view_location", None)),
+        "view_rotation": _copy_maybe(getattr(r3d, "view_rotation", None)),
+        "view_matrix": _copy_maybe(getattr(r3d, "view_matrix", None)),
+    }
 
-    with offscreen.bind():
-        buf = gpu.state.active_framebuffer_get().read_color(0, 0, res, res, 4, 0, "UBYTE")
-    buf.dimensions = res * res * 4
-    return base64.b64encode(_png_bytes(res, res, list(buf))).decode("ascii")
+
+def _restore_region_3d(r3d: Any, snapshot: dict[str, Any]) -> None:
+    """Restore the 5 view-state fields, ``view_matrix`` last (most authoritative --
+    Blender derives location/rotation/distance from it when it is assigned directly)."""
+    if r3d is None:
+        return
+    for attr in ("view_perspective", "view_distance", "view_location", "view_rotation", "view_matrix"):
+        value = snapshot.get(attr)
+        if value is None:
+            continue
+        try:
+            setattr(r3d, attr, value)
+        except Exception:  # noqa: BLE001 - restore best-effort only
+            pass
 
 
-def _render_offscreen(bpy: Any, frame: dict[str, Any], shading: str, res: int) -> str:
-    """Render one ``frame`` via ``GPUOffScreen.draw_view3d`` fed a pure-Python view matrix.
+def _snapshot_selection(bpy: Any) -> dict[str, Any]:
+    scene = bpy.context.scene
+    view_layer = getattr(bpy.context, "view_layer", None)
+    selected = [(obj, bool(obj.select_get())) for obj in getattr(scene, "objects", [])]
+    active = getattr(getattr(view_layer, "objects", None), "active", None)
+    return {"selected": selected, "active": active}
 
-    THE render path for every eye that positions the hidden capture camera from a
-    frame: ``render``/``capture_views``/``turntable`` (this module) and the topology/
-    silhouette eyes. It NEVER reads ``cam.matrix_world`` -- the view matrix comes from
-    ``view_matrix_from_frame(frame)`` -- because setting the camera's transform and
-    reading ``matrix_world`` back in the same bridge call returns a stale value
-    (docs/reports/capture-multiangle-bug.md). The projection matrix instead comes from
-    ``cam.calc_matrix_camera``, which reads camera DATA (lens/ortho_scale/sensor) that
-    Blender updates immediately -- only object TRANSFORMS are deferred.
 
-    Disables viewport overlays and sets ``space.shading.type`` for the duration of the
-    render (both restored in ``finally``) so the 3D cursor / gizmos / user's own
-    viewport look never leak into a capture and are never left mutated afterward.
+def _restore_selection(bpy: Any, snapshot: dict[str, Any]) -> None:
+    view_layer = getattr(bpy.context, "view_layer", None)
+    for obj, was_selected in snapshot.get("selected", []):
+        try:
+            obj.select_set(was_selected)
+        except Exception:  # noqa: BLE001 - restore best-effort only
+            pass
+    if view_layer is not None:
+        try:
+            view_layer.objects.active = snapshot.get("active")
+        except Exception:  # noqa: BLE001 - restore best-effort only
+            pass
 
-    Raises on any failure (headless, no GPU, no VIEW_3D area, ...); callers already
-    wrap frame renders in try/except and degrade to ``{"available": False, "reason":
+
+def _render_viewport(
+    bpy: Any,
+    shading: str,
+    res: int,
+    obj_name: str | None,
+    *,
+    axis: str | None = None,
+    azimuth_deg: float | None = None,
+    elevation_deg: float | None = None,
+) -> str:
+    """Render one view by driving the LIVE 3D viewport and capturing what is drawn.
+
+    THE render path for every eye that renders a named/orbit angle: ``render``/
+    ``capture_views``/``turntable`` (this module) and the topology/silhouette eyes
+    (``core/overlay.py`` / ``core/silhouette.py``). Either ``axis`` (one of the 6
+    ``view3d.view_axis`` enum values) or ``azimuth_deg``/``elevation_deg`` (a 3/4 or
+    orbit look built from FRONT via ``view3d.view_orbit``) must be given.
+
+    Non-intrusive: snapshots the viewport view state, selection/active object,
+    shading/overlay, and ``scene.render`` settings before touching anything, and
+    restores every one of them in ``finally`` -- the user's own viewport, selection, and
+    render settings are exactly as they were after this returns, win or lose.
+
+    Raises on any failure (headless, no VIEW_3D area, missing object, ...); callers
+    already wrap this in try/except and degrade to ``{"available": False, "reason":
     ...}`` -- this function does not swallow exceptions itself, only restores state.
     """
     res = int(res)
-    space, region = _find_view3d_space_region(bpy)
-    if space is None or region is None:
-        raise RuntimeError("no VIEW_3D area with a GPU context available for offscreen capture (headless / no GUI)")
+    area, region = _find_view3d_area_region(bpy)
+    if area is None or region is None:
+        raise RuntimeError("no VIEW_3D area/region available for viewport capture (headless / no GUI)")
+    if axis is None and azimuth_deg is None and elevation_deg is None:
+        raise ValueError("_render_viewport requires axis= or azimuth_deg=/elevation_deg=")
 
-    import gpu  # noqa: PLC0415 - real Blender only; absence -> graceful degrade upstream
-
+    space = area.spaces.active
+    r3d = getattr(space, "region_3d", None)
     scene = bpy.context.scene
-    view_layer = getattr(bpy.context, "view_layer", None)
-    cam_obj = _ensure_capture_camera(bpy)
-    cam_data = cam_obj.data
+    render = scene.render
 
+    view_snapshot = _snapshot_region_3d(r3d)
+    selection_snapshot = _snapshot_selection(bpy)
     overlay_rna = getattr(space, "overlay", None)
     shading_rna = getattr(space, "shading", None)
     prev_overlay = getattr(overlay_rna, "show_overlays", None)
     prev_shading_type = getattr(shading_rna, "type", None)
-    prev_engine = getattr(scene.render, "engine", None)
+    prev_engine = getattr(render, "engine", None)
+    prev_render = {
+        "x": render.resolution_x,
+        "y": render.resolution_y,
+        "pct": render.resolution_percentage,
+        "filepath": render.filepath,
+        "fmt": render.image_settings.file_format,
+    }
 
-    offscreen = None
+    path = os.path.join(tempfile.gettempdir(), "niua_viewport_capture.png")
     try:
-        _apply_frame(cam_obj, frame)
-        cam_obj.hide_viewport = True
+        # Select ONLY the subject + make it active (or clear selection for a
+        # whole-scene shot) before framing -- scene-level state, not viewport state.
+        target_obj = None
+        for obj in getattr(scene, "objects", []):
+            obj.select_set(False)
+        if obj_name:
+            target_obj = bpy.data.objects.get(obj_name)
+            if target_obj is None:
+                raise ValueError(f"object not found: {obj_name}")
+            target_obj.select_set(True)
+            view_layer = getattr(bpy.context, "view_layer", None)
+            if view_layer is not None:
+                view_layer.objects.active = target_obj
 
         _configure_engine(bpy, scene, shading)
         if overlay_rna is not None:
             overlay_rna.show_overlays = False
         if shading_rna is not None:
             shading_rna.type = shading
+        render.resolution_x = res
+        render.resolution_y = res
+        render.resolution_percentage = 100
+        render.image_settings.file_format = "PNG"
+        render.filepath = path
 
-        # Force the dependency graph to re-evaluate before rendering. The topology/
-        # silhouette eyes mutate materials / material_index and add a Wireframe
-        # modifier via the data API; draw_view3d renders the EVALUATED mesh, so without
-        # this update a pass can render stale geometry (mirrors the same fix that was
-        # needed for the old render.opengl path).
-        try:
-            if view_layer is not None and hasattr(view_layer, "update"):
-                view_layer.update()
-        except Exception:  # noqa: BLE001 - update is best-effort; render still proceeds
-            pass
+        with bpy.context.temp_override(area=area, region=region):
+            if axis is not None:
+                bpy.ops.view3d.view_axis(type=axis)
+            else:
+                bpy.ops.view3d.view_axis(type="FRONT")
+                if azimuth_deg:
+                    bpy.ops.view3d.view_orbit(angle=math.radians(azimuth_deg), type="ORBITRIGHT")
+                if elevation_deg:
+                    bpy.ops.view3d.view_orbit(angle=math.radians(elevation_deg), type="ORBITUP")
+            if target_obj is not None:
+                bpy.ops.view3d.view_selected()
+            else:
+                bpy.ops.view3d.view_all()
+            bpy.ops.render.opengl(write_still=True, view_context=True)
 
-        view_matrix = view_matrix_from_frame(frame)
-        dg = bpy.context.evaluated_depsgraph_get()
-        proj_matrix = cam_obj.calc_matrix_camera(dg, x=res, y=res)
-
-        offscreen = gpu.types.GPUOffScreen(res, res)
-        offscreen.draw_view3d(
-            scene, view_layer, space, region, view_matrix, proj_matrix, do_color_management=False,
-        )
-        return _read_offscreen_png(offscreen, res)
+        with open(path, "rb") as handle:
+            return base64.b64encode(handle.read()).decode("ascii")
     finally:
-        if offscreen is not None:
-            offscreen.free()
         if overlay_rna is not None and prev_overlay is not None:
             overlay_rna.show_overlays = prev_overlay
         if shading_rna is not None and prev_shading_type is not None:
             shading_rna.type = prev_shading_type
         if prev_engine is not None:
             try:
-                scene.render.engine = prev_engine
+                render.engine = prev_engine
             except Exception:  # noqa: BLE001 - restore best-effort only
                 pass
+        render.resolution_x = prev_render["x"]
+        render.resolution_y = prev_render["y"]
+        render.resolution_percentage = prev_render["pct"]
+        render.filepath = prev_render["filepath"]
+        render.image_settings.file_format = prev_render["fmt"]
+        _restore_region_3d(r3d, view_snapshot)
+        _restore_selection(bpy, selection_snapshot)
 
 
 def render(bpy: Any, view: str, shading: str = "SOLID", res: int = 768, obj_name: str | None = None) -> dict[str, Any]:
     """Render one named view (or 'current' = the live scene camera) to base64 PNG.
 
     Returns an image envelope ``{available, view, mimeType, encoding, data}`` or, on any
-    failure (headless / no GPU / no display), ``{available: False, view, reason}``.
+    failure (headless / no VIEW_3D area / missing object), ``{available: False, view,
+    reason}``.
     """
     try:
         if view == "current":
             return _render_current(bpy, shading, res)
-        center, size = scene_bbox(bpy, obj_name)
-        frame = view_camera(center, size, view)
-        data = _render_offscreen(bpy, frame, shading, res)
+        kwargs = _view_render_kwargs(view)
+        data = _render_viewport(bpy, shading, res, obj_name, **kwargs)
         return {"available": True, "view": view, "mimeType": "image/png", "encoding": "base64", "data": data}
     except Exception as exc:  # noqa: BLE001 - graceful degrade is the contract
         return {"available": False, "view": view, "reason": str(exc)}
@@ -610,21 +623,23 @@ def capture_views(
 ) -> dict[str, Any]:
     """Render a preset set of views and return ``{available, images:[...]}``."""
     try:
-        center, size = scene_bbox(bpy, obj_name)
-        _ensure_capture_camera(bpy)
+        if obj_name and bpy.data.objects.get(obj_name) is None:
+            raise ValueError(f"object not found: {obj_name}")
     except Exception as exc:  # noqa: BLE001
         return {"available": False, "images": [], "reason": str(exc)}
 
     images: list[dict[str, Any]] = []
     if preset == "orbit4":
-        frames = [("orbit_%d" % a, orbit_camera(center, size, a)) for a in (0, 90, 180, 270)]
+        specs: list[tuple[str, dict[str, Any]]] = [
+            ("orbit_%d" % a, {"azimuth_deg": float(a), "elevation_deg": ORBIT_ELEVATION_DEG}) for a in (0, 90, 180, 270)
+        ]
     else:
         names = PRESETS.get(preset, PRESETS["ortho4"])
-        frames = [(name, view_camera(center, size, name)) for name in names]
+        specs = [(name, _view_render_kwargs(name)) for name in names]
 
-    for name, frame in frames:
+    for name, kwargs in specs:
         try:
-            data = _render_offscreen(bpy, frame, shading, res)
+            data = _render_viewport(bpy, shading, res, obj_name, **kwargs)
             images.append({"view": name, "mimeType": "image/png", "encoding": "base64", "data": data})
         except Exception as exc:  # noqa: BLE001 - one bad view shouldn't sink the rest
             images.append({"view": name, "available": False, "reason": str(exc)})
@@ -641,8 +656,8 @@ def turntable(
 ) -> dict[str, Any]:
     """Orbit the object/scene in ``count`` even steps; return ``{available, images:[...]}``."""
     try:
-        center, size = scene_bbox(bpy, obj_name)
-        _ensure_capture_camera(bpy)
+        if obj_name and bpy.data.objects.get(obj_name) is None:
+            raise ValueError(f"object not found: {obj_name}")
     except Exception as exc:  # noqa: BLE001
         return {"available": False, "images": [], "reason": str(exc)}
 
@@ -650,9 +665,8 @@ def turntable(
     images: list[dict[str, Any]] = []
     for i in range(count):
         angle = 360.0 * i / count
-        frame = orbit_camera(center, size, angle)
         try:
-            data = _render_offscreen(bpy, frame, shading, res)
+            data = _render_viewport(bpy, shading, res, obj_name, azimuth_deg=angle, elevation_deg=ORBIT_ELEVATION_DEG)
             images.append({"view": "orbit_%d" % round(angle), "mimeType": "image/png", "encoding": "base64", "data": data})
         except Exception as exc:  # noqa: BLE001
             images.append({"view": "orbit_%d" % round(angle), "available": False, "reason": str(exc)})
