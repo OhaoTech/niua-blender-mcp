@@ -115,3 +115,67 @@ renders.
 - **Form-recovery could destroy detail** → run on a checkpoint; keep the original recoverable.
 - **Over-fitting to the benchmark** → the altimeter's inputs are held-out; measure generalization,
   don't hand-tune per item.
+
+---
+
+## 9. Revision — red-team-driven corrections (2026-07-02)
+
+An adversarial 6-lens review of the first implementation plan found a design-level flaw; these
+corrections supersede the conflicting parts of §3 and §6. **Root problem:** an objective
+bounding-box gate cannot capture "believable form" — `boxiness = bbox_volume/longest³` is pure
+bbox shape (a spindly cross, a hollow shell, and a solid cube all ≈1.0), so it is blind to the
+bad-form cases it targets and wrongly blocks legitimate elongated inputs. Form is perceptual (§2);
+stop trying to hard-gate it.
+
+**Corrected decisions:**
+
+1. **Blockout gate = degenerate guard + enforced observation, NOT a proportion-quality gate.**
+   The objective half only catches *broken* meshes: a real **mesh-fill-ratio** (bmesh solid
+   volume / bbox volume — catches collapsed/spindly/hollow) with a low floor, plus an extreme-aspect
+   degenerate guard. The enforced half: the pipeline requires a **recorded `feedback.form_critique`
+   observation** on the object at `blockout` before `advance` (a state flag proving the agent looked
+   — not a taste bar). Believable form is agent-carried and **measured by the altimeter's
+   silhouette/proportion/design lenses**, not fake-gated. This must NOT block any of the 7 benchmark
+   items at intake — add a test asserting each passes its degenerate guard.
+
+2. **Add a real fill metric.** `feedback.quality` gains `fill_ratio` (bmesh solid volume / bbox
+   volume; degrade to null if bmesh volume unavailable). Prove on known meshes it separates a solid
+   box (~1) from a thin cross / collapsed blob (low). `boxiness` stays but is renamed in docs to
+   "bbox cubeness" and is NOT described as fill.
+
+3. **`form_critique` is data-driven + structured + wired in.** It interpolates *measured* aspect/
+   fill/symmetry vs a **per-subject target + tolerance** (not wide class ranges; drop the dead
+   aspect lower bound) and returns a structured object `{reads_all_angles, proportion_ok,
+   primary_masses_ok, fixes:[…]}`. Default preset = **ortho-only (front/right/top)** for proportion
+   reading (drop persp — perspective distorts proportion). It MUST be wired into
+   `workflows/altimeter.mjs` (finish prompt observes form via `feedback.form_critique` at blockout
+   and iterates before advancing) and instrumented (count calls per item) so the re-measure proves
+   the intervention was exercised.
+
+3b. **Reference targets carry target+tolerance per subject** (e.g. crate target_aspect≈1.0 ±; barrel
+   ≈1.2 ±), not permissive [min,max] class bands.
+
+4. **`reblock_form` is checkpoint-safe by mechanism, not by warning.** Auto `session.checkpoint`
+   BEFORE the first mutating op; on ANY op exception, `session.revert` then re-raise (no partial
+   destructive mutation). Merge distance is **bbox-relative** (fraction of bbox diagonal, clamped),
+   never absolute — arbitrary-scale generated meshes must not collapse. Return the checkpoint label;
+   `postcheck_recommended` includes `session.revert`. Tests: force a mid-op failure → mesh
+   byte-identical; live smoke: checkpoint→reblock→revert restores vert count/bbox.
+
+5. **`silhouette_refine` is silhouette-aware.** No uniform smoothing of hard-surface corners
+   (it degrades the crisp silhouettes hard_surface depends on) — smooth only boundary/feature-angle
+   loops, or exclude hard_surface. Verify per-class the blockout_pass does not LOWER objective
+   metrics.
+
+6. **Success criteria re-scoped (was arithmetically unreachable).** This wave targets 3 of 5 lenses;
+   `mean_overall ≥ 5.5` is impossible from form alone (max ≈5.1) and a bare `weakest_lens` rank-flip
+   is within judge noise (0.07 margin). New exit gate: **per-lens deltas vs a recorded baseline —
+   silhouette AND proportion each +≥1.0**, with baseline+post each run **twice** (or determinism
+   fixed) so the lift exceeds run-to-run noise. `mean_overall ≥ 5.5` is a later cumulative target,
+   not this wave's gate.
+
+7. **Coverage/parity fixes:** the blockout stage insertion breaks **five** real-Blender smoke walks
+   (not one) — update all. Add an offline `_GATES` server↔addon equality test (mirroring
+   `_PACKS`/`_WORKFLOWS`). Add offline fake-bpy `gate_check(stage='blockout')` tests for BOTH an
+   in-range pass AND an out-of-range/degenerate reject. Scope `generated_cleanup.form_recovery_reblock`
+   to `['blockout']` (repair is topology) or add an explicit recommend-order test.
