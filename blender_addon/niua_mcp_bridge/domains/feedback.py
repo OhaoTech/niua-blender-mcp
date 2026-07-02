@@ -61,6 +61,21 @@ def capture_views(ctx: Ctx, payload: dict) -> dict:
     return cap.capture_views(ctx.bpy, preset=preset, shading=shading, res=res, obj_name=obj)
 
 
+def silhouette(ctx: Ctx, payload: dict) -> dict:
+    from ..core import silhouette as sil
+
+    obj_name = payload.get("object")
+    preset = str(payload.get("preset", "ortho4"))
+    res = int(payload.get("res", 768))
+    out = sil.render_silhouette(ctx.bpy, obj_name, preset=preset, res=res)
+    if out.get("available"):
+        obj = ctx.bpy.data.objects.get(obj_name) if obj_name else sil._active_mesh(ctx.bpy)
+        if obj is not None and getattr(obj, "type", None) == "MESH":
+            out["proportion"] = _proportion(obj)
+            out["symmetry"] = _symmetry(obj.data)
+    return out
+
+
 def turntable(ctx: Ctx, payload: dict) -> dict:
     from ..core import capture as cap
 
@@ -312,6 +327,7 @@ def critique(ctx: Ctx, payload: dict) -> dict:
 COMMANDS = [
     Command("feedback.capture", capture, mutates=False),
     Command("feedback.capture_views", capture_views, mutates=False),
+    Command("feedback.silhouette", silhouette, mutates=False),
     Command("feedback.turntable", turntable, mutates=False),
     Command("feedback.critique", critique, mutates=False),
     Command("feedback.quality", quality, mutates=False),

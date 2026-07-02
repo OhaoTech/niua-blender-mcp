@@ -43,6 +43,21 @@ SPECS = [
         },
     ),
     ToolSpec(
+        name="feedback.silhouette",
+        category="feedback",
+        summary="Flat silhouette from preset angles + proportion/symmetry — the form eye.",
+        command="feedback.silhouette",
+        params={
+            "object": Str(summary="Object to frame; defaults to active"),
+            "preset": Enum(
+                ["ortho4", "ortho6", "orbit4"],
+                default="ortho4",
+                summary="ortho4=[front,right,top,persp], ortho6=six axes, orbit4=4 orbit angles",
+            ),
+            "res": Int(default=768, minimum=64, maximum=2048, summary="Square render resolution (px)"),
+        },
+    ),
+    ToolSpec(
         name="feedback.turntable",
         category="feedback",
         summary="Orbit the object/scene and return a sequence of images",
