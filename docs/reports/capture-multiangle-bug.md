@@ -75,3 +75,28 @@ deferred "GPUOffScreen non-intrusive" item.
    same collapse) for now; revisit multi-angle later.
 3. Pause and hand this specific render bug to a dedicated debugging session with deeper
    Blender-internal instrumentation.
+
+---
+
+## RESOLUTION 2 (the one that works) — 2026-07-02
+
+GPUOffScreen `draw_view3d` proved unreliable (renders blank/inconsistent; no error logged).
+**Verified-working approach instead: viewport-driven capture.** Drive the live 3D viewport to
+each angle and capture what is actually drawn on screen:
+
+```python
+with bpy.context.temp_override(area=view3d_area, region=window_region):
+    bpy.ops.view3d.view_axis(type="FRONT"|"RIGHT"|"TOP"|...)  # + view_orbit for 3/4 views
+    bpy.ops.view3d.view_selected()                            # frame the (selected) subject
+    scene.render.filepath = path
+    bpy.ops.render.opengl(write_still=True, view_context=True)  # capture the VIEWPORT
+```
+
+Proven live on Suzanne: FRONT=face, RIGHT=profile, TOP=head — 3/3 distinct, correct, ~55KB each
+(not blank). Prototype: `docs/reports/viewport_capture_verified_prototype.py`.
+
+**Production requirements:** snapshot + restore the viewport view (`region_3d.view_matrix`/
+`view_perspective`/`view_distance`) and the current selection/active object so the eye stays
+non-intrusive; set `space.shading.type` (SOLID for form; MATERIAL for topology/silhouette emission
+fills) + overlays off, then restore; degrade gracefully with no VIEW_3D/GL. This REPLACES the
+GPUOffScreen `_render_offscreen` path added in P1.0.
