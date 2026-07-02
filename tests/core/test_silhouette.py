@@ -105,6 +105,9 @@ class _FakeView3DOps:
     def view_all(self):
         self._calls.append(("view_all",))
 
+    def localview(self):
+        self._calls.append(("localview",))
+
 
 # -- fake bpy: material/node-tree plumbing (from tests/domains/test_shading.py) -----
 

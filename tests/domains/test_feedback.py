@@ -268,6 +268,9 @@ class _FakeView3DOps:
     def view_all(self):
         self._calls.append(("view_all",))
 
+    def localview(self):
+        self._calls.append(("localview",))
+
 
 def _make_bpy(render_raises: bool = False, write_file: bool = True, with_view3d: bool = True):
     bpy = types.ModuleType("bpy")
@@ -399,10 +402,13 @@ def test_capture_named_view_renders_via_viewport(ctx_env) -> None:
     assert out["mimeType"] == "image/png"
     assert out["data"]  # base64 of the fake png
 
-    # Drove the viewport to FRONT, then framed the (selected) object -- never a hidden
-    # capture camera, which this render path no longer creates at all.
-    assert bpy._view3d_calls[0] == ("view_axis", "FRONT")
+    # Isolated the subject in local view, drove the viewport to FRONT, framed the
+    # (selected) object, then exited local view -- never a hidden capture camera, which
+    # this render path no longer creates at all.
+    assert bpy._view3d_calls[0] == ("localview",)
+    assert bpy._view3d_calls[1] == ("view_axis", "FRONT")
     assert ("view_selected",) in bpy._view3d_calls
+    assert bpy._view3d_calls[-1] == ("localview",)
     assert bpy._objects.get(cap.CAPTURE_CAM) is None
 
     # render.opengl was asked to capture the VIEWPORT (view_context=True), not a camera.
@@ -420,10 +426,11 @@ def test_capture_persp_view_orbits_from_front(ctx_env) -> None:
     reg = build_default_registry()
     out = dispatch_on_main(reg, "feedback.capture", {"object": "Cube", "view": "persp"}, ctx)
     assert out["available"] is True
-    assert bpy._view3d_calls[0] == ("view_axis", "FRONT")
-    assert bpy._view3d_calls[1] == ("view_orbit", "ORBITRIGHT", pytest.approx(math.radians(cap.PERSP_AZIMUTH_DEG)))
-    assert bpy._view3d_calls[2] == ("view_orbit", "ORBITUP", pytest.approx(math.radians(cap.PERSP_ELEVATION_DEG)))
-    assert bpy._view3d_calls[3] == ("view_selected",)
+    assert bpy._view3d_calls[0] == ("localview",)
+    assert bpy._view3d_calls[1] == ("view_axis", "FRONT")
+    assert bpy._view3d_calls[2] == ("view_orbit", "ORBITRIGHT", pytest.approx(math.radians(cap.PERSP_AZIMUTH_DEG)))
+    assert bpy._view3d_calls[3] == ("view_orbit", "ORBITUP", pytest.approx(math.radians(cap.PERSP_ELEVATION_DEG)))
+    assert bpy._view3d_calls[4] == ("view_selected",)
 
 
 def test_capture_views_returns_one_image_per_preset_view(ctx_env) -> None:
@@ -530,7 +537,7 @@ def test_render_viewport_toggles_overlay_and_shading_then_restores(monkeypatch) 
     assert space.shading.type == "SOLID"
 
     # The right ops ran, in order: orient, frame, capture.
-    assert bpy._view3d_calls == [("view_axis", "TOP"), ("view_selected",)]
+    assert bpy._view3d_calls == [("localview",), ("view_axis", "TOP"), ("view_selected",), ("localview",)]
     assert bpy._render_calls[-1] == {"write_still": True, "view_context": True}
 
     # temp_override was entered with this exact area/region.

@@ -556,19 +556,32 @@ def _render_viewport(
         render.filepath = path
 
         with bpy.context.temp_override(area=area, region=region):
-            if axis is not None:
-                bpy.ops.view3d.view_axis(type=axis)
-            else:
-                bpy.ops.view3d.view_axis(type="FRONT")
-                if azimuth_deg:
-                    bpy.ops.view3d.view_orbit(angle=math.radians(azimuth_deg), type="ORBITRIGHT")
-                if elevation_deg:
-                    bpy.ops.view3d.view_orbit(angle=math.radians(elevation_deg), type="ORBITUP")
-            if target_obj is not None:
-                bpy.ops.view3d.view_selected()
-            else:
-                bpy.ops.view3d.view_all()
-            bpy.ops.render.opengl(write_still=True, view_context=True)
+            # Isolate the subject in LOCAL VIEW so the render shows ONLY it. render.opengl
+            # (view_context=True) captures the whole viewport, so without this any other
+            # scene object -- e.g. Blender's default startup Cube sitting at the origin --
+            # overlaps/occludes the subject and pollutes the capture. Toggled back off in
+            # the inner finally so the user's viewport is never left isolated.
+            entered_local = False
+            try:
+                if target_obj is not None:
+                    bpy.ops.view3d.localview()
+                    entered_local = True
+                if axis is not None:
+                    bpy.ops.view3d.view_axis(type=axis)
+                else:
+                    bpy.ops.view3d.view_axis(type="FRONT")
+                    if azimuth_deg:
+                        bpy.ops.view3d.view_orbit(angle=math.radians(azimuth_deg), type="ORBITRIGHT")
+                    if elevation_deg:
+                        bpy.ops.view3d.view_orbit(angle=math.radians(elevation_deg), type="ORBITUP")
+                if target_obj is not None:
+                    bpy.ops.view3d.view_selected()
+                else:
+                    bpy.ops.view3d.view_all()
+                bpy.ops.render.opengl(write_still=True, view_context=True)
+            finally:
+                if entered_local:
+                    bpy.ops.view3d.localview()  # exit local view (restore full scene)
 
         with open(path, "rb") as handle:
             return base64.b64encode(handle.read()).decode("ascii")
