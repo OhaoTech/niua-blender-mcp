@@ -156,6 +156,93 @@ def orbit_camera(
 
 
 # --------------------------------------------------------------------------------------
+# Pure-Python view-matrix math (unit-testable, no bpy) -- the core of the multi-angle fix
+# --------------------------------------------------------------------------------------
+#
+# ROOT CAUSE (docs/reports/capture-multiangle-bug.md): setting ``cam.location`` /
+# ``cam.rotation_euler`` does NOT synchronously update ``cam.matrix_world`` -- the
+# recompute is deferred to a depsgraph pass that never lands inside a single bridge
+# call. Every render path that read ``cam.matrix_world`` right after positioning the
+# camera therefore rendered a STALE transform, collapsing distinct angles (front/top/
+# right) into the same image. The fix: never read ``cam.matrix_world`` for the render
+# transform -- compute the view matrix directly, in pure Python, from the frame dict
+# that ``view_camera``/``orbit_camera`` already produced.
+
+
+def _matmul4(a: tuple, b: tuple) -> tuple:
+    """4x4 matrix multiply on plain nested tuples (the no-mathutils fallback path)."""
+    return tuple(
+        tuple(sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4))
+        for i in range(4)
+    )
+
+
+def _euler_xyz_to_matrix4(rot: tuple[float, float, float]) -> tuple:
+    """Rotation matrix for Blender's 'XYZ' Euler order: R = Rz(z) @ Ry(y) @ Rx(x).
+
+    Verified against ``mathutils.Euler(rot, 'XYZ').to_matrix()`` for arbitrary angles
+    (see the plan's Task 1 investigation) -- Blender's intrinsic X-then-Y-then-Z order
+    is the extrinsic Z-Y-X composition applied to a column vector.
+    """
+    x, y, z = rot
+    cx, sx = math.cos(x), math.sin(x)
+    cy, sy = math.cos(y), math.sin(y)
+    cz, sz = math.cos(z), math.sin(z)
+    rx = ((1.0, 0.0, 0.0, 0.0), (0.0, cx, -sx, 0.0), (0.0, sx, cx, 0.0), (0.0, 0.0, 0.0, 1.0))
+    ry = ((cy, 0.0, sy, 0.0), (0.0, 1.0, 0.0, 0.0), (-sy, 0.0, cy, 0.0), (0.0, 0.0, 0.0, 1.0))
+    rz = ((cz, -sz, 0.0, 0.0), (sz, cz, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+    return _matmul4(_matmul4(rz, ry), rx)
+
+
+def _translation_matrix4(loc: tuple[float, float, float]) -> tuple:
+    x, y, z = loc
+    return ((1.0, 0.0, 0.0, x), (0.0, 1.0, 0.0, y), (0.0, 0.0, 1.0, z), (0.0, 0.0, 0.0, 1.0))
+
+
+def _invert_affine4(m: tuple) -> tuple:
+    """Invert a rigid transform (rotation + translation, no scale/shear): for
+    ``M = [R t; 0 1]``, ``inverse = [R^T  -R^T@t; 0 1]``.
+    """
+    r = tuple(tuple(m[i][j] for j in range(3)) for i in range(3))
+    rt = tuple(tuple(r[j][i] for j in range(3)) for i in range(3))
+    t = (m[0][3], m[1][3], m[2][3])
+    neg_rt_t = tuple(-sum(rt[i][k] * t[k] for k in range(3)) for i in range(3))
+    return (
+        (rt[0][0], rt[0][1], rt[0][2], neg_rt_t[0]),
+        (rt[1][0], rt[1][1], rt[1][2], neg_rt_t[1]),
+        (rt[2][0], rt[2][1], rt[2][2], neg_rt_t[2]),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def view_matrix_from_frame(frame: dict[str, Any]) -> Any:
+    """The capture camera's WORLD->VIEW matrix, computed PURE-PYTHON from a frame dict.
+
+    ``frame`` is exactly what ``view_camera``/``orbit_camera`` return: ``location`` +
+    ``rotation_euler`` (radians, 'XYZ' order). NEVER reads ``cam.matrix_world`` -- see
+    the module-level note above. Uses real ``mathutils`` when available (inside
+    Blender, returns a ``mathutils.Matrix``); falls back to an equivalent hand-rolled
+    4x4 (nested tuples) so this stays unit-testable under fake-bpy with no real
+    ``mathutils`` installed.
+    """
+    loc = frame["location"]
+    rot = frame["rotation_euler"]
+    try:
+        import mathutils  # noqa: PLC0415 - real Blender only
+
+        cam_world = mathutils.Matrix.Translation(mathutils.Vector(loc)) @ mathutils.Euler(rot, "XYZ").to_matrix().to_4x4()
+        return cam_world.inverted()
+    except Exception:  # noqa: BLE001 - fake-bpy unit tests: pure-python fallback
+        cam_world = _matmul4(_translation_matrix4(loc), _euler_xyz_to_matrix4(rot))
+        return _invert_affine4(cam_world)
+
+
+def projection_is_ortho(frame: dict[str, Any]) -> bool:
+    """Whether a frame calls for an orthographic projection (vs. perspective)."""
+    return frame.get("type") == "ORTHO"
+
+
+# --------------------------------------------------------------------------------------
 # bpy-bound rendering (degrades gracefully headless / no GPU)
 # --------------------------------------------------------------------------------------
 

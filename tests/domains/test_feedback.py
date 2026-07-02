@@ -108,6 +108,78 @@ def test_orbit_elevation_raises_camera() -> None:
     assert frame["location"][2] > 0  # elevated above the object
 
 
+# -- view_matrix_from_frame: the pure-python core of the multi-angle fix ------------
+#
+# docs/reports/capture-multiangle-bug.md: reading cam.matrix_world right after setting
+# cam.location/rotation_euler returns a STALE transform within one bridge call, so
+# every render collapsed to the same angle. The fix computes the view matrix directly
+# from the frame dict instead. No real ``mathutils`` is installed in this dev/test
+# environment, so this exercises the pure-python fallback in
+# ``core.capture.view_matrix_from_frame`` -- verified byte-for-byte against real
+# ``mathutils.Matrix`` output from a live headless Blender (see the plan report).
+
+
+def test_view_matrix_known_frame_matches_hand_computed_value() -> None:
+    # front-ish frame: camera sits on -Y at distance 5, rotated +90deg about X so its
+    # local -Z looks back at the origin along +Y. Hand-computed (and cross-checked
+    # against real mathutils.Matrix in a live headless Blender):
+    #   [[1, 0, 0,  0], [0, 0, 1, 0], [0, -1, 0, -5], [0, 0, 0, 1]]
+    frame = {"location": (0.0, -5.0, 0.0), "rotation_euler": (math.pi / 2, 0.0, 0.0)}
+    vm = cap.view_matrix_from_frame(frame)
+    expected = (
+        (1.0, 0.0, 0.0, 0.0),
+        (0.0, 0.0, 1.0, 0.0),
+        (0.0, -1.0, 0.0, -5.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+    for row, erow in zip(vm, expected):
+        for value, evalue in zip(row, erow):
+            assert value == pytest.approx(evalue, abs=1e-9)
+
+
+def test_view_matrix_front_and_top_frames_are_distinct() -> None:
+    center, size = (0.0, 0.0, 0.0), (2.0, 2.0, 2.0)
+    front = cap.view_camera(center, size, "front")
+    top = cap.view_camera(center, size, "top")
+    vm_front = cap.view_matrix_from_frame(front)
+    vm_top = cap.view_matrix_from_frame(top)
+    flat_front = [v for row in vm_front for v in row]
+    flat_top = [v for row in vm_top for v in row]
+    assert any(abs(a - b) > 1e-6 for a, b in zip(flat_front, flat_top))
+
+
+def test_view_matrix_right_and_persp_frames_are_distinct_from_front() -> None:
+    center, size = (1.0, 2.0, 3.0), (4.0, 4.0, 4.0)
+    front = cap.view_matrix_from_frame(cap.view_camera(center, size, "front"))
+    right = cap.view_matrix_from_frame(cap.view_camera(center, size, "right"))
+    persp = cap.view_matrix_from_frame(cap.view_camera(center, size, "persp"))
+    flat_front = [v for row in front for v in row]
+    flat_right = [v for row in right for v in row]
+    flat_persp = [v for row in persp for v in row]
+    assert any(abs(a - b) > 1e-6 for a, b in zip(flat_front, flat_right))
+    assert any(abs(a - b) > 1e-6 for a, b in zip(flat_front, flat_persp))
+
+
+def test_view_matrix_is_orthonormal_rigid_transform() -> None:
+    # Sanity: the fallback's rotation block should be a valid rotation (R @ R^T = I),
+    # i.e. the inverse-of-a-rigid-transform math is actually correct, not just "different".
+    frame = cap.orbit_camera((0.0, 0.0, 0.0), (3.0, 3.0, 3.0), 37.0, elevation_deg=18.0)
+    vm = cap.view_matrix_from_frame(frame)
+    r = [[vm[i][j] for j in range(3)] for i in range(3)]
+    rt = [[r[j][i] for j in range(3)] for i in range(3)]
+    product = [[sum(r[i][k] * rt[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+    for i in range(3):
+        for j in range(3):
+            expected = 1.0 if i == j else 0.0
+            assert product[i][j] == pytest.approx(expected, abs=1e-6)
+    assert vm[3] == (0.0, 0.0, 0.0, 1.0)
+
+
+def test_projection_is_ortho_reflects_frame_type() -> None:
+    assert cap.projection_is_ortho(cap.view_camera((0, 0, 0), (2, 2, 2), "front")) is True
+    assert cap.projection_is_ortho(cap.view_camera((0, 0, 0), (2, 2, 2), "persp")) is False
+
+
 # -- fake bpy for the handler / render path -----------------------------------------
 
 class _Mat:
