@@ -1,7 +1,9 @@
 """Silhouette eye: render the object as a flat, unlit fill so FORM/proportion read cleanly.
 
-render.opengl(view_context=False) ignores Workbench shading, so (like the topology overlay) we
-assign a flat EMISSION material and render through EEVEE, then restore the object exactly.
+Renders through ``core.capture._render_offscreen`` (GPUOffScreen + a pure-Python view
+matrix -- see docs/reports/capture-multiangle-bug.md), so (like the topology overlay) we
+assign a flat EMISSION material and render under MATERIAL shading, then restore the
+object exactly.
 """
 from __future__ import annotations
 
@@ -46,7 +48,6 @@ def render_silhouette(bpy: Any, obj_name: str | None, preset: str = "ortho4", re
         orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
         orig_index = [p.material_index for p in mesh.polygons]
         center, size = cap.scene_bbox(bpy, obj_name)
-        cam_obj = cap._ensure_capture_camera(bpy)
 
         if preset == "orbit4":
             frames = [("orbit_%d" % a, cap.orbit_camera(center, size, a)) for a in (0, 90, 180, 270)]
@@ -61,8 +62,7 @@ def render_silhouette(bpy: Any, obj_name: str | None, preset: str = "ortho4", re
             for p in mesh.polygons:
                 p.material_index = 0
             for name, frame in frames:
-                cap._apply_frame(cam_obj, frame)
-                data = cap._render_to_b64(bpy, cam_obj, "MATERIAL", res)
+                data = cap._render_offscreen(bpy, frame, "MATERIAL", res)
                 images.append({"view": name, "mode": "silhouette", "mimeType": "image/png", "encoding": "base64", "data": data})
         finally:
             obj.data.materials.clear()

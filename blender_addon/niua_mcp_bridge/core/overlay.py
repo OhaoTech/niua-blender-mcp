@@ -1,8 +1,9 @@
 """Topology overlay: mark defects with real materials instead of viewport overlays.
 
-``render.opengl(view_context=False)`` renders from the capture camera and ignores
-viewport overlays. The topology eye therefore assigns temporary materials to mesh
-faces, renders, then restores the user's mesh exactly.
+Renders through ``core.capture._render_offscreen`` (GPUOffScreen + a pure-Python view
+matrix -- see docs/reports/capture-multiangle-bug.md), which disables viewport
+overlays for the duration of the render. The topology eye therefore assigns temporary
+materials to mesh faces, renders, then restores the user's mesh exactly.
 """
 
 from __future__ import annotations
@@ -38,9 +39,9 @@ def _ensure_marker_materials(bpy: Any) -> list:
     """Create/reuse EMISSION marker materials [quad, tri, ngon, wire].
 
     Emission shaders render as flat, unlit, full-saturation colour in EEVEE, so the
-    face-type fills read unambiguously regardless of scene lighting. (Workbench's
-    ``color_type='MATERIAL'`` is NOT honoured by ``render.opengl(view_context=False)``
-    -- it came back as plain gray clay -- so we drive the topology eye through EEVEE.)
+    face-type fills read unambiguously regardless of scene lighting. Workbench SOLID
+    shading would show plain gray clay instead of the actual material colour, so the
+    topology eye renders under ``MATERIAL`` viewport shading (EEVEE) specifically.
     """
     names = ["__niua_topo_quad", "__niua_topo_tri", "__niua_topo_ngon", "__niua_topo_wire"]
     rgbas = [QUAD_RGBA, TRI_RGBA, NGON_RGBA, WIRE_RGBA]
@@ -82,9 +83,7 @@ def topology_overlay(bpy: Any, obj_name: str | None, view: str = "persp", res: i
         orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
         orig_index = [p.material_index for p in mesh.polygons]
         center, size = cap.scene_bbox(bpy, obj_name)
-        cam_obj = cap._ensure_capture_camera(bpy)
         frame = cap.view_camera(center, size, view)
-        cap._apply_frame(cam_obj, frame)
 
         # Two distinct, verifiable passes:
         #   facetype -> FACETYPE shading (flat per-material colour): quads blue, tris orange,
@@ -102,10 +101,10 @@ def topology_overlay(bpy: Any, obj_name: str | None, view: str = "persp", res: i
             for p in mesh.polygons:
                 sides = len(p.vertices)
                 p.material_index = 0 if sides == 4 else (1 if sides == 3 else 2)
-            facetype = cap._render_to_b64(bpy, cam_obj, "MATERIAL", res)
+            facetype = cap._render_offscreen(bpy, frame, "MATERIAL", res)
             # Add a thin Wireframe modifier so edges become real, render-visible geometry
-            # (Workbench WIREFRAME shading is a viewport overlay and is ignored by
-            # render.opengl(view_context=False), so we materialise the edges instead).
+            # (Workbench WIREFRAME shading is a viewport-overlay look, not real geometry,
+            # so we materialise the edges instead of relying on a shading mode).
             try:
                 wire_mod = obj.modifiers.new(name="__niua_topo_wire", type="WIREFRAME")
                 wire_mod.thickness = max(max(size) * 0.012, 1e-4)
@@ -114,7 +113,7 @@ def topology_overlay(bpy: Any, obj_name: str | None, view: str = "persp", res: i
                 wire_mod.material_offset = 3  # dark wire emission material slot for contrast
             except Exception:  # noqa: BLE001 - fall back to plain solid if modifier fails
                 wire_mod = None
-            wire = cap._render_to_b64(bpy, cam_obj, "MATERIAL", res)
+            wire = cap._render_offscreen(bpy, frame, "MATERIAL", res)
         finally:
             if wire_mod is not None:
                 try:
