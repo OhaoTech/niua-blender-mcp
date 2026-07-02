@@ -591,6 +591,21 @@ def test_feedback_capture_views_returns_envelope(bridge: BlenderBridge) -> None:
         assert "data" in img or img.get("available") is False
 
 
+def test_feedback_silhouette_returns_envelope(bridge: BlenderBridge) -> None:
+    # The form eye: flat silhouette renders + proportion/symmetry. Headless has no GPU,
+    # so rendering may be unavailable; what we assert is the ENVELOPE CONTRACT (same
+    # discipline as test_feedback_capture_views_returns_envelope above) plus that the
+    # proportion/symmetry analytics ride along whenever the render succeeds.
+    bridge.call("scene.create_object", {"type": "CUBE", "name": "SilhouetteHero"})
+    out = bridge.call("feedback.silhouette", {"object": "SilhouetteHero", "preset": "ortho4", "res": 128})
+    assert "available" in out
+    if out["available"]:
+        assert out["images"] and all(im.get("mode") == "silhouette" for im in out["images"])
+        assert "proportion" in out and "symmetry" in out
+    else:
+        assert "reason" in out
+
+
 def test_topology_overlay_renders_two_distinct_images(bridge: BlenderBridge) -> None:
     bridge.call(
         "rna.call_operator",
