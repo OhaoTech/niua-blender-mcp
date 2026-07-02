@@ -120,16 +120,14 @@ def uv_checker(ctx: Ctx, payload: dict) -> dict:
         mesh = obj.data
         orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
         orig_index = [p.material_index for p in getattr(mesh, "polygons", [])]
-        center, size = cap.scene_bbox(ctx.bpy, obj.name)
-        cam_obj = cap._ensure_capture_camera(ctx.bpy)
-        cap._apply_frame(cam_obj, cap.view_camera(center, size, view))
+        render_kwargs = cap._view_render_kwargs(view)
 
         try:
             mesh.materials.clear()
             mesh.materials.append(_ensure_checker_material(ctx.bpy))
             for poly in getattr(mesh, "polygons", []):
                 poly.material_index = 0
-            image = cap._render_to_b64(ctx.bpy, cam_obj, "MATERIAL", res)
+            image = cap._render_viewport(ctx.bpy, "MATERIAL", res, obj.name, **render_kwargs)
         finally:
             mesh.materials.clear()
             for mat in orig_mats:
@@ -172,16 +170,14 @@ def orientation(ctx: Ctx, payload: dict) -> dict:
         mesh = obj.data
         orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
         orig_index = [p.material_index for p in getattr(mesh, "polygons", [])]
-        center, size = cap.scene_bbox(ctx.bpy, obj.name)
-        cam_obj = cap._ensure_capture_camera(ctx.bpy)
-        cap._apply_frame(cam_obj, cap.view_camera(center, size, view))
+        render_kwargs = cap._view_render_kwargs(view)
 
         try:
             mesh.materials.clear()
             mesh.materials.append(_ensure_orientation_material(ctx.bpy))
             for poly in getattr(mesh, "polygons", []):
                 poly.material_index = 0
-            image = cap._render_to_b64(ctx.bpy, cam_obj, "MATERIAL", res)
+            image = cap._render_viewport(ctx.bpy, "MATERIAL", res, obj.name, **render_kwargs)
         finally:
             mesh.materials.clear()
             for mat in orig_mats:
@@ -228,9 +224,8 @@ def wire_shaded(ctx: Ctx, payload: dict) -> dict:
         mesh = obj.data
         orig_mats = [slot.material for slot in getattr(obj, "material_slots", [])]
         orig_index = [p.material_index for p in getattr(mesh, "polygons", [])]
-        center, size = cap.scene_bbox(ctx.bpy, obj.name)
-        cam_obj = cap._ensure_capture_camera(ctx.bpy)
-        cap._apply_frame(cam_obj, cap.view_camera(center, size, view))
+        _, size = cap.scene_bbox(ctx.bpy, obj.name)  # size drives the wireframe thickness
+        render_kwargs = cap._view_render_kwargs(view)
         wire_mod = None
 
         try:
@@ -245,7 +240,7 @@ def wire_shaded(ctx: Ctx, payload: dict) -> dict:
             wire_mod.use_replace = False
             wire_mod.use_even_offset = True
             wire_mod.material_offset = wire_slot
-            image = cap._render_to_b64(ctx.bpy, cam_obj, "MATERIAL", res)
+            image = cap._render_viewport(ctx.bpy, "MATERIAL", res, obj.name, **render_kwargs)
         finally:
             if wire_mod is not None:
                 try:
