@@ -8,6 +8,7 @@ happy-path render against a recording fake bpy. The framing math needs no bpy at
 
 from __future__ import annotations
 
+import base64
 import math
 import sys
 import types
@@ -209,6 +210,12 @@ class FakeObj:
         self.hide_render = False
         self.data = None
 
+    def calc_matrix_camera(self, depsgraph, x=1, y=1, scale_x=1.0, scale_y=1.0):
+        # Real bpy.types.Object.calc_matrix_camera reads camera DATA (lens/ortho_scale/
+        # sensor), not the transform; a fake sentinel is enough since the fake
+        # draw_view3d below only records it, never interprets it.
+        return ("FAKE_PROJ_MATRIX", self.name, getattr(self.data, "type", None), x, y)
+
 
 class FakeCamData:
     def __init__(self, name) -> None:
@@ -217,7 +224,131 @@ class FakeCamData:
         self.ortho_scale = 1.0
 
 
-def _make_bpy(render_raises: bool = False, write_file: bool = True):
+# -- fake gpu module + fake VIEW_3D window/area (GPUOffScreen render path) ----------
+#
+# core.capture._render_offscreen does `import gpu` and walks
+# bpy.context.window_manager.windows -> screen.areas -> VIEW_3D -> space/region. Real
+# `gpu` is Blender-only (no PyPI package providing real GL), so tests that want the
+# happy path inject a fake module into sys.modules, mirroring how `bpy` itself is
+# faked. This does not prove real pixels render correctly (that needs live Blender --
+# see docs/reports/gpu_offscreen_verified_prototype.py) but it does prove the WIRING:
+# the right matrices/args reach draw_view3d, and overlay/shading state is toggled and
+# restored around it.
+
+
+class _FakeGPUBuffer(list):
+    """list subclass so ``buf.dimensions = ...`` (real Buffer supports this) works."""
+
+
+class _FakeFramebuffer:
+    @staticmethod
+    def read_color(x, y, w, h, channels, slot, dtype):
+        return _FakeGPUBuffer([21] * (w * h * channels))
+
+
+class _FakeGPUState:
+    @staticmethod
+    def active_framebuffer_get():
+        return _FakeFramebuffer()
+
+
+class _NullBind:
+    def __enter__(self):
+        return None
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _make_fake_gpu(draw_raises: bool = False):
+    """A fake ``gpu`` module. Returns ``(module, draw_calls)`` -- ``draw_calls`` records
+    every ``draw_view3d(...)`` invocation's kwargs for assertions."""
+    draw_calls: list = []
+
+    class _FakeGPUOffScreen:
+        def __init__(self, width, height):
+            self.width = width
+            self.height = height
+            self.freed = False
+
+        def draw_view3d(self, scene, view_layer, space, region, view_matrix, proj_matrix, do_color_management=False):
+            draw_calls.append(
+                {
+                    "scene": scene,
+                    "view_layer": view_layer,
+                    "space": space,
+                    "region": region,
+                    "view_matrix": view_matrix,
+                    "proj_matrix": proj_matrix,
+                    "do_color_management": do_color_management,
+                    # Snapshot state AS SEEN DURING the render (overlay/shading must be
+                    # mutated by now and restored only after draw_view3d returns).
+                    "overlay_show_overlays": getattr(space.overlay, "show_overlays", None),
+                    "shading_type": getattr(space.shading, "type", None),
+                }
+            )
+            if draw_raises:
+                raise RuntimeError("no GPU / headless")
+
+        def bind(self):
+            return _NullBind()
+
+        def free(self):
+            self.freed = True
+
+    class _Types:
+        GPUOffScreen = _FakeGPUOffScreen
+
+    mod = types.ModuleType("gpu")
+    mod.types = _Types
+    mod.state = _FakeGPUState
+    mod._draw_calls = draw_calls
+    return mod, draw_calls
+
+
+class _FakeOverlay:
+    def __init__(self) -> None:
+        self.show_overlays = True
+
+
+class _FakeSpaceShading:
+    def __init__(self) -> None:
+        self.type = "SOLID"
+
+
+class _FakeView3DSpace:
+    def __init__(self) -> None:
+        self.overlay = _FakeOverlay()
+        self.shading = _FakeSpaceShading()
+
+
+class _FakeRegion:
+    type = "WINDOW"
+
+
+class _FakeArea:
+    def __init__(self, area_type: str = "VIEW_3D") -> None:
+        self.type = area_type
+        self.spaces = types.SimpleNamespace(active=_FakeView3DSpace())
+        self.regions = [_FakeRegion()]
+
+
+class _FakeScreen:
+    def __init__(self) -> None:
+        self.areas = [_FakeArea()]
+
+
+class _FakeWindow:
+    def __init__(self) -> None:
+        self.screen = _FakeScreen()
+
+
+class _FakeWindowManager:
+    def __init__(self, with_view3d: bool = True) -> None:
+        self.windows = [_FakeWindow()] if with_view3d else []
+
+
+def _make_bpy(render_raises: bool = False, write_file: bool = True, with_view3d: bool = True):
     bpy = types.ModuleType("bpy")
     objects: dict = {}
     cameras: dict = {}
@@ -258,7 +389,14 @@ def _make_bpy(render_raises: bool = False, write_file: bool = True):
                 scene_objs.append(o)
 
     scene.collection = types.SimpleNamespace(objects=_Coll())
-    bpy.context = types.SimpleNamespace(scene=scene)
+    view_layer = types.SimpleNamespace(update=lambda: None)
+    window_manager = _FakeWindowManager(with_view3d=with_view3d)
+    bpy.context = types.SimpleNamespace(
+        scene=scene,
+        view_layer=view_layer,
+        window_manager=window_manager,
+        evaluated_depsgraph_get=lambda: "FAKE_DEPSGRAPH",
+    )
 
     class _DataObjects:
         @staticmethod
@@ -296,13 +434,28 @@ def _make_bpy(render_raises: bool = False, write_file: bool = True):
     bpy._render_calls = render_calls
     bpy._scene = scene
     bpy._objects = objects
+    gpu_module, gpu_draw_calls = _make_fake_gpu(draw_raises=render_raises)
+    bpy._gpu_module = gpu_module
+    bpy._gpu_draw_calls = gpu_draw_calls
     return bpy
+
+
+def _install_bpy(bpy, monkeypatch) -> None:
+    """Inject the fake ``bpy`` AND its matching fake ``gpu`` into sys.modules.
+
+    ``core.capture._render_offscreen`` does a plain top-level ``import gpu`` (real
+    ``gpu`` is Blender-only and not pip-installable), so tests exercising the
+    GPUOffScreen render path must patch ``sys.modules['gpu']`` exactly like ``bpy``
+    itself is patched.
+    """
+    monkeypatch.setitem(sys.modules, "bpy", bpy)
+    monkeypatch.setitem(sys.modules, "gpu", bpy._gpu_module)
 
 
 @pytest.fixture()
 def ctx_env(monkeypatch):
     bpy = _make_bpy()
-    monkeypatch.setitem(sys.modules, "bpy", bpy)
+    _install_bpy(bpy, monkeypatch)
     return Ctx(bpy), bpy
 
 
@@ -352,7 +505,7 @@ def test_turntable_clamps_count_and_orbits(ctx_env) -> None:
 
 def test_capture_degrades_when_render_fails(monkeypatch) -> None:
     bpy = _make_bpy(render_raises=True)
-    monkeypatch.setitem(sys.modules, "bpy", bpy)
+    _install_bpy(bpy, monkeypatch)
     ctx = Ctx(bpy)
     reg = build_default_registry()
     out = dispatch_on_main(reg, "feedback.capture", {"object": "Cube", "view": "front"}, ctx)
@@ -362,12 +515,24 @@ def test_capture_degrades_when_render_fails(monkeypatch) -> None:
 
 def test_capture_views_degrades_when_render_fails(monkeypatch) -> None:
     bpy = _make_bpy(render_raises=True)
-    monkeypatch.setitem(sys.modules, "bpy", bpy)
+    _install_bpy(bpy, monkeypatch)
     ctx = Ctx(bpy)
     reg = build_default_registry()
     out = dispatch_on_main(reg, "feedback.capture_views", {"object": "Cube"}, ctx)
     assert out["available"] is False
     assert all(img.get("available") is False for img in out["images"])
+
+
+def test_capture_degrades_when_no_view3d_area(monkeypatch) -> None:
+    # Real headless Blender (`--background`) has no windows at all -- this is the
+    # "no VIEW_3D area" branch of _render_offscreen, distinct from a GPU draw failure.
+    bpy = _make_bpy(with_view3d=False)
+    _install_bpy(bpy, monkeypatch)
+    ctx = Ctx(bpy)
+    reg = build_default_registry()
+    out = dispatch_on_main(reg, "feedback.capture", {"object": "Cube", "view": "front"}, ctx)
+    assert out["available"] is False
+    assert "VIEW_3D" in out["reason"] or "GPU" in out["reason"]
 
 
 def test_capture_missing_object_degrades(ctx_env) -> None:
@@ -384,6 +549,61 @@ def test_capture_current_without_scene_camera_degrades(ctx_env) -> None:
     out = dispatch_on_main(reg, "feedback.capture", {"view": "current"}, ctx)
     assert out["available"] is False
     assert "camera" in out["reason"].lower()
+
+
+# -- _render_offscreen wiring: overlay/shading toggled+restored, correct matrices ---
+
+
+def test_render_offscreen_toggles_overlay_and_shading_then_restores(monkeypatch) -> None:
+    bpy = _make_bpy()
+    _install_bpy(bpy, monkeypatch)
+    space = bpy.context.window_manager.windows[0].screen.areas[0].spaces.active
+    space.overlay.show_overlays = True
+    space.shading.type = "SOLID"
+
+    frame = cap.view_camera((0.0, 0.0, 0.0), (2.0, 2.0, 2.0), "top")
+    data = cap._render_offscreen(bpy, frame, "MATERIAL", 64)
+
+    assert data  # base64 PNG came back
+    png_bytes = base64.b64decode(data)
+    assert png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+
+    # Overlay/shading restored to their pre-render values afterward.
+    assert space.overlay.show_overlays is True
+    assert space.shading.type == "SOLID"
+
+    # But DURING the draw_view3d call, overlays were off and shading was the requested mode.
+    assert len(bpy._gpu_draw_calls) == 1
+    call = bpy._gpu_draw_calls[0]
+    assert call["overlay_show_overlays"] is False
+    assert call["shading_type"] == "MATERIAL"
+    assert call["do_color_management"] is False
+
+    # The view matrix handed to draw_view3d is exactly the pure-python computation --
+    # never a (possibly stale) cam.matrix_world read.
+    expected_vm = cap.view_matrix_from_frame(frame)
+    assert call["view_matrix"] == expected_vm
+
+
+def test_render_offscreen_restores_state_even_when_draw_raises(monkeypatch) -> None:
+    bpy = _make_bpy(render_raises=True)
+    _install_bpy(bpy, monkeypatch)
+    space = bpy.context.window_manager.windows[0].screen.areas[0].spaces.active
+    space.overlay.show_overlays = True
+    space.shading.type = "SOLID"
+
+    frame = cap.view_camera((0.0, 0.0, 0.0), (2.0, 2.0, 2.0), "front")
+    with pytest.raises(RuntimeError):
+        cap._render_offscreen(bpy, frame, "MATERIAL", 64)
+
+    assert space.overlay.show_overlays is True
+    assert space.shading.type == "SOLID"
+
+
+def test_render_offscreen_no_view3d_raises() -> None:
+    bpy = _make_bpy(with_view3d=False)
+    with pytest.raises(RuntimeError):
+        cap._render_offscreen(bpy, cap.view_camera((0, 0, 0), (2, 2, 2), "front"), "SOLID", 64)
 
 
 # -- critique bundle (images + report + uv in one observe call) ---------------------
@@ -409,7 +629,7 @@ def test_critique_bundles_images_and_report(ctx_env) -> None:
 
 def test_critique_report_survives_when_images_degrade(monkeypatch) -> None:
     bpy = _make_bpy(render_raises=True)
-    monkeypatch.setitem(sys.modules, "bpy", bpy)
+    _install_bpy(bpy, monkeypatch)
     ctx = Ctx(bpy)
     reg = build_default_registry()
     out = dispatch_on_main(reg, "feedback.critique", {"object": "Cube"}, ctx)
