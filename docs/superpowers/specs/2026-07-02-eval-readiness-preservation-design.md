@@ -88,3 +88,38 @@ spot-check is ever wanted, clearly labeled non-primary).
    compact masks — smaller, deterministic.)
 3. **Runner form** — `.mjs` workflow vs a pure-Python live harness? (Lean: Python harness — scoring is
    deterministic, only pipeline-driving needs an agent; simpler + cheaper than the judged `.mjs`.)
+
+---
+
+## 9. Correction — measure-and-flag (red-team-driven, 2026-07-02)
+
+An adversarial red-team of the first plan found the auto-revert guard architecturally conflicts with the
+pipeline's own job (retopo/LOD *intentionally* reduce geometry; a cumulative silhouette-vs-intake guard
+would deadlock required stages), and the silhouette mask fails open. These corrections are binding and
+supersede §3's hard guard.
+
+1. **Do-no-harm is MEASURED, not enforced by auto-revert.** Drop the pipeline auto-revert guard entirely;
+   `pipeline.advance` stays `mutates=False`. Preservation is a **metric** computed **per-stage delta**
+   (current vs the PREVIOUS stage-entry silhouette, with a stage-appropriate budget — repair/uv expect
+   ~0 silhouette change; retopo/optimize/LOD are allowed a larger budget) **and** cumulative-vs-intake for
+   reporting. A stage exceeding its budget is **flagged** (`harm_flagged` in the scorecard), not reverted —
+   the agent/eval acts on the flag; the pipeline never deadlocks.
+2. **Robust, fail-closed mask.** Render the preservation silhouette with `render.film_transparent = True`
+   and threshold the **ALPHA** channel (object coverage) — invariant to world/lighting/AgX tone-mapping,
+   which the RGB-luma mask was not. Use a **fixed camera framing** derived once from the stored intake bbox
+   (NOT per-render `view_selected`, which reframes on any bbox change and hides uniform-scale changes) and
+   **ortho-only** views (`ortho3` = front/right/top; exclude `persp` foreshortening). Fail **closed**:
+   return `available:false` when object/background aren't cleanly separable (histogram/coverage check), and
+   also carry a cheap GL-free **bbox aspect/scale** delta alongside IoU so a uniform-scale change is still
+   visible.
+3. **Readiness dedup.** Compose `feedback.readiness` as the mean of per-STAGE pass-fractions (equal weight
+   per stage/axis) AND the raw deduplicated-gate fraction (repeated paths like `topology.non_manifold_edges`
+   counted once); report both.
+4. **Honest runner.** Fix tool names (`object.rename`, not `objects.rename`; derive the created object name
+   from the `scene.create_object`/`object.create` result, not a non-existent `scene.info["active"]`). The
+   runner needs a real (cheap) finishing agent per item to actually produce a finished asset before scoring;
+   scoring is deterministic (no LLM judge). Add a startup registration guard asserting every tool the runner
+   calls exists. Distinguish **unmeasured** (headless / non-separable) from **failed** in the aggregate
+   (`n_unmeasured` excluded from means), so a headless run reports honestly instead of catastrophically.
+5. **Discoverability.** Surface `feedback.readiness` (game-ready check) and `pipeline.preservation`
+   (do-no-harm check) to the finishing agent via `src/niua_blender_mcp/prompts.py` (and the modeling playbook).
