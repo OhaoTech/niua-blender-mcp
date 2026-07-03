@@ -1,0 +1,31 @@
+# Objective Baseline — Readiness + Preservation (the new primary grade)
+
+**Date:** 2026-07-03 · **Runner:** `scripts/run_objective_benchmark.py --mode baseline` (deterministic, NO LLM judge).
+**Note:** `baseline` mode is a no-op finisher = an INPUT-QUALITY probe of the raw intake meshes (grade `INVALID`
+by design — it does not run a finisher). It exists to validate the ruler live + record the intake readiness floor.
+
+## The ruler works live (first validation)
+- `feedback.capture_intake` renders 3 alpha ortho silhouette masks live; `feedback.readiness` scores objective
+  gates order-free; `feedback.preservation` self-IoU = **exactly 1.0** on an unchanged mesh (deterministic, no AA
+  noise — the "SEM≈0" the audit demanded), and drops + flags `bbox_delta.changed` on a deliberate form change.
+
+## Baseline readings (raw intake, per class)
+| class | mean_readiness (gates passed) | mean_preservation |
+|---|---|---|
+| hard_surface_prop | 0.52 | 1.0 |
+| from_scratch_prop | 0.48 | 1.0 |
+| generated_cleanup | 0.48 | 1.0 |
+| organic_prop | 0.42 | 1.0 |
+
+Per item readiness: barrel .48 · blob .52 · shell .44 · bracket .48 · crate .56 · pumpkin .40 · rock .44.
+(preservation = 1.0 trivially — baseline is a no-op; the real preservation signal appears once a finisher runs.)
+
+## Known follow-ups (refinements, not blockers)
+1. **Preservation render robustness:** 2/7 items (`generated_shell` = open mesh; `organic_pumpkin` = left in EDIT
+   mode by its recipe) return preservation UNMEASURED (fail-closed → excluded from means, NOT falsely 1.0).
+   Fix: `capture_intake` should force OBJECT mode + handle open meshes / non-separable alpha.
+2. **Runner scene-reset:** the runner accumulates `bench_*` objects across runs; reset/clear the scene per run
+   for clean run-to-run determinism (the metric itself is deterministic — verified by the exact-1.0 self-IoU).
+
+The judged altimeter is demoted (non-primary). This objective bench is the primary grade every future deletion
+is validated against.
