@@ -967,7 +967,9 @@ def test_layer2_wave9a_craft_workflow_acceptance(bridge: BlenderBridge) -> None:
         "remove_doubles",
     ]
 
-    quality = bridge.call("feedback.quality", {"object": "WorkflowHero"})
+    # feedback.quality resolves asset_class from the payload only; pass it explicitly
+    # to match the pipeline run started above (see the wave9b comment for why).
+    quality = bridge.call("feedback.quality", {"object": "WorkflowHero", "asset_class": "hard_surface_prop"})
     assert quality["asset_class"]["id"] == "hard_surface_prop"
     assert "topology" in quality
 
@@ -1000,7 +1002,13 @@ def test_layer2_wave9b_workflow_breadth_acceptance(bridge: BlenderBridge) -> Non
     else:
         assert generated["skipped"] == [{"operator": "mesh.delete_loose", "reason": "unavailable"}]
     assert generated["postcheck_recommended"] == ["feedback.topology", "pipeline.gate_check"]
-    generated_quality = bridge.call("feedback.quality", {"object": "GeneratedWorkflowHero"})
+    # feedback.quality is base-layer and resolves asset_class from the payload only (it
+    # does not reach into the pipeline FSM), so the class must be passed explicitly here
+    # to match the pipeline run started above; pipeline.gate_check below resolves it
+    # from pipeline state and threads it through automatically.
+    generated_quality = bridge.call(
+        "feedback.quality", {"object": "GeneratedWorkflowHero", "asset_class": "generated_cleanup"}
+    )
     assert generated_quality["asset_class"]["id"] == "generated_cleanup"
     generated_gate = bridge.call("pipeline.gate_check", {"object": "GeneratedWorkflowHero", "stage": "retopo"})
     assert generated_gate["asset_class"]["id"] == "generated_cleanup"
@@ -1021,7 +1029,11 @@ def test_layer2_wave9b_workflow_breadth_acceptance(bridge: BlenderBridge) -> Non
         "tris_convert_to_quads",
     ]
     assert organic["skipped"] == []
-    organic_quality = bridge.call("feedback.quality", {"object": "OrganicWorkflowHero"})
+    # Same rationale as GeneratedWorkflowHero above: pass asset_class explicitly since
+    # feedback.quality no longer reads it from pipeline state.
+    organic_quality = bridge.call(
+        "feedback.quality", {"object": "OrganicWorkflowHero", "asset_class": "organic_prop"}
+    )
     assert organic_quality["asset_class"]["id"] == "organic_prop"
     organic_gate = bridge.call("pipeline.gate_check", {"object": "OrganicWorkflowHero", "stage": "retopo"})
     assert organic_gate["asset_class"]["id"] == "organic_prop"
