@@ -1,5 +1,13 @@
 # Altimeter — Baseline Reading
 
+> **HISTORICAL / NON-PRIMARY.** This is a 5-lens LLM-judge reading (SEM ~0.7) from a firewalled
+> offline A/B diagnostic (`workflows/altimeter.mjs`), superseded as the project grade. The
+> **primary, deterministic grade** is the objective runner —
+> `scripts/run_objective_benchmark.py` + `feedback.readiness` (game-ready gate fraction) /
+> `feedback.preservation` (do-no-harm silhouette IoU) — see
+> `docs/superpowers/plans/2026-07-02-eval-readiness-preservation-plan.md`. Kept for historical
+> reference only; do not treat the numbers below as a live target.
+
 **Date:** 2026-07-01
 **Run:** `workflows/altimeter.mjs` (workflow `wf_138a573d-8bf`), live visible Blender 5.1.2 on port 8765.
 **Cost:** 44 agents, ~2.48M tokens, ~34 min.
