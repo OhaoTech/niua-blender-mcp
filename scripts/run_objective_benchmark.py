@@ -72,7 +72,12 @@ def assert_tools_registered(items: list[dict]) -> None:
     """
     needed = set(_RUNNER_TOOLS)
     for item in items:
-        for step in item["input"]["recipe"]:
+        inp = item["input"]
+        if inp.get("asset"):
+            # asset items import a fixture and consolidate multi-part meshes via object.join
+            needed.update({"io.import", "capabilities.invoke"})
+            continue
+        for step in inp["recipe"]:
             needed.add(step["tool"])
     missing = sorted(needed - known_tools())
     if missing:
@@ -80,21 +85,36 @@ def assert_tools_registered(items: list[dict]) -> None:
 
 
 def _build_input(bridge: BlenderBridge, item: dict, subject: str) -> None:
-    """Run the item's creation recipe, then rename the freshly-created object to `subject`.
+    """Build the item's intake object and rename it to `subject`.
 
-    The created object's name is derived from a before/after diff of the scene.info() object
-    list -- robust to any recipe shape, including a recipe whose first step is a bare
-    capabilities.invoke RNA primitive-add (e.g. organic_rock's ico-sphere) rather than
-    scene.create_object. This never reads a nonexistent "active" key from scene.info().
+    Two input shapes are supported. ASSET items (the real-generator benchmark) import a generic
+    .glb/.obj fixture; a multi-part asset is consolidated into one object via object.join so the
+    single-object eyes (capture_intake/readiness/preservation) can measure it. RECIPE items (legacy
+    synthetic) run a create-recipe, injecting the created object's name into subsequent steps. In
+    both cases the created object is discovered by a before/after scene.info diff (never a
+    nonexistent "active" key) and renamed to `subject`.
     """
+    inp = item["input"]
     before = {o["name"] for o in bridge.call("scene.info", {}).get("objects", [])}
+
+    if inp.get("asset"):
+        path = inp.get("asset_path") or inp["asset"]
+        bridge.call("io.import", {"path": path})
+        parts = [o["name"] for o in bridge.call("scene.info", {}).get("objects", [])
+                 if o["name"] not in before and o.get("type") == "MESH"]
+        if not parts:
+            raise RuntimeError(f"item {item['id']!r}: asset {path!r} imported no mesh")
+        if len(parts) > 1:
+            # Consolidate a multi-part asset into one object: parts[0] active, all parts selected, join.
+            bridge.call("capabilities.invoke", {"idname": "object.join", "object": parts[0], "select": json.dumps(parts)})
+        created = parts[0]
+        bridge.call("object.rename", {"object": created, "name": subject})
+        return
+
     created: str | None = None
-    for step in item["input"]["recipe"]:
+    for step in inp["recipe"]:
         args = dict(step.get("args", {}))
-        # The recipe's first step creates the object; every later step must target it. The
-        # item.json recipes omit the object name (the old judged altimeter relied on the finish
-        # agent to fill it in), so inject the created object's name into the subsequent steps.
-        # `object` is a top-level param on both plain mutating tools and capabilities.invoke.
+        # Recipe step 1 creates the object; later steps must target it (recipes omit the name).
         if created is not None and "object" not in args:
             args["object"] = created
         bridge.call(step["tool"], args)
@@ -131,20 +151,35 @@ def _clear_meshes(bridge: BlenderBridge) -> None:
         bridge.call("object.delete", {"objects": ",".join(names)})
 
 
+def _safe(bridge: BlenderBridge, tool: str, payload: dict) -> dict | None:
+    """Call a measurement tool; on timeout/error (dense real generator meshes routinely exceed the
+    per-call limit on feedback.quality) return None so the item scores as UNMEASURED, not a crash."""
+    try:
+        return bridge.call(tool, payload)
+    except BridgeError as exc:
+        print(f"  [{payload.get('object')}] {tool} unavailable: {str(exc)[:70]}", file=sys.stderr)
+        return None
+
+
 def run_item(bridge: BlenderBridge, item: dict, finisher) -> dict:
     subject = f"bench_{item['id']}"
     _clear_meshes(bridge)
-    _build_input(bridge, item, subject)
-    intake = bridge.call("feedback.capture_intake", {"object": subject})
+    try:
+        _build_input(bridge, item, subject)
+    except BridgeError as exc:
+        print(f"  [{item['id']}] BUILD FAILED (import/join): {str(exc)[:70]}", file=sys.stderr)
+        return score_item_objective(item, readiness=None, stage_pass_fraction=None,
+                                    preservation=None, preservation_available=False)
+    intake = _safe(bridge, "feedback.capture_intake", {"object": subject})
     finisher(bridge, subject, item)                      # real work in agent mode; no-op in baseline
-    readiness = bridge.call("feedback.readiness", {"object": subject, "asset_class": item["asset_class"]})
-    pres = bridge.call("feedback.preservation", {"object": subject})
-    preservation_available = bool(intake.get("available")) and bool(pres.get("available"))
+    readiness = _safe(bridge, "feedback.readiness", {"object": subject, "asset_class": item["asset_class"]})
+    pres = _safe(bridge, "feedback.preservation", {"object": subject})
+    preservation_available = bool((intake or {}).get("available")) and bool((pres or {}).get("available"))
     return score_item_objective(
         item,
-        readiness=readiness.get("readiness"),
-        stage_pass_fraction=readiness.get("stage_pass_fraction_mean"),
-        preservation=pres.get("preservation"),
+        readiness=(readiness or {}).get("readiness"),
+        stage_pass_fraction=(readiness or {}).get("stage_pass_fraction_mean"),
+        preservation=(pres or {}).get("preservation"),
         preservation_available=preservation_available,
     )
 

@@ -1,0 +1,10 @@
+{
+  "note": "Real AI-generated assets used as the finisher benchmark. Generic .glb fixtures (the code stays decoupled from any generator). Binaries are git-ignored (heavy); this manifest records provenance so they can be re-sourced.",
+  "assets": {
+    "real_character.glb":       {"source": "~/Downloads/niua_model.glb",          "category": "humanoid character", "asset_class": "organic_prop"},
+    "real_character_light.glb": {"source": "~/Downloads/mesh (1).glb",            "category": "humanoid character (lighter)", "asset_class": "organic_prop"},
+    "real_creature.glb":        {"source": "~/Downloads/mesh.glb",                "category": "creature / organic", "asset_class": "organic_prop"},
+    "real_multipart.glb":       {"source": "~/Downloads/cyberpunk_character.glb", "category": "humanoid character, 10-part", "asset_class": "organic_prop"},
+    "real_prop.glb":            {"source": "~/Downloads/mesh (2).glb",            "category": "prop / vessel (dense)", "asset_class": "hard_surface_prop"}
+  }
+}

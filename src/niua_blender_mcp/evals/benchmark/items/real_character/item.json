@@ -1,0 +1,10 @@
+{
+  "id": "real_character",
+  "asset_class": "organic_prop",
+  "category": "humanoid_character",
+  "brief": "A generated humanoid character (hooded figure). Dense triangulated generator output; needs manifold repair, retopo to clean quads, UV, bake, and optimize to a character tri-budget.",
+  "input": {"asset": "assets/real_character.glb"},
+  "stages": ["repair", "retopo", "uv", "bake", "material", "optimize", "export_preflight"],
+  "rubric": "organic_prop",
+  "senior_threshold": 7.0
+}

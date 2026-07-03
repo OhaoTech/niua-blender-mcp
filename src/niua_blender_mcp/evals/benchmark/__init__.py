@@ -23,4 +23,9 @@ def load_item(item_id: str) -> dict:
     if not rubric_file.is_file():
         raise KeyError(item["rubric"])
     item["rubric_text"] = rubric_file.read_text(encoding="utf-8")
+    # Asset-input items reference a generic .glb/.obj fixture (real generator output). Resolve it to
+    # an absolute path so the runner can import it; the code stays decoupled from any generator.
+    inp = item.get("input", {})
+    if isinstance(inp, dict) and inp.get("asset"):
+        inp["asset_path"] = str((_ROOT / inp["asset"]).resolve())
     return item

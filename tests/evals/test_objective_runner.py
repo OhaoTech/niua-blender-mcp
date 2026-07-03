@@ -32,7 +32,12 @@ def test_every_runner_and_recipe_tool_is_registered() -> None:
     assert "object.rename" in known
     assert "objects.rename" not in known
     for item_id in list_items():
-        for step in load_item(item_id)["input"]["recipe"]:
+        inp = load_item(item_id)["input"]
+        if inp.get("asset"):
+            # asset items import a fixture (io.import) + join multi-part via capabilities.invoke
+            assert {"io.import", "capabilities.invoke"} <= known
+            continue
+        for step in inp["recipe"]:
             assert step["tool"] in known, step["tool"]
 
 
