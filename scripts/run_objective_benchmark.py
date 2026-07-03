@@ -46,6 +46,7 @@ from niua_blender_mcp.evals.objective_bench import aggregate_objective, score_it
 _RUNNER_TOOLS = {
     "scene.info",
     "object.rename",
+    "object.delete",
     "feedback.capture_intake",
     "feedback.readiness",
     "feedback.preservation",
@@ -116,8 +117,23 @@ def _no_op_finisher(bridge: BlenderBridge, subject: str, item: dict) -> None:
     return None
 
 
+def _clear_meshes(bridge: BlenderBridge) -> None:
+    """Delete all MESH objects so each item is built + scored in a clean, deterministic scene.
+
+    Without this, bench_* objects accumulate across items/runs and the before/after create-diff
+    (and the isolated silhouette framing) become order-dependent -- the source of run-to-run drift.
+    """
+    names = [o["name"] for o in bridge.call("scene.info", {}).get("objects", []) if o.get("type") == "MESH"]
+    if names:
+        # Use the dedicated object.delete tool (captures names, then bpy.data.objects.remove) --
+        # NOT capabilities.invoke object.delete, whose viewport-feedback summary post-accesses the
+        # just-removed object and raises "StructRNA of type Object has been removed".
+        bridge.call("object.delete", {"objects": ",".join(names)})
+
+
 def run_item(bridge: BlenderBridge, item: dict, finisher) -> dict:
     subject = f"bench_{item['id']}"
+    _clear_meshes(bridge)
     _build_input(bridge, item, subject)
     intake = bridge.call("feedback.capture_intake", {"object": subject})
     finisher(bridge, subject, item)                      # real work in agent mode; no-op in baseline
