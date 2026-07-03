@@ -11,6 +11,9 @@ and analytic feedback covers headless:
 * ``feedback.critique`` -- the one OBSERVE call the agent uses to *judge*: multi-angle
   images AND the analytic mesh/UV report in a single bundle, so the (multimodal) agent has
   both taste signal and checkable facts in one round-trip.
+* ``feedback.capture_intake`` -- records the do-no-harm baseline: fixed-frame ortho alpha
+  silhouette masks + the intake bbox, written to the passive ``core/preservation_ledger.py``
+  scratchpad (NOT the pipeline FSM) for later preservation checks.
 
 The rendering engine (dedicated hidden capture camera + framing math + workbench/EEVEE
 opengl render) lives in ``..core.capture``; handlers stay tiny and never move the user's
@@ -23,6 +26,10 @@ from typing import Any
 
 from ..context import Ctx
 from ..core import asset_classes
+from ..core import preservation_ledger as _ledger
+from ..core import session as _session
+from ..core import silhouette as _sil
+from ..core import silhouette_metrics as _sm
 from ..core.engine_metrics import engine_quality
 from ..core.export_profiles import export_profile_quality
 from ..core.material_metrics import material_quality
@@ -83,6 +90,49 @@ def turntable(ctx: Ctx, payload: dict) -> dict:
     res = int(payload.get("res", 768))
     obj = payload.get("object")
     return cap.turntable(ctx.bpy, count=count, shading=shading, res=res, obj_name=obj)
+
+
+def capture_intake(ctx: Ctx, payload: dict) -> dict:
+    """Record the intake do-no-harm baseline: fixed-frame ortho alpha masks + bbox + checkpoint.
+
+    Read-only (mutates=False): renders, copies a datablock (session.checkpoint), and writes the
+    passive ledger -- none of which changes the visible scene. Fail-closed: if any view is not
+    cleanly separable, the baseline is stored unavailable so preservation reports 'unmeasured'
+    rather than trusting a degenerate capture. The ledger is a thin per-object scratchpad, NOT
+    the pipeline FSM (core/preservation_ledger.py holds no stage/order/progress state).
+    """
+    obj = _resolve_mesh(ctx, payload)
+    out = _sil.render_preservation_views(
+        ctx.bpy, obj.name, views=_ledger.PRESERVATION_VIEWS, res=_ledger.PRESERVATION_RES
+    )
+    if not out.get("available"):
+        _ledger.set_intake(obj.name, {"available": False, "reason": out.get("reason", "unavailable")})
+        return {"object": obj.name, "available": False, "reason": out.get("reason", "unavailable")}
+
+    masks: dict[str, str] = {}
+    coverage: dict[str, float] = {}
+    shape = None
+    for img in out.get("images", []):
+        try:
+            w, h, mask = _sm.png_b64_to_mask(img["data"])
+        except Exception:  # noqa: BLE001 - a bad view fails the whole baseline (fail-closed)
+            _ledger.set_intake(obj.name, {"available": False, "reason": "decode failed"})
+            return {"object": obj.name, "available": False, "reason": "decode failed"}
+        if not _sm.is_separable(mask):
+            _ledger.set_intake(obj.name, {"available": False, "reason": f"{img['view']} not separable"})
+            return {"object": obj.name, "available": False, "reason": f"{img['view']} not separable"}
+        masks[img["view"]] = _sm.compact_encode(mask)
+        coverage[img["view"]] = _sm.mask_coverage(mask)
+        shape = [h, w]
+
+    _session.checkpoint(obj, label="niua:intake")
+    _ledger.set_intake(obj.name, {
+        "available": True, "res": out["res"], "frame": out["frame"],
+        "size": out["measured"]["size"], "masks": masks, "shape": shape,
+        "coverage": coverage, "checkpoint_label": "niua:intake",
+    })
+    return {"object": obj.name, "available": True, "views": sorted(masks),
+            "coverage": coverage, "checkpoint_label": "niua:intake"}
 
 
 def _loose_verts(bm: Any) -> int:
@@ -332,4 +382,5 @@ COMMANDS = [
     Command("feedback.turntable", turntable, mutates=False),
     Command("feedback.critique", critique, mutates=False),
     Command("feedback.quality", quality, mutates=False),
+    Command("feedback.capture_intake", capture_intake, mutates=False),
 ]

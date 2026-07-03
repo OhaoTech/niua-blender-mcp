@@ -122,4 +122,11 @@ SPECS = [
             "name_regex": Str(default="", summary="CUSTOM export profile object-name regex"),
         },
     ),
+    ToolSpec(
+        name="feedback.capture_intake",
+        category="feedback",
+        summary="Record the do-no-harm baseline: fixed-frame ortho alpha silhouettes + bbox + a session checkpoint",
+        command="feedback.capture_intake",
+        params={"object": Str(summary="Mesh object to baseline (defaults to active)")},
+    ),
 ]
