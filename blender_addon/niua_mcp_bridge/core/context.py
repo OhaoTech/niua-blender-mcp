@@ -86,12 +86,31 @@ class ResolvedContext:
     # -- helpers -----------------------------------------------------------------
 
     def _set_active(self, bpy: Any, obj: Any) -> None:
+        # Accept an object datablock (enter path) or a name (restore path). A name that no longer
+        # resolves -- because the wrapped operator removed the object (e.g. object.join/delete) --
+        # is skipped rather than assigning a freed datablock.
+        if isinstance(obj, str):
+            objects = getattr(getattr(bpy, "data", None), "objects", None)
+            obj = objects.get(obj) if hasattr(objects, "get") else None
+            if obj is None:
+                return
         view_layer = getattr(bpy.context, "view_layer", None)
         if view_layer is not None and hasattr(view_layer, "objects"):
             view_layer.objects.active = obj
 
     def _set_selection(self, bpy: Any, objects: list[Any]) -> None:
-        names = {getattr(o, "name", None) for o in objects}
+        # Accept object datablocks (enter path) or names (restore path). Objects the wrapped
+        # operator removed are skipped -- reading ``.name`` off a freed datablock raises
+        # "StructRNA of type Object has been removed".
+        names: set = set()
+        for o in objects:
+            if isinstance(o, str):
+                names.add(o)
+                continue
+            try:
+                names.add(o.name)
+            except ReferenceError:
+                continue
         scene = getattr(bpy.context, "scene", None)
         for o in list(getattr(scene, "objects", []) or []):
             if hasattr(o, "select_set"):
@@ -111,9 +130,13 @@ class ResolvedContext:
 
         # Snapshot current state so we can restore it.
         view_layer = getattr(ctx, "view_layer", None)
-        self._prev_active = getattr(getattr(view_layer, "objects", None), "active", None)
+        # Snapshot prev active/selection by NAME (not datablock refs): if the wrapped operator
+        # removes objects, restoring by name simply skips the gone ones instead of touching a
+        # freed StructRNA on __exit__.
+        prev_active = getattr(getattr(view_layer, "objects", None), "active", None)
+        self._prev_active = getattr(prev_active, "name", None)
         self._prev_selected = [
-            o
+            o.name
             for o in getattr(getattr(ctx, "scene", None), "objects", []) or []
             if getattr(o, "select_get", lambda: False)()
         ]

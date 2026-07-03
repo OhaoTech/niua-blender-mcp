@@ -107,7 +107,15 @@ def _build_input(bridge: BlenderBridge, item: dict, subject: str) -> None:
         if len(parts) > 1:
             # Consolidate a multi-part asset into one object: parts[0] active, all parts selected, join.
             bridge.call("capabilities.invoke", {"idname": "object.join", "object": parts[0], "select": json.dumps(parts)})
+            # Some accessory parts (e.g. in an excluded collection) may not join; drop any stray
+            # imported meshes so a single subject remains to measure.
+            strays = [o["name"] for o in bridge.call("scene.info", {}).get("objects", [])
+                      if o.get("type") == "MESH" and o["name"] != parts[0]]
+            if strays:
+                bridge.call("object.delete", {"objects": ",".join(strays)})
         created = parts[0]
+        if created not in {o["name"] for o in bridge.call("scene.info", {}).get("objects", [])}:
+            raise RuntimeError(f"item {item['id']!r}: subject {created!r} missing after import/join")
         bridge.call("object.rename", {"object": created, "name": subject})
         return
 
@@ -166,7 +174,7 @@ def run_item(bridge: BlenderBridge, item: dict, finisher) -> dict:
     _clear_meshes(bridge)
     try:
         _build_input(bridge, item, subject)
-    except BridgeError as exc:
+    except (BridgeError, RuntimeError) as exc:
         print(f"  [{item['id']}] BUILD FAILED (import/join): {str(exc)[:70]}", file=sys.stderr)
         return score_item_objective(item, readiness=None, stage_pass_fraction=None,
                                     preservation=None, preservation_available=False)
