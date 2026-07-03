@@ -83,6 +83,10 @@ Loop:
      1.0 on the intended axis; a low value means it is lopsided.
    - Topology: prefer high `quad_ratio`, low `ngon_ratio`, low `pole_count`, and
      `non_manifold_edges == 0` and `loose_verts == 0` (those last two are hard defects).
+   - Do-no-harm: after establishing a baseline with `feedback.capture_intake` (once, at intake),
+     call `feedback.preservation` to check the silhouette IoU vs that baseline. A drop below ~0.85
+     (or `bbox_delta.changed == true`) means the form itself was altered — that is HARM on a finisher,
+     even if the topology numbers improved.
 
 5. KEEP OR REVERT:
    - If the edit improved the form against the targets, keep it and `session.checkpoint`

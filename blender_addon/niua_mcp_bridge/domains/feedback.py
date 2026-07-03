@@ -35,7 +35,7 @@ from ..core.export_profiles import export_profile_quality
 from ..core.material_metrics import material_quality
 from ..core.orientation_metrics import orientation_quality
 from ..dispatch import Command
-from ..errors import INVALID_PARAMS, BridgeError
+from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
 from .mesh import (
     _bmesh_for,
     _resolve_mesh,
@@ -133,6 +133,51 @@ def capture_intake(ctx: Ctx, payload: dict) -> dict:
     })
     return {"object": obj.name, "available": True, "views": sorted(masks),
             "coverage": coverage, "checkpoint_label": "niua:intake"}
+
+
+def preservation(ctx: Ctx, payload: dict) -> dict:
+    """Do-no-harm METRIC (read-only): mean/min silhouette IoU of current form vs stored intake,
+    plus a GL-free bbox scale/aspect delta. Measures and reports; it never reverts anything and
+    touches no pipeline state -- `harm_flagged` is applied downstream by the scorecard, not here.
+    """
+    obj = _resolve_mesh(ctx, payload)
+    rec = _ledger.get_intake(obj.name)
+    if rec is None:
+        raise BridgeError(PRECONDITION, f"no intake baseline; call feedback.capture_intake for {obj.name}")
+    floor = _ledger.PRESERVATION_FLOOR
+    if not rec.get("available"):
+        return {"object": obj.name, "available": False, "preservation": None,
+                "preservation_pass": False, "threshold": floor,
+                "reason": rec.get("reason", "intake baseline unavailable")}
+
+    cur = _sil.render_preservation_views(
+        ctx.bpy, obj.name, frame=rec["frame"], views=tuple(rec["masks"]), res=rec["res"]
+    )
+    if not cur.get("available"):
+        return {"object": obj.name, "available": False, "preservation": None,
+                "preservation_pass": False, "threshold": floor,
+                "reason": cur.get("reason", "current silhouette unavailable")}
+
+    intake_masks = {v: _sm.compact_decode(d) for v, d in rec["masks"].items()}
+    current_masks: dict[str, bytes] = {}
+    for img in cur.get("images", []):
+        try:
+            current_masks[img["view"]] = _sm.png_b64_to_mask(img["data"])[2]
+        except Exception:  # noqa: BLE001
+            continue
+    metric = _sm.mean_preservation(intake_masks, current_masks)
+    delta = _sm.bbox_delta(rec["size"], cur["measured"]["size"])
+    score = metric.get("preservation") if metric.get("available") else None
+    return {
+        "object": obj.name,
+        "available": bool(metric.get("available")),
+        "preservation": score,
+        "preservation_pass": bool(metric.get("available")) and score is not None and score >= floor,
+        "threshold": floor,
+        "per_view": metric.get("per_view", {}),
+        "min_view": metric.get("min_view"),
+        "bbox_delta": delta,
+    }
 
 
 def _loose_verts(bm: Any) -> int:
@@ -383,4 +428,5 @@ COMMANDS = [
     Command("feedback.critique", critique, mutates=False),
     Command("feedback.quality", quality, mutates=False),
     Command("feedback.capture_intake", capture_intake, mutates=False),
+    Command("feedback.preservation", preservation, mutates=False),
 ]

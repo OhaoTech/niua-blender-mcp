@@ -85,3 +85,64 @@ def test_capture_intake_headless_degrades(env, monkeypatch) -> None:
 def test_capture_intake_command_registered_readonly() -> None:
     cmd = build_default_registry().get("feedback.capture_intake")
     assert cmd is not None and cmd.mutates is False and cmd.feedback is None
+
+
+def test_preservation_requires_intake_baseline(env) -> None:
+    from niua_mcp_bridge.errors import BridgeError
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    with pytest.raises(BridgeError):
+        fb.preservation(ctx, {"object": "Cube"})
+
+
+def test_preservation_identical_is_one(env, monkeypatch) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    monkeypatch.setattr(sil, "render_preservation_views", _render_stub([[1, 1], [1, 0]]))
+    fb.capture_intake(ctx, {"object": "Cube"})
+    out = fb.preservation(ctx, {"object": "Cube"})
+    assert out["available"] is True
+    assert out["preservation"] == 1.0
+    assert out["preservation_pass"] is True
+    assert out["threshold"] == 0.85
+    assert out["bbox_delta"]["changed"] is False
+
+
+def test_preservation_flags_damage_below_floor(env, monkeypatch) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    monkeypatch.setattr(sil, "render_preservation_views", _render_stub([[1, 1], [1, 0]]))
+    fb.capture_intake(ctx, {"object": "Cube"})
+    # Current form collapses to a quarter of the frame -> IoU well below floor.
+    monkeypatch.setattr(sil, "render_preservation_views", _render_stub([[1, 0], [0, 0]]))
+    out = fb.preservation(ctx, {"object": "Cube"})
+    assert out["available"] is True
+    assert out["preservation"] < 0.85
+    assert out["preservation_pass"] is False
+
+
+def test_preservation_uniform_scale_visible_in_bbox_delta(env, monkeypatch) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    monkeypatch.setattr(sil, "render_preservation_views", _render_stub([[1, 1], [1, 0]], size=(2.0, 2.0, 2.0)))
+    fb.capture_intake(ctx, {"object": "Cube"})
+    # Same silhouette shape, but the object is half the size -> bbox_delta flags it.
+    monkeypatch.setattr(sil, "render_preservation_views", _render_stub([[1, 1], [1, 0]], size=(1.0, 1.0, 1.0)))
+    out = fb.preservation(ctx, {"object": "Cube"})
+    assert out["bbox_delta"]["changed"] is True
+    assert abs(out["bbox_delta"]["scale_ratio"] - 0.5) < 1e-9
+
+
+def test_preservation_unmeasured_when_intake_headless(env, monkeypatch) -> None:
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_CUBE_VERTS, polys=_CUBE_QUADS)))
+    monkeypatch.setattr(sil, "render_preservation_views",
+                        lambda bpy, name, **kw: {"available": False, "reason": "headless"})
+    fb.capture_intake(ctx, {"object": "Cube"})
+    out = fb.preservation(ctx, {"object": "Cube"})
+    assert out["available"] is False  # unmeasured, not a false failure
+
+
+def test_preservation_command_registered_readonly() -> None:
+    cmd = build_default_registry().get("feedback.preservation")
+    assert cmd is not None and cmd.mutates is False and cmd.feedback is None

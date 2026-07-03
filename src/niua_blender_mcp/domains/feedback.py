@@ -129,4 +129,11 @@ SPECS = [
         command="feedback.capture_intake",
         params={"object": Str(summary="Mesh object to baseline (defaults to active)")},
     ),
+    ToolSpec(
+        name="feedback.preservation",
+        category="feedback",
+        summary="Do-no-harm metric: mean/min silhouette IoU of current form vs the stored intake baseline + bbox delta (read-only, no revert)",
+        command="feedback.preservation",
+        params={"object": Str(summary="Object with a stored intake baseline (defaults to active)")},
+    ),
 ]
