@@ -14,6 +14,12 @@ and analytic feedback covers headless:
 * ``feedback.capture_intake`` -- records the do-no-harm baseline: fixed-frame ortho alpha
   silhouette masks + the intake bbox, written to the passive ``core/preservation_ledger.py``
   scratchpad (NOT the pipeline FSM) for later preservation checks.
+* ``feedback.preservation`` -- do-no-harm metric: silhouette IoU of the current form vs the
+  stored intake baseline, plus a GL-free bbox delta.
+* ``feedback.readiness`` -- the objective game-ready scorecard: fraction of ALL objective gate
+  groups passed, aggregated in NO ORDER (order-free replacement for the FSM's single-file gate
+  march). Reuses the gate *definitions* (``core/pipeline.{stage_gates,check_gates,gate_profile}``)
+  and ``feedback.quality`` -- never the pipeline FSM control surface.
 
 The rendering engine (dedicated hidden capture camera + framing math + workbench/EEVEE
 opengl render) lives in ``..core.capture``; handlers stay tiny and never move the user's
@@ -34,6 +40,7 @@ from ..core.engine_metrics import engine_quality
 from ..core.export_profiles import export_profile_quality
 from ..core.material_metrics import material_quality
 from ..core.orientation_metrics import orientation_quality
+from ..core.pipeline import check_gates, gate_profile, stage_gates  # gate DEFINITIONS, not FSM control
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
 from .mesh import (
@@ -177,6 +184,60 @@ def preservation(ctx: Ctx, payload: dict) -> dict:
         "per_view": metric.get("per_view", {}),
         "min_view": metric.get("min_view"),
         "bbox_delta": delta,
+    }
+
+
+# All objective gate groups, aggregated in NO ORDER (this is a set to check, not a walk).
+_GATE_GROUPS = ["repair", "retopo", "uv", "bake", "material", "optimize", "export_preflight"]
+
+
+def _hashable(v: Any) -> Any:
+    return tuple(v) if isinstance(v, (list, dict, set)) else v
+
+
+def readiness(ctx: Ctx, payload: dict) -> dict:
+    """Objective game-readiness scorecard (read-only): fraction of gates passed across every gate
+    group, aggregated with no order. Reports BOTH the deduped-gate fraction (headline) and the
+    mean per-group pass-fraction, so a group with many gates (optimize=9) can't skew the reading
+    and a path shared by two groups isn't double-counted. Reuses feedback.quality + the objective
+    gate definitions (``core/pipeline.{stage_gates,check_gates,gate_profile}``) -- no judge, no
+    images, no pipeline state; this is the order-free replacement for the FSM's single-file gate
+    march, not a walk over it.
+    """
+    obj = _resolve_mesh(ctx, payload)
+    asset_class = payload.get("asset_class")
+    metrics = quality(ctx, {"object": obj.name, "asset_class": asset_class} if asset_class
+                      else {"object": obj.name})
+    asset_meta = metrics.get("asset_class", {})
+    ac_id = asset_meta.get("id") if isinstance(asset_meta, dict) else asset_class
+
+    per_group: list[dict] = []
+    deduped: dict[tuple, tuple[Any, bool]] = {}   # (path, op, value) -> (actual, pass) (kept once)
+    stage_fractions: list[float] = []
+    for group in _GATE_GROUPS:
+        gates, _applied = stage_gates(group, asset_class=ac_id)
+        if not gates:
+            continue
+        checked = check_gates(metrics, gates)
+        count = len(gates)
+        passed = sum(1 for g in checked["gates"] if g["pass"])
+        stage_fractions.append(passed / count)
+        per_group.append({"group": group, "gate_profile": gate_profile(group),
+                          "gates_pass": checked["gates_pass"], "gates_count": count,
+                          "gates_pass_count": passed, "pass_fraction": passed / count})
+        for g in checked["gates"]:
+            deduped[(g["path"], g["op"], _hashable(g["value"]))] = (g["actual"], g["pass"])
+
+    total = len(deduped)
+    total_pass = sum(1 for _actual, ok in deduped.values() if ok)
+    per_gate = [{"path": p, "op": o, "value": v, "actual": actual, "pass": ok}
+                for (p, o, v), (actual, ok) in deduped.items()]
+    return {
+        "object": obj.name, "asset_class": asset_meta,
+        "readiness": (total_pass / total) if total else None,
+        "stage_pass_fraction_mean": (sum(stage_fractions) / len(stage_fractions)) if stage_fractions else None,
+        "total_gates_deduped": total, "total_gates_pass_deduped": total_pass,
+        "per_group": per_group, "per_gate": per_gate,
     }
 
 
@@ -429,4 +490,5 @@ COMMANDS = [
     Command("feedback.quality", quality, mutates=False),
     Command("feedback.capture_intake", capture_intake, mutates=False),
     Command("feedback.preservation", preservation, mutates=False),
+    Command("feedback.readiness", readiness, mutates=False),
 ]

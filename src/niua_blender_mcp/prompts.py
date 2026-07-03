@@ -87,12 +87,21 @@ Loop:
      call `feedback.preservation` to check the silhouette IoU vs that baseline. A drop below ~0.85
      (or `bbox_delta.changed == true`) means the form itself was altered — that is HARM on a finisher,
      even if the topology numbers improved.
+   - Game-ready: call `feedback.readiness` for the objective definition-of-done — the fraction of
+     all game-ready gates passed (topology / UV / material / engine / export), aggregated in no
+     order. Read `per_group` to see which axis is blocking.
 
 5. KEEP OR REVERT:
    - If the edit improved the form against the targets, keep it and `session.checkpoint`
      again to make it the new baseline.
    - If it regressed (worse silhouette, broke symmetry, introduced non-manifold/loose geometry,
      dropped quad_ratio), call `session.revert` with {{{obj_arg}}} and try a different edit.
+
+   THE CORE LOOP (do no harm while making it game-ready): once per subject, `feedback.capture_intake`
+   to set the baseline. Then, each iteration: `session.checkpoint` -> make ONE edit -> re-measure
+   `feedback.readiness` AND `feedback.preservation` -> KEEP the edit only if readiness went up (or
+   held) AND preservation stayed >= 0.85; otherwise `session.revert`. This keeps the pass a monotone
+   hill-climb that cannot score below where it started — the machine does not revert for you.
 
 6. REPEAT until the quality targets are met: clean silhouette from all angles, intended
    symmetry ~1.0, quad-dominant topology, zero non-manifold edges and loose verts.

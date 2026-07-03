@@ -242,11 +242,17 @@ def test_quality_explicit_payload_asset_class_is_used(env) -> None:
 
 
 def test_feedback_module_does_not_import_pipeline() -> None:
-    # The base (feedback.py) must not depend on the Layer-2 pipeline FSM singleton.
+    # The base (feedback.py) must not depend on the Layer-2 pipeline FSM singleton -- its
+    # control surface (start/advance/status/record_gate/rollback_pointer/reset/_STORE) and the
+    # domains.pipeline module stay untouched. feedback.readiness is the sanctioned exception:
+    # it reuses the pure, order-free gate DEFINITIONS (stage_gates/check_gates/gate_profile)
+    # that happen to live in core/pipeline.py alongside the FSM -- never the FSM control itself.
     import ast
     import inspect
 
     import niua_mcp_bridge.domains.feedback as feedback_mod
+
+    _ALLOWED_CORE_PIPELINE_NAMES = {"check_gates", "gate_profile", "stage_gates"}
 
     source = inspect.getsource(feedback_mod)
     tree = ast.parse(source)
@@ -254,12 +260,18 @@ def test_feedback_module_does_not_import_pipeline() -> None:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             imported_modules.add(node.module)
+            if node.module == "core.pipeline":
+                names = {alias.name for alias in node.names}
+                assert names <= _ALLOWED_CORE_PIPELINE_NAMES, names
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 imported_modules.add(alias.name)
 
-    assert not any("pipeline" in name for name in imported_modules), imported_modules
+    banned = {name for name in imported_modules if "pipeline" in name and name != "core.pipeline"}
+    assert not banned, banned
     assert not hasattr(feedback_mod, "pipeline_store")
+    for fsm_symbol in ("start", "advance", "status", "record_gate", "rollback_pointer", "reset", "get_state"):
+        assert not hasattr(feedback_mod, fsm_symbol), fsm_symbol
 
 
 def test_quality_unknown_asset_class_fails_cleanly(env) -> None:

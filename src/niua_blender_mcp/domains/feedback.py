@@ -136,4 +136,14 @@ SPECS = [
         command="feedback.preservation",
         params={"object": Str(summary="Object with a stored intake baseline (defaults to active)")},
     ),
+    ToolSpec(
+        name="feedback.readiness",
+        category="feedback",
+        summary="Objective game-ready scorecard: fraction of all objective gates passed, order-free + deduped (no judge, no images)",
+        command="feedback.readiness",
+        params={
+            "object": Str(summary="Mesh object to score (defaults to active)"),
+            "asset_class": Enum(ASSET_CLASS_IDS, summary="Layer 2 asset-class profile"),
+        },
+    ),
 ]
