@@ -87,13 +87,23 @@ def _build_input(bridge: BlenderBridge, item: dict, subject: str) -> None:
     scene.create_object. This never reads a nonexistent "active" key from scene.info().
     """
     before = {o["name"] for o in bridge.call("scene.info", {}).get("objects", [])}
+    created: str | None = None
     for step in item["input"]["recipe"]:
-        bridge.call(step["tool"], dict(step.get("args", {})))
-    after = bridge.call("scene.info", {}).get("objects", [])
-    created = [o["name"] for o in after if o["name"] not in before]
-    if not created:
+        args = dict(step.get("args", {}))
+        # The recipe's first step creates the object; every later step must target it. The
+        # item.json recipes omit the object name (the old judged altimeter relied on the finish
+        # agent to fill it in), so inject the created object's name into the subsequent steps.
+        # `object` is a top-level param on both plain mutating tools and capabilities.invoke.
+        if created is not None and "object" not in args:
+            args["object"] = created
+        bridge.call(step["tool"], args)
+        if created is None:
+            now = [o["name"] for o in bridge.call("scene.info", {}).get("objects", []) if o["name"] not in before]
+            if now:
+                created = now[-1]
+    if created is None:
         raise RuntimeError(f"item {item['id']!r}: recipe created no new object")
-    bridge.call("object.rename", {"object": created[-1], "name": subject})
+    bridge.call("object.rename", {"object": created, "name": subject})
 
 
 def _no_op_finisher(bridge: BlenderBridge, subject: str, item: dict) -> None:
