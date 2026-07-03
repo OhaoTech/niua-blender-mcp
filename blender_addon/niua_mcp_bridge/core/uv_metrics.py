@@ -94,6 +94,68 @@ def polygons_overlap_2d(a: list[tuple[float, float]], b: list[tuple[float, float
     )
 
 
+def _uv_overlap_detected(uv_polygons: list[list[tuple[float, float]]]) -> bool:
+    """Whether any two UV faces share positive area.
+
+    Equivalent to the all-pairs ``polygons_overlap_2d`` scan, but a uniform spatial-grid broad-phase
+    makes it O(n) for typical (spread-out) UVs instead of O(n^2): faces are bucketed by their bbox
+    into ~n grid cells, and only faces sharing a cell are tested. Two overlapping faces necessarily
+    have overlapping bboxes and therefore share at least one cell, so no overlap is ever missed.
+    """
+    n = len(uv_polygons)
+    if n < 2:
+        return False
+
+    # Precompute each face's bbox once (the old inner loop recomputed 8 min/max per pair).
+    boxes: list[tuple[float, float, float, float]] = []
+    for poly in uv_polygons:
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+        boxes.append((min(xs), max(xs), min(ys), max(ys)))
+
+    min_x = min(b[0] for b in boxes)
+    max_x = max(b[1] for b in boxes)
+    min_y = min(b[2] for b in boxes)
+    max_y = max(b[3] for b in boxes)
+    span_x = max(max_x - min_x, EPSILON)
+    span_y = max(max_y - min_y, EPSILON)
+    cells = max(1, int(math.sqrt(n)))  # ~n cells total -> ~1 face per cell for a spread-out UV
+    inv_x = cells / span_x
+    inv_y = cells / span_y
+
+    grid: dict[tuple[int, int], list[int]] = {}
+    for i, (bx0, bx1, by0, by1) in enumerate(boxes):
+        cx0 = int((bx0 - min_x) * inv_x)
+        cx1 = int((bx1 - min_x) * inv_x)
+        cy0 = int((by0 - min_y) * inv_y)
+        cy1 = int((by1 - min_y) * inv_y)
+        for cx in range(cx0, cx1 + 1):
+            for cy in range(cy0, cy1 + 1):
+                grid.setdefault((cx, cy), []).append(i)
+
+    checked: set[tuple[int, int]] = set()
+    for bucket in grid.values():
+        m = len(bucket)
+        for a in range(m):
+            i = bucket[a]
+            bi = boxes[i]
+            for b in range(a + 1, m):
+                j = bucket[b]
+                key = (i, j) if i < j else (j, i)
+                if key in checked:
+                    continue
+                checked.add(key)
+                bj = boxes[j]
+                # cheap bbox reject before the O(edges) polygon test
+                if bi[1] <= bj[0] + EPSILON or bj[1] <= bi[0] + EPSILON:
+                    continue
+                if bi[3] <= bj[2] + EPSILON or bj[3] <= bi[2] + EPSILON:
+                    continue
+                if polygons_overlap_2d(uv_polygons[i], uv_polygons[j]):
+                    return True
+    return False
+
+
 def uv_bounds_from_points(points: list[tuple[float, float]]) -> dict:
     if not points:
         return {"min_u": None, "min_v": None, "max_u": None, "max_v": None, "out_of_bounds_loops": 0}
@@ -169,11 +231,7 @@ def uv_quality(obj: Any, *, texture_size: int = 1024, island_count: int | None =
         if stretch_units:
             smallest = min(stretch_units)
             out["stretch_ratio"] = (max(stretch_units) / smallest) if smallest > 0.0 else None
-        out["overlap_detected"] = any(
-            polygons_overlap_2d(first, second)
-            for first_index, first in enumerate(uv_polygons)
-            for second in uv_polygons[first_index + 1 :]
-        )
+        out["overlap_detected"] = _uv_overlap_detected(uv_polygons)
         return out
     finally:
         bm.free()
