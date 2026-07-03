@@ -30,3 +30,14 @@ finishing it) cannot handle real generator output. **Next work item: profile `fe
 the topology metrics to O(n) (bmesh/numpy).** This is a concrete, tractable perf fix, not a fundamental limit.
 Secondary: the main-thread cascade (one slow op wedges the session) argues for a time-budget/guard on the
 heavy metrics.
+
+## Resolution (2026-07-03) — the tool now handles real generator meshes
+- **UV overlap O(n^2)->O(n)** (spatial-grid broad-phase in `core/uv_metrics.py`): `feedback.quality` on the
+  77k-tri character went **>300s -> 1.4s**; the ~1M-tri prop measures in ~16s. Correctness proven by a random
+  cross-check vs the all-pairs reference.
+- **Foundational robustness**: `ResolvedContext` (`core/context.py`) now snapshots active/selection **by name**
+  and restores by lookup, skipping objects the wrapped operator removed — fixes the "StructRNA ... removed"
+  crash that hit `object.join`/`object.delete` (and any destructive op) via `capabilities.invoke`.
+- **Multi-part assets**: the runner joins parts and cleans up stray un-joined accessories.
+- **Result: the real benchmark measures 5/5** (readiness 0.24–0.36 on raw generator assets, preservation 1.0
+  at baseline). The tool can now observe/measure real dense, multi-part generator output — its actual inputs.
