@@ -36,40 +36,6 @@ def test_apply_asset_class_defaults_preserves_explicit_parameters() -> None:
     assert meta["effective_defaults"]["triangle_budget"] == 1234
 
 
-def test_apply_asset_class_defaults_uses_state_when_payload_omits_class() -> None:
-    payload, meta = addon_asset_classes.apply_asset_class_defaults(
-        {},
-        state={"asset_class": "generated_cleanup", "profile_version": 1, "asset_class_defaulted": True},
-    )
-
-    assert payload["triangle_budget"] == 6000
-    assert payload["max_lod_triangle_ratio"] == 0.65
-    assert meta["id"] == "generated_cleanup"
-    assert meta["asset_class_defaulted"] is True
-
-
-@pytest.mark.parametrize("module", [server_asset_classes, addon_asset_classes])
-def test_apply_asset_class_defaults_propagates_state_defaulted_marker(module) -> None:
-    _payload, meta = module.apply_asset_class_defaults(
-        {},
-        state={"asset_class": "generated_cleanup", "profile_version": 1, "asset_class_defaulted": True},
-    )
-
-    assert meta["id"] == "generated_cleanup"
-    assert meta["asset_class_defaulted"] is True
-
-
-@pytest.mark.parametrize("module", [server_asset_classes, addon_asset_classes])
-def test_apply_asset_class_defaults_explicit_payload_class_is_not_defaulted(module) -> None:
-    _payload, meta = module.apply_asset_class_defaults(
-        {"asset_class": "organic_prop"},
-        state={"asset_class": "generated_cleanup", "profile_version": 1, "asset_class_defaulted": True},
-    )
-
-    assert meta["id"] == "organic_prop"
-    assert meta["asset_class_defaulted"] is False
-
-
 def test_missing_asset_class_defaults_to_hard_surface_prop() -> None:
     payload, meta = addon_asset_classes.apply_asset_class_defaults({})
 
@@ -86,6 +52,22 @@ def test_unknown_asset_class_raises_key_error() -> None:
 def test_registry_modules_do_not_expose_unused_default_key_marker() -> None:
     assert not hasattr(addon_asset_classes, "_DEFAULT_KEYS")
     assert not hasattr(server_asset_classes, "_DEFAULT_KEYS")
+
+
+@pytest.mark.parametrize("module", [server_asset_classes, addon_asset_classes])
+def test_profiles_are_numbers_only_no_prose(module) -> None:
+    for profile in module.list_asset_classes():
+        assert "stage_targets" not in profile, profile["id"]
+        assert "guidance" not in profile, profile["id"]
+        assert set(profile) == {"id", "profile_version", "label", "summary",
+                                "defaults", "gate_overrides"}
+
+
+@pytest.mark.parametrize("module", [server_asset_classes, addon_asset_classes])
+def test_apply_defaults_takes_no_pipeline_state(module) -> None:
+    import inspect
+    sig = inspect.signature(module.apply_asset_class_defaults)
+    assert list(sig.parameters) == ["payload"]
 
 
 def test_gate_overrides_replace_existing_paths_only() -> None:
@@ -113,8 +95,6 @@ def test_invalid_gate_override_path_raises_value_error() -> None:
         "summary": "Bad profile",
         "defaults": {},
         "gate_overrides": {"retopo": {"topology.missing": {"op": ">=", "value": 1}}},
-        "stage_targets": {},
-        "guidance": {},
     }
 
     with pytest.raises(ValueError, match="invalid gate override path for retopo: topology.missing"):

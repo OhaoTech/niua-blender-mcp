@@ -2,8 +2,8 @@
 """Thin passive per-object preservation ledger (NOT the pipeline FSM).
 
 A plain per-object scratchpad the ruler reads/writes: intake silhouette masks + the intake
-bbox + a generic session-checkpoint label. It holds no stage/order/progress state and is
-independent of core/pipeline._STORE, so the FSM can be deleted around it without touching this.
+bbox + a generic session-checkpoint label. This ledger is a passive per-object scratchpad;
+it holds no stage/order/progress state.
 """
 
 from __future__ import annotations

@@ -386,9 +386,8 @@ def quality(ctx: Ctx, payload: dict) -> dict:
     """
     obj = _resolve_mesh(ctx, payload)
     try:
-        # Base layer: resolve asset_class from the payload only -- never reach into the
-        # Layer-2 pipeline FSM singleton. The pipeline-aware caller (pipeline.gate_check)
-        # resolves the class itself and threads it through explicitly via the payload.
+        # Resolve asset_class from the payload only -- the pipeline FSM that once threaded
+        # a stored asset_class through here is gone (deleted in Task 4).
         effective_payload, asset_meta = asset_classes.apply_asset_class_defaults(payload)
     except KeyError as exc:
         raise BridgeError(INVALID_PARAMS, str(exc)) from exc
