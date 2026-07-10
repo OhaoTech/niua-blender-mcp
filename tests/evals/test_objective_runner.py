@@ -85,11 +85,64 @@ def test_runner_tools_include_export_for_godot_roundtrip():
 
 def test_finisher_entrypoint_resolves():
     runner = _load_runner()
-    fn = runner._load_finisher("niua_blender_mcp.evals.finisher:finish")
+    fn, tools = runner._load_finisher("niua_blender_mcp.evals.finisher:finish")
     assert callable(fn)
+    assert "feedback.readiness" in tools
 
 
 def test_finisher_tools_are_known_to_the_runner_guard():
     from niua_blender_mcp.evals.finisher import TOOLS_USED
     runner = _load_runner()
     assert TOOLS_USED <= runner.known_tools(), sorted(TOOLS_USED - runner.known_tools())
+
+
+def test_registration_guard_fails_loud_offline_when_finisher_declares_unregistered_tool() -> None:
+    """A --finisher module's TOOLS_USED must be covered by the same offline guard as the
+    runner's own tools -- a bogus tool name in a finisher must fail at startup, not mid-run."""
+    from niua_blender_mcp.evals.benchmark import list_items, load_item
+
+    runner = _load_runner()
+    items = [load_item(item_id) for item_id in list_items()]
+    with pytest.raises(SystemExit):
+        runner.assert_tools_registered(items, extra_tools=frozenset({"objects.not_a_real_tool"}))
+
+
+def test_registration_guard_passes_with_real_finisher_tools_used() -> None:
+    from niua_blender_mcp.evals.benchmark import list_items, load_item
+    from niua_blender_mcp.evals.finisher import TOOLS_USED
+
+    runner = _load_runner()
+    items = [load_item(item_id) for item_id in list_items()]
+    runner.assert_tools_registered(items, extra_tools=frozenset(TOOLS_USED))  # must not raise
+
+
+def test_run_item_scores_unmeasured_when_finisher_raises_bridge_error() -> None:
+    """A BridgeError escaping the finisher must not abort the whole benchmark run -- the item
+    scores UNMEASURED and run_item returns normally instead of propagating."""
+    from niua_blender_mcp.bridge import BridgeError
+
+    runner = _load_runner()
+
+    class FakeBridge:
+        def __init__(self):
+            self.objects: list[dict] = []
+
+        def call(self, tool, payload):
+            if tool == "scene.info":
+                return {"objects": list(self.objects)}
+            if tool == "mesh.primitive_cube_add":
+                self.objects.append({"name": "Cube", "type": "MESH"})
+                return {}
+            return {}
+
+    item = {"id": "x", "asset_class": "hard_surface_prop",
+            "input": {"recipe": [{"tool": "mesh.primitive_cube_add", "args": {}}]}}
+
+    def bad_finisher(bridge, subject, item):
+        raise BridgeError("internal_error", "boom")
+
+    card = runner.run_item(FakeBridge(), item, bad_finisher, godot_fn=None)
+    assert card["id"] == "x"
+    assert card["readiness"] is None
+    assert card["readiness_measured"] is False
+    assert card["preservation_measured"] is False

@@ -51,6 +51,12 @@ Live failing gates on the finished `bench_real_prop` (readiness 0.64), represent
 
 None of these are eval gaps — the ruler measured all of them honestly. They are HANDS gaps (missing/weak verbs) and SEQUENCING gaps (fixed order vs. agent-driven iteration), exactly what this deterministic reference finisher exists to surface.
 
+Three harness-robustness gaps surfaced by the final whole-branch review (not scoring gaps — runner/process hygiene):
+
+7. **Godot subprocess env not isolated**: the headless Godot round-trip inherits the user's editor settings (full environment passthrough) instead of a clean/minimal env; isolating `HOME` needs a writable editor-data dir for Godot to write its config into, which the runner doesn't provision yet — revisit for CI portability, where the current user's Godot config won't exist.
+8. **Godot ERROR-line filter is too broad**: `evals/godot_roundtrip.py`'s import-failure detection counts any stderr `ERROR` line as a measured failure, which on some hosts includes benign host noise (audio backend / XDG warnings) unrelated to the import itself — tighten the filter to asset/import-related lines specifically when it first bites on a real host.
+9. **Finisher checkpoints accumulate per item**: `session.checkpoint` in `evals/finisher.py` can fire up to 8 times per item (one per move), each snapshotting a datablock copy of the subject mesh — for a ~1M-tri real generator mesh that's up to 8 heavy copies retained per item. Fine at the current 5-item benchmark scale; needs explicit freeing (drop superseded checkpoints once a move is KEPT, not just on revert) before scaling to a larger item set.
+
 ## 5. Integrity notes
 
 - Deterministic and honest: no LLM anywhere in the loop; unmeasured ≠ failed throughout; preservation fail-closed.

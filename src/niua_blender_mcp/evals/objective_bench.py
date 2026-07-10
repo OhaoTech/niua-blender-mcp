@@ -3,7 +3,9 @@
 readiness (order-free deduped gate fraction) and preservation (mean silhouette IoU vs the
 stored intake baseline) are computed by the `feedback.readiness` / `feedback.preservation`
 tools; this module only scores + aggregates what those tools already measured. Do-no-harm is
-a FLAG (`harm_flagged`), never a revert -- that loop lives in prose in `prompts.py`, not here.
+a FLAG (`harm_flagged`), never a revert -- that loop lives in prose in `prompts.py`, and as a
+deterministic reference implementation (checkpoint/measure/keep-or-revert per move) in
+`evals/finisher.py`, not here.
 
 UNMEASURED is not FAILED. A headless render, a missing intake baseline, a non-separable mask,
 or (defensively) a readiness read with no applicable gates all produce ``None`` from the live

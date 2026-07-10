@@ -39,6 +39,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -70,14 +71,16 @@ def known_tools() -> set[str]:
     }
 
 
-def assert_tools_registered(items: list[dict]) -> None:
+def assert_tools_registered(items: list[dict], extra_tools: frozenset[str] = frozenset()) -> None:
     """Startup registration guard: fail LOUD + OFFLINE if the runner would call a missing tool.
 
     Runs before any bridge/socket connection is opened, so a rename or typo (e.g. the
     nonexistent 'objects.rename') is caught at startup, not discovered mid-benchmark against a
-    live Blender process.
+    live Blender process. `extra_tools` is the loaded --finisher module's declared TOOLS_USED
+    (empty in baseline mode), so an agent-mode finisher's tool surface is covered by this same
+    offline guard instead of failing loudly for the first time mid-benchmark.
     """
-    needed = set(_RUNNER_TOOLS)
+    needed = set(_RUNNER_TOOLS) | set(extra_tools)
     for item in items:
         inp = item["input"]
         if inp.get("asset"):
@@ -199,7 +202,13 @@ def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None) -> dict
                                     preservation=None, preservation_available=False,
                                     godot_import=None)
     intake = _safe(bridge, "feedback.capture_intake", {"object": subject})
-    finisher(bridge, subject, item)                      # real work in agent mode; no-op in baseline
+    try:
+        finisher(bridge, subject, item)                  # real work in agent mode; no-op in baseline
+    except BridgeError as exc:
+        print(f"  [{item['id']}] FINISHER FAILED: {str(exc)[:70]}", file=sys.stderr)
+        return score_item_objective(item, readiness=None, stage_pass_fraction=None,
+                                    preservation=None, preservation_available=False,
+                                    godot_import=None)
     readiness = _safe(bridge, "feedback.readiness", {"object": subject, "asset_class": item["asset_class"]})
     pres = _safe(bridge, "feedback.preservation", {"object": subject})
     preservation_available = bool((intake or {}).get("available")) and bool((pres or {}).get("available"))
@@ -214,11 +223,18 @@ def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None) -> dict
     )
 
 
-def _load_finisher(spec: str):
+def _load_finisher(spec: str) -> tuple[Any, frozenset[str]]:
+    """Import the --finisher module:function and return (callable, its declared TOOLS_USED).
+
+    TOOLS_USED is read off the module (empty set if the module doesn't declare one) so the
+    startup registration guard can cover the finisher's tool surface too -- see
+    assert_tools_registered's extra_tools param.
+    """
     module_name, _, func_name = spec.partition(":")
     if not module_name or not func_name:
         raise SystemExit(f"--finisher must be 'module:function', got {spec!r}")
-    return getattr(importlib.import_module(module_name), func_name)
+    module = importlib.import_module(module_name)
+    return getattr(module, func_name), frozenset(getattr(module, "TOOLS_USED", set()))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -246,8 +262,11 @@ def main(argv: list[str] | None = None) -> int:
         ids = [i for i in ids if i in wanted]
     items = [load_item(i) for i in ids]
 
-    assert_tools_registered(items)                       # loud, offline, before any bridge call
-    finisher = _no_op_finisher if args.mode == "baseline" else _load_finisher(args.finisher)
+    if args.mode == "baseline":
+        finisher, finisher_tools = _no_op_finisher, frozenset()
+    else:
+        finisher, finisher_tools = _load_finisher(args.finisher)
+    assert_tools_registered(items, extra_tools=finisher_tools)  # loud, offline, before any bridge call
 
     outdir = Path(args.outdir)  # moved up: _godot_roundtrip needs it before the run loop
     outdir.mkdir(parents=True, exist_ok=True)

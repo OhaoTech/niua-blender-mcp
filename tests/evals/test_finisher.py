@@ -8,8 +8,6 @@ choreography.
 
 from __future__ import annotations
 
-import pytest
-
 from niua_blender_mcp.bridge import BridgeError
 from niua_blender_mcp.domains import build_router
 from niua_blender_mcp.evals import finisher

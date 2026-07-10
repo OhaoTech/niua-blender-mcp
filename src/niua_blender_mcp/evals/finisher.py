@@ -13,10 +13,13 @@ model driving it. Do-no-harm follows measure-and-flag: an UNMEASURED preservatio
 blocks a move (a headless run must not deadlock the finisher), a measured drop below
 the floor always reverts it.
 
-Readiness reads are cached across SKIPPED moves only (nothing changed, so the last
-snapshot is still true); after any move that FIRED — kept or reverted — the next
-gate check re-reads fresh. Honest state tracking at one extra read per fired move,
-still far cheaper than a per-move re-read across the 8-move loop.
+Readiness reads are cached across SKIPPED moves (nothing changed, so the last snapshot is
+still true) and across KEPT moves (the move's own post-apply `after` measurement is the
+current truth, so it is reused as the next gate check's snapshot instead of re-read). Only
+a REVERTED or ERRORED move forces a fresh read before the next gate check, since the scene
+was restored to a state this loop hasn't re-measured. Honest state tracking at one extra
+read per reverted/errored move, still far cheaper than a per-move re-read across the
+8-move loop.
 """
 
 from __future__ import annotations
@@ -165,7 +168,7 @@ def finish(bridge: Any, subject: str, item: dict) -> dict:
     info = {"asset_class": asset_class}
     moves_report: list[dict] = []
     start = _readiness(bridge, subject, asset_class)
-    # Cached across SKIPPED moves only; None forces a fresh read after a fired move.
+    # Cached across SKIPPED and KEPT moves; None forces a fresh read after a REVERTED/ERRORED move.
     current: dict | None = start
 
     for name, paths, apply_move in MOVES:
@@ -189,7 +192,9 @@ def finish(bridge: Any, subject: str, item: dict) -> dict:
         r_after = after.get("readiness") or 0.0
         pres_ok, pres = _preservation_ok(bridge, subject)
         kept = (r_after >= r_before - _EPS) and pres_ok
-        if not kept:
+        if kept:
+            current = after  # reuse this move's own measurement; no redundant re-read next gate check
+        else:
             _revert(bridge, subject, label, objs_before)
         moves_report.append({"move": name, "kept": kept,
                              "readiness_before": before.get("readiness"),
