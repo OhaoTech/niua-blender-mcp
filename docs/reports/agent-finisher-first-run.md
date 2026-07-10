@@ -62,3 +62,10 @@ Three harness-robustness gaps surfaced by the final whole-branch review (not sco
 - Deterministic and honest: no LLM anywhere in the loop; unmeasured ≠ failed throughout; preservation fail-closed.
 - The 978k-tri prop completed the full 8-move pass within per-call timeouts (the O(n²)→O(n) UV-overlap fix from fe88a19 is what makes repeated readiness reads on dense meshes affordable).
 - Stray helper objects from reverted moves are cleaned (scene-diff + delete before revert).
+
+## 6. Founder visual review (2026-07-10)
+
+Verdict on `real_prop` after-capture: **not acceptable** — armor detail crushed, visible faceting, feet collapsed, despite preservation 0.895 passing the floor. Two gaps this exposes, now top of the roadmap:
+
+10. **The missing bake-transfer move**: the finisher decimates without baking high→low (normal/AO), so sculpt detail is DISCARDED rather than transferred to textures. The correct hard-surface-dense workflow is low-poly + baked maps; `shading.prepare_pbr_maps` only creates empty slots today. This supersedes gap #1's "iterative decimation" as the headline fix — density reduction is only acceptable WITH detail transfer.
+11. **Preservation needs a surface-fidelity axis**: silhouette IoU guards the form envelope but is blind to surface-detail loss (0.895 passed while visual quality clearly regressed). Add a second do-no-harm axis on shaded captures (multi-view perceptual/normal difference) so "looks almost the same" is enforced numerically. Until then, treat borderline preservation (0.85–0.93) on dense hard-surface assets as suspect.
