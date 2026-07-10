@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from niua_blender_mcp import asset_classes as server_asset_classes
-from niua_mcp_bridge.core import asset_classes as addon_asset_classes
+from niua_mcp_bridge.finishing import asset_classes as addon_asset_classes
 
 
 def test_server_and_addon_asset_class_registries_match() -> None:

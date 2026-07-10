@@ -1,8 +1,8 @@
-"""Gate DEFINITIONS live in core/gates.py, independent of any pipeline FSM."""
+"""Gate DEFINITIONS live in finishing/gates.py, independent of any pipeline FSM."""
 
 import pytest
 
-from niua_mcp_bridge.core import gates
+from niua_mcp_bridge.finishing import gates
 
 
 def test_gate_profile_maps_stages():

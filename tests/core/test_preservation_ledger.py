@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from niua_mcp_bridge.core import preservation_ledger as ledger
+from niua_mcp_bridge.finishing import preservation_ledger as ledger
 
 
 def test_floor_and_views_constants() -> None:

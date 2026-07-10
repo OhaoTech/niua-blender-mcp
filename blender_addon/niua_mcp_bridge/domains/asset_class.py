@@ -1,11 +1,15 @@
-"""Asset-class profile command handlers."""
+"""Asset-class profile command handlers.
+
+A declared policy domain (finishing layer): asset-class budgets/gate overrides are
+game-asset policy, so this module is allowed to import from ``..finishing``.
+"""
 
 from __future__ import annotations
 
 from ..context import Ctx
-from ..core import asset_classes
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, BridgeError
+from ..finishing import asset_classes
 
 
 def list_profiles(ctx: Ctx, payload: dict) -> dict:

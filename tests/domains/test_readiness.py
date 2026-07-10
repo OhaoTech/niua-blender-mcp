@@ -1,7 +1,7 @@
 # tests/domains/test_readiness.py
 from __future__ import annotations
 
-from niua_mcp_bridge.domains import build_default_registry, feedback as fb
+from niua_mcp_bridge.domains import build_default_registry, finishing_feedback as fb
 
 from domains.fake_bpy import _CUBE_QUADS, _CUBE_VERTS, FakeMesh, FakeObj, env  # noqa: F401
 
