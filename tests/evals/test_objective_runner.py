@@ -75,3 +75,21 @@ def test_no_op_finisher_is_honestly_scoped_as_a_baseline_probe() -> None:
     doc = (runner._no_op_finisher.__doc__ or "") + runner.__doc__
     assert "baseline" in doc.lower()
     assert "input-quality" in doc.lower() or "input quality" in doc.lower()
+
+
+def test_runner_tools_include_export_for_godot_roundtrip():
+    runner = _load_runner()
+    assert "io.export" in runner._RUNNER_TOOLS
+    assert runner._RUNNER_TOOLS <= runner.known_tools()
+
+
+def test_finisher_entrypoint_resolves():
+    runner = _load_runner()
+    fn = runner._load_finisher("niua_blender_mcp.evals.finisher:finish")
+    assert callable(fn)
+
+
+def test_finisher_tools_are_known_to_the_runner_guard():
+    from niua_blender_mcp.evals.finisher import TOOLS_USED
+    runner = _load_runner()
+    assert TOOLS_USED <= runner.known_tools(), sorted(TOOLS_USED - runner.known_tools())

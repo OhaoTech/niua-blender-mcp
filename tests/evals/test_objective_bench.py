@@ -74,3 +74,37 @@ def test_aggregate_excludes_readiness_unmeasured_from_readiness_mean() -> None:
     assert agg["n_readiness_unmeasured"] == 1
     # b's missing readiness must not drag the mean toward 0 -- it is excluded, not coerced.
     assert abs(agg["mean_readiness"] - 1.0) < 1e-9
+
+
+def test_godot_axis_measured_ok():
+    card = score_item_objective(
+        {"id": "x", "asset_class": "organic_prop"},
+        readiness=0.5, stage_pass_fraction=0.5,
+        preservation=1.0, preservation_available=True,
+        godot_import={"available": True, "ok": True},
+    )
+    assert card["godot_import_measured"] is True and card["godot_import_ok"] is True
+
+
+def test_godot_axis_unmeasured_is_none_not_false():
+    for gi in (None, {"available": False, "reason": "no binary"}):
+        card = score_item_objective(
+            {"id": "x", "asset_class": "organic_prop"},
+            readiness=0.5, stage_pass_fraction=0.5,
+            preservation=1.0, preservation_available=True, godot_import=gi,
+        )
+        assert card["godot_import_measured"] is False
+        assert card["godot_import_ok"] is None
+
+
+def test_aggregate_counts_godot_axis():
+    ok = {"godot_import_measured": True, "godot_import_ok": True}
+    bad = {"godot_import_measured": True, "godot_import_ok": False}
+    unm = {"godot_import_measured": False, "godot_import_ok": None}
+    base = {"asset_class": "a", "readiness_measured": True, "readiness": 1.0,
+            "stage_pass_fraction": 1.0, "preservation_measured": True,
+            "preservation": 1.0, "preservation_pass": True,
+            "harm_flagged": False, "fully_ready": True}
+    agg = aggregate_objective([{**base, **ok}, {**base, **bad}, {**base, **unm}])
+    assert agg["n_godot_measured"] == 2
+    assert agg["n_godot_import_ok"] == 1

@@ -3,15 +3,20 @@
 
 Per item: run the input recipe from item.input.recipe, rename the freshly-created object to
 'bench_<id>', feedback.capture_intake (do-no-harm baseline), run a FINISHER, then read
-feedback.readiness + feedback.preservation and score with evals.objective_bench. Aggregate +
-write {outdir}/objective-reading.json.
+feedback.readiness + feedback.preservation and score with evals.objective_bench. Unless
+--no-godot, the finished subject is also exported to .glb and round-tripped through headless
+Godot (evals.godot_roundtrip.verify_gltf_import) as a third, separate `godot_import` axis --
+reported alongside readiness/preservation, never folded into either, so pre/post numbers stay
+comparable. Aggregate + write {outdir}/objective-reading.json.
 
 HONEST SCOPING (read this before trusting a number out of this script):
   baseline (default) : the finisher is a no-op. The reading is the INPUT-QUALITY of each
                         benchmark item's untouched intake mesh -- readiness + preservation of
                         geometry nobody has finished yet. This is a BASELINE PROBE. It does
                         NOT claim "the pipeline preserves form" -- there is no pipeline run in
-                        this mode, only the raw recipe output.
+                        this mode, only the raw recipe output. The Godot round-trip in this
+                        mode imports the RAW intake -- still an honest, informative reading of
+                        whether the untouched asset is even importable.
   agent               : a real finisher callable is wired in via --finisher module:function;
                         it does the actual finishing work before scoring, so the reading is of
                         the FINISHED asset. This is the mode that can honestly support a claim
@@ -40,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from niua_blender_mcp.bridge import BlenderBridge, BridgeError  # noqa: E402
 from niua_blender_mcp.domains import build_router  # noqa: E402
 from niua_blender_mcp.evals.benchmark import list_items, load_item  # noqa: E402
+from niua_blender_mcp.evals.godot_roundtrip import verify_gltf_import  # noqa: E402
 from niua_blender_mcp.evals.objective_bench import aggregate_objective, score_item_objective  # noqa: E402
 
 # Fixed tools the runner itself calls; recipe tools are added dynamically in the guard.
@@ -50,6 +56,7 @@ _RUNNER_TOOLS = {
     "feedback.capture_intake",
     "feedback.readiness",
     "feedback.preservation",
+    "io.export",
 }
 
 
@@ -169,7 +176,19 @@ def _safe(bridge: BlenderBridge, tool: str, payload: dict) -> dict | None:
         return None
 
 
-def run_item(bridge: BlenderBridge, item: dict, finisher) -> dict:
+def _godot_roundtrip(bridge: BlenderBridge, subject: str, item: dict,
+                     outdir: Path, godot_bin: str) -> dict:
+    """Export the finished subject and round-trip it through headless Godot (the apex
+    done-signal: ground truth, not a Blender-side proxy). Unmeasured on export failure."""
+    path = outdir / "exports" / f"{item['id']}.glb"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    exported = _safe(bridge, "io.export", {"path": str(path), "format": "GLB", "objects": subject})
+    if exported is None:
+        return {"available": False, "reason": "io.export failed"}
+    return verify_gltf_import(str(path), godot_bin=godot_bin)
+
+
+def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None) -> dict:
     subject = f"bench_{item['id']}"
     _clear_meshes(bridge)
     try:
@@ -177,18 +196,21 @@ def run_item(bridge: BlenderBridge, item: dict, finisher) -> dict:
     except (BridgeError, RuntimeError) as exc:
         print(f"  [{item['id']}] BUILD FAILED (import/join): {str(exc)[:70]}", file=sys.stderr)
         return score_item_objective(item, readiness=None, stage_pass_fraction=None,
-                                    preservation=None, preservation_available=False)
+                                    preservation=None, preservation_available=False,
+                                    godot_import=None)
     intake = _safe(bridge, "feedback.capture_intake", {"object": subject})
     finisher(bridge, subject, item)                      # real work in agent mode; no-op in baseline
     readiness = _safe(bridge, "feedback.readiness", {"object": subject, "asset_class": item["asset_class"]})
     pres = _safe(bridge, "feedback.preservation", {"object": subject})
     preservation_available = bool((intake or {}).get("available")) and bool((pres or {}).get("available"))
+    godot = godot_fn(bridge, subject, item) if godot_fn else None
     return score_item_objective(
         item,
         readiness=(readiness or {}).get("readiness"),
         stage_pass_fraction=(readiness or {}).get("stage_pass_fraction_mean"),
         preservation=(pres or {}).get("preservation"),
         preservation_available=preservation_available,
+        godot_import=godot,
     )
 
 
@@ -211,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--items", default="", help="comma-separated item ids (all if empty)")
     ap.add_argument("--mode", choices=["baseline", "agent"], default="baseline")
     ap.add_argument("--finisher", default="", help="agent mode only: 'module:function(bridge, subject, item)'")
+    ap.add_argument("--godot-bin", default="godot")
+    ap.add_argument("--no-godot", action="store_true")
     args = ap.parse_args(argv)
 
     if args.mode == "agent" and not args.finisher:
@@ -225,9 +249,14 @@ def main(argv: list[str] | None = None) -> int:
     assert_tools_registered(items)                       # loud, offline, before any bridge call
     finisher = _no_op_finisher if args.mode == "baseline" else _load_finisher(args.finisher)
 
+    outdir = Path(args.outdir)  # moved up: _godot_roundtrip needs it before the run loop
+    outdir.mkdir(parents=True, exist_ok=True)
+    godot_fn = None if args.no_godot else (
+        lambda bridge, subject, item: _godot_roundtrip(bridge, subject, item, outdir, args.godot_bin))
+
     bridge = BlenderBridge(port=args.port, timeout=120.0)
     try:
-        cards = [run_item(bridge, it, finisher) for it in items]
+        cards = [run_item(bridge, it, finisher, godot_fn) for it in items]
     except BridgeError as exc:
         print(json.dumps({"error": {"code": exc.code, "message": exc.message, "detail": exc.detail}}))
         return 1
@@ -241,13 +270,12 @@ def main(argv: list[str] | None = None) -> int:
             "judge": None,
             "mode": args.mode,
             "finisher": args.finisher or None,
+            "godot_bin": None if args.no_godot else args.godot_bin,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
         "items": cards,
         "reading": reading,
     }
-    outdir = Path(args.outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "objective-reading.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
     print(json.dumps(out, indent=2))
     return 0

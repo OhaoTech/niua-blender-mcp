@@ -10,6 +10,8 @@ or (defensively) a readiness read with no applicable gates all produce ``None`` 
 tools rather than a real 0.0 score. `preservation_measured` / `readiness_measured` carry that
 distinction through to `aggregate_objective`, which excludes unmeasured items from the
 corresponding mean instead of silently coercing `None` to 0 and reporting it as a failure.
+`godot_import` follows the same rule: no binary / no export = unmeasured `None`, never a fake
+fail.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ def score_item_objective(
     preservation: float | None,
     preservation_available: bool,
     floor: float = PRESERVATION_FLOOR_DEFAULT,
+    godot_import: dict | None = None,
 ) -> dict:
     """Score one benchmark item from already-measured readiness + preservation readings.
 
@@ -41,11 +44,18 @@ def score_item_objective(
     a `None` from `feedback.readiness` (e.g. no applicable gates for an unknown asset class) is
     still reported honestly rather than silently becoming a 0.0 failure).
 
+    `godot_import` is a third, separate axis (never folded into readiness/preservation so
+    pre/post baseline numbers stay comparable): the caller passes the dict returned by
+    `evals.godot_roundtrip.verify_gltf_import` (or `None` if the round-trip was skipped). It is
+    "measured" only when `godot_import["available"]` is truthy; otherwise `godot_import_ok` is
+    `None` (unmeasured), never a fake `False`.
+
     No all-gate `success` boolean: the two continuous axes (`readiness`, `preservation`) are the
     headline, plus the do-no-harm `harm_flagged` and the informational `fully_ready`.
     """
     readiness_measured = readiness is not None
     preservation_measured = bool(preservation_available) and preservation is not None
+    godot_measured = bool(godot_import and godot_import.get("available"))
     return {
         "id": item.get("id"),
         "asset_class": item.get("asset_class"),
@@ -57,6 +67,8 @@ def score_item_objective(
         "preservation_pass": preservation_measured and preservation >= floor,
         "harm_flagged": preservation_measured and preservation < floor,
         "fully_ready": readiness_measured and readiness == 1.0,
+        "godot_import_ok": bool(godot_import.get("ok")) if godot_measured else None,
+        "godot_import_measured": godot_measured,
     }
 
 
@@ -119,4 +131,6 @@ def aggregate_objective(cards: list[dict], floor: float = PRESERVATION_FLOOR_DEF
         "floor": floor,
         "per_class": per_class,
         "valid": n > 0 and (n - len(pres_measured)) == 0,
+        "n_godot_measured": sum(1 for c in cards if c.get("godot_import_measured")),
+        "n_godot_import_ok": sum(1 for c in cards if c.get("godot_import_ok")),
     }
