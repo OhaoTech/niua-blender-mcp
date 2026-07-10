@@ -156,12 +156,16 @@ def _no_op_finisher(bridge: BlenderBridge, subject: str, item: dict) -> None:
 
 
 def _clear_meshes(bridge: BlenderBridge) -> None:
-    """Delete all MESH objects so each item is built + scored in a clean, deterministic scene.
+    """Delete all MESH and EMPTY objects so each item is built + scored in a clean scene.
 
     Without this, bench_* objects accumulate across items/runs and the before/after create-diff
     (and the isolated silhouette framing) become order-dependent -- the source of run-to-run drift.
+    EMPTY is included because multi-part .glb fixtures import armature/controller empties (often
+    with cone/sphere display shapes) that object.join never consolidates; they leak across runs
+    and litter the viewport with floating primitives (founder-reported, 2026-07-10).
     """
-    names = [o["name"] for o in bridge.call("scene.info", {}).get("objects", []) if o.get("type") == "MESH"]
+    names = [o["name"] for o in bridge.call("scene.info", {}).get("objects", [])
+             if o.get("type") in ("MESH", "EMPTY")]
     if names:
         # Use the dedicated object.delete tool (captures names, then bpy.data.objects.remove) --
         # NOT capabilities.invoke object.delete, whose viewport-feedback summary post-accesses the
