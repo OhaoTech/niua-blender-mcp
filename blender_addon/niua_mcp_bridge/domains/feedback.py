@@ -18,7 +18,7 @@ and analytic feedback covers headless:
   stored intake baseline, plus a GL-free bbox delta.
 * ``feedback.readiness`` -- the objective game-ready scorecard: fraction of ALL objective gate
   groups passed, aggregated in NO ORDER (order-free replacement for the FSM's single-file gate
-  march). Reuses the gate *definitions* (``core/pipeline.{stage_gates,check_gates,gate_profile}``)
+  march). Reuses the gate *definitions* (``core/gates.{stage_gates,check_gates,gate_profile}``)
   and ``feedback.quality`` -- never the pipeline FSM control surface.
 
 The rendering engine (dedicated hidden capture camera + framing math + workbench/EEVEE
@@ -40,7 +40,7 @@ from ..core.engine_metrics import engine_quality
 from ..core.export_profiles import export_profile_quality
 from ..core.material_metrics import material_quality
 from ..core.orientation_metrics import orientation_quality
-from ..core.pipeline import check_gates, gate_profile, stage_gates  # gate DEFINITIONS, not FSM control
+from ..core.gates import check_gates, gate_profile, stage_gates  # gate DEFINITIONS, not FSM control
 from ..dispatch import Command
 from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
 from .mesh import (
@@ -200,7 +200,7 @@ def readiness(ctx: Ctx, payload: dict) -> dict:
     group, aggregated with no order. Reports BOTH the deduped-gate fraction (headline) and the
     mean per-group pass-fraction, so a group with many gates (optimize=9) can't skew the reading
     and a path shared by two groups isn't double-counted. Reuses feedback.quality + the objective
-    gate definitions (``core/pipeline.{stage_gates,check_gates,gate_profile}``) -- no judge, no
+    gate definitions (``core/gates.{stage_gates,check_gates,gate_profile}``) -- no judge, no
     images, no pipeline state; this is the order-free replacement for the FSM's single-file gate
     march, not a walk over it.
     """
