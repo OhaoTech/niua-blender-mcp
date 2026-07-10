@@ -30,3 +30,15 @@ class BridgeError(Exception):
         if self.detail is not None:
             data["detail"] = self.detail
         return data
+
+
+def teach(code: str, message: str, *, fix: str, next_call: str, detail: dict[str, Any] | None = None) -> BridgeError:
+    """Build a teaching error: every error names the fix and the right next call.
+
+    Use this instead of bare BridgeError wherever the handler knows what the agent
+    should do next -- the gates established the style; the hands follow it.
+    """
+    data: dict[str, Any] = dict(detail or {})
+    data["fix"] = fix
+    data["next_call"] = next_call
+    return BridgeError(code, message, data)

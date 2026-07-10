@@ -171,12 +171,21 @@ class NiuaBlenderMCP:
         arguments = params.get("arguments") or {}
         spec = self.router.get(name) if isinstance(name, str) else None
         if spec is None:
-            return self._tool_error(UNKNOWN_TOOL, f"unknown tool: {name}")
+            return self._tool_error(
+                UNKNOWN_TOOL,
+                f"unknown tool: {name}",
+                {"fix": "navigate the tool surface first", "next_call": "capabilities.tools"},
+            )
 
         try:
             clean = validate(spec, arguments)
         except McpError as exc:
-            return self._tool_error(exc.code, exc.message, exc.detail)
+            detail: JSON = dict(exc.detail) if isinstance(exc.detail, dict) else (
+                {} if exc.detail is None else {"got": exc.detail}
+            )
+            detail.setdefault("fix", f"correct the argument and re-call {spec.name}")
+            detail.setdefault("next_call", f'capabilities.tools {{"name": "{spec.name}"}}')
+            return self._tool_error(exc.code, exc.message, detail)
 
         if spec.command in LOCAL_COMMANDS:
             return self._describe_tools(clean)

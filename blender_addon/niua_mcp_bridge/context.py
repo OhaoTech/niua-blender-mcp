@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .errors import NOT_FOUND, BridgeError
+from .errors import NOT_FOUND, BridgeError, teach
 
 
 class Ctx:
@@ -40,7 +40,12 @@ class Ctx:
     def get_object(self, name: str) -> Any:
         obj = self.bpy.data.objects.get(name)
         if obj is None:
-            raise BridgeError(NOT_FOUND, f"object not found: {name}")
+            raise teach(
+                NOT_FOUND,
+                f"object not found: {name}",
+                fix="object names are exact and case-sensitive; list the scene to find the right one",
+                next_call="scene.info",
+            )
         return obj
 
     def object_summary(self, obj: Any) -> dict[str, Any]:
