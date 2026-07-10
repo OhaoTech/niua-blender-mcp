@@ -55,7 +55,11 @@ SPECS = [
         command="context.select_objects",
         params={
             "objects": Str(required=True, summary="Comma-separated object names"),
-            "action": Enum(["REPLACE", "ADD", "REMOVE", "TOGGLE"], default="REPLACE"),
+            "action": Enum(
+                ["REPLACE", "ADD", "REMOVE", "TOGGLE"],
+                default="REPLACE",
+                summary="How the named objects combine with the current selection",
+            ),
             "active": Str(default="", summary="Optional active object after selection"),
         },
         mutates=True,
@@ -66,7 +70,13 @@ SPECS = [
         category="context",
         summary="Select, deselect, or invert selection for all scene objects",
         command="context.select_all",
-        params={"action": Enum(["SELECT", "DESELECT", "INVERT"], default="DESELECT")},
+        params={
+            "action": Enum(
+                ["SELECT", "DESELECT", "INVERT"],
+                default="DESELECT",
+                summary="Selection action applied to every scene object",
+            )
+        },
         mutates=True,
         feedback="viewport",
     ),

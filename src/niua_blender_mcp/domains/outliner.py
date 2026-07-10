@@ -20,7 +20,11 @@ SPECS = [
         command="outliner.describe",
         params={
             "target": Str(required=True, summary="Name to describe"),
-            "kind": Enum(["AUTO", "OBJECT", "COLLECTION", "SCENE", "VIEW_LAYER"], default="AUTO"),
+            "kind": Enum(
+                ["AUTO", "OBJECT", "COLLECTION", "SCENE", "VIEW_LAYER"],
+                default="AUTO",
+                summary="Restrict the lookup to one datablock kind (AUTO tries each in turn)",
+            ),
         },
     ),
     ToolSpec(
