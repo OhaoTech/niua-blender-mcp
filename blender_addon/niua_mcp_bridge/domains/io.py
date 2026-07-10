@@ -266,7 +266,7 @@ def prepare_asset(ctx: Ctx, payload: dict) -> dict:
 
 
 COMMANDS = [
-    Command("io.import", import_file, mutates=True, feedback="viewport"),
-    Command("io.export", export, mutates=False),
-    Command("io.prepare_asset", prepare_asset, mutates=True, feedback="viewport"),
+    Command("io.import", import_file, mutates=True, feedback="viewport", timeout_tier="heavy"),
+    Command("io.export", export, mutates=False, timeout_tier="heavy"),
+    Command("io.prepare_asset", prepare_asset, mutates=True, feedback="viewport", timeout_tier="heavy"),
 ]

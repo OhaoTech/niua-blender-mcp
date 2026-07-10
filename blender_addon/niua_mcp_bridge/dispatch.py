@@ -30,6 +30,7 @@ class Command:
     handler: Handler
     mutates: bool = False
     feedback: str | None = None
+    timeout_tier: str = "normal"  # mirror of ToolSpec.timeout_tier; parity-checked
 
 
 class Registry:

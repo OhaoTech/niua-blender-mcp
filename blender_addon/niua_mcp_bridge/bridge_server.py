@@ -49,6 +49,15 @@ def _enqueue(command: str, payload: dict, timeout: float) -> dict:
     return {"ok": True, "result": box.value}
 
 
+def _clamp_timeout(value) -> float:
+    """Per-request wait from the wire (BlenderBridge sends 'timeout'), clamped sane."""
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError):
+        return 60.0
+    return min(max(timeout, 1.0), 600.0)
+
+
 class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
         line = self.rfile.readline()
@@ -56,7 +65,8 @@ class _Handler(socketserver.StreamRequestHandler):
             return
         try:
             request = json.loads(line.decode("utf-8"))
-            response = _enqueue(str(request.get("command", "")), request.get("payload") or {}, 60.0)
+            timeout = _clamp_timeout(request.get("timeout"))
+            response = _enqueue(str(request.get("command", "")), request.get("payload") or {}, timeout)
         except Exception as exc:  # noqa: BLE001
             response = {"ok": False, "error": {"code": "internal_error", "message": str(exc)}}
         self.wfile.write((json.dumps(response) + "\n").encode("utf-8"))

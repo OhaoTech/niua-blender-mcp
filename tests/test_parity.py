@@ -24,3 +24,8 @@ def test_server_command_metadata_matches_addon_handlers() -> None:
         assert command is not None
         assert command.mutates == spec.mutates, command_name
         assert command.feedback == spec.feedback, command_name
+        if spec.tier != "generated":
+            # Generated specs all dispatch through capabilities.invoke; their own
+            # (default) tier is not the invoke command's tier, so only mirror-check
+            # the 1:1 commands.
+            assert command.timeout_tier == spec.timeout_tier, command_name

@@ -367,10 +367,10 @@ def profile_validate(ctx: Ctx, payload: dict) -> dict:
 
 
 COMMANDS = [
-    Command("feedback.critique", critique, mutates=False),
-    Command("feedback.quality", quality, mutates=False),
-    Command("feedback.capture_intake", capture_intake, mutates=False),
-    Command("feedback.preservation", preservation, mutates=False),
-    Command("feedback.readiness", readiness, mutates=False),
+    Command("feedback.critique", critique, mutates=False, timeout_tier="heavy"),
+    Command("feedback.quality", quality, mutates=False, timeout_tier="heavy"),
+    Command("feedback.capture_intake", capture_intake, mutates=False, timeout_tier="heavy"),
+    Command("feedback.preservation", preservation, mutates=False, timeout_tier="heavy"),
+    Command("feedback.readiness", readiness, mutates=False, timeout_tier="heavy"),
     Command("io.profile_validate", profile_validate, mutates=False),
 ]
