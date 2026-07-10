@@ -10,6 +10,7 @@ bpy is imported lazily so this module stays importable for tests without Blender
 
 from __future__ import annotations
 
+import collections
 import json
 import queue
 import socketserver
@@ -27,6 +28,31 @@ _REGISTRY = None
 _ALLOW_PYTHON = False
 _LAST_ACTIVITY = 0.0
 
+#: Last-error ring buffer: the most recent N failures crossing the bridge, surfaced by
+#: system.health so an agent (or the supervisor) can see what has been going wrong.
+_ERRORS: "collections.deque[dict]" = collections.deque(maxlen=20)
+
+
+def _record_error(command: str, error: dict) -> None:
+    _ERRORS.append(
+        {
+            "command": command,
+            "code": str(error.get("code", "unknown")),
+            "message": str(error.get("message", ""))[:200],
+            "time": time.time(),
+        }
+    )
+
+
+def health_snapshot() -> dict:
+    """Thread-safe-enough snapshot (qsize/deque reads) used by the system.health tool."""
+    return {
+        "bridge": "alive",
+        "queue_depth": _REQUESTS.qsize(),
+        "socket_running": _SERVER is not None,
+        "last_errors": list(_ERRORS),
+    }
+
 
 class _Box:
     __slots__ = ("event", "value", "error")
@@ -43,7 +69,9 @@ def _enqueue(command: str, payload: dict, timeout: float) -> dict:
     box = _Box()
     _REQUESTS.put((command, payload, box))
     if not box.event.wait(timeout):
-        return {"ok": False, "error": {"code": "timeout", "message": f"{command} exceeded {timeout}s"}}
+        error = {"code": "timeout", "message": f"{command} exceeded {timeout}s"}
+        _record_error(command, error)
+        return {"ok": False, "error": error}
     if box.error is not None:
         return {"ok": False, "error": box.error}
     return {"ok": True, "result": box.value}
@@ -88,8 +116,10 @@ def _drain() -> float:
             box.value = dispatch_on_main(_REGISTRY, command, payload, ctx)
         except BridgeError as exc:
             box.error = exc.to_dict()
+            _record_error(command, box.error)
         except Exception as exc:  # noqa: BLE001
             box.error = {"code": "handler_error", "message": str(exc), "traceback": traceback.format_exc()}
+            _record_error(command, box.error)
         finally:
             box.event.set()
     return 0.02  # reschedule interval for the GUI timer

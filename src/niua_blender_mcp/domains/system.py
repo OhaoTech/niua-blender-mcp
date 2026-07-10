@@ -13,4 +13,11 @@ SPECS = [
         params={"code": Str(required=True, summary="Python source to exec")},
         mutates=True,
     ),
+    ToolSpec(
+        name="system.health",
+        category="system",
+        summary="Bridge health: Blender version, open .blend, queue depth, last-error ring buffer",
+        command="system.health",
+        timeout_tier="fast",
+    ),
 ]
