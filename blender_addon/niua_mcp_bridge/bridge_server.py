@@ -11,6 +11,7 @@ bpy is imported lazily so this module stays importable for tests without Blender
 from __future__ import annotations
 
 import collections
+import itertools
 import json
 import queue
 import socketserver
@@ -54,6 +55,71 @@ def health_snapshot() -> dict:
     }
 
 
+#: Operation table: every request gets a record; system.operations/system.cancel read it
+#: SIDEBAND (socket thread, never enqueued) so a busy main thread never looks wedged.
+_OPS: dict[str, dict] = {}
+_OPS_LOCK = threading.Lock()
+_OP_IDS = itertools.count(1)
+_OPS_KEEP = 50
+
+
+def _op_start(command: str) -> dict:
+    op = {
+        "id": f"op-{next(_OP_IDS)}",
+        "command": command,
+        "started": time.time(),
+        "progress": 0.0,
+        "message": "",
+        "done": False,
+        "cancel": threading.Event(),
+    }
+    with _OPS_LOCK:
+        _OPS[op["id"]] = op
+        done_ids = [k for k, v in _OPS.items() if v["done"]]
+        while len(_OPS) > _OPS_KEEP and done_ids:
+            del _OPS[done_ids.pop(0)]
+    return op
+
+
+def _op_finish(op: dict) -> None:
+    op["done"] = True
+    op["progress"] = 1.0
+
+
+def _op_public(op: dict) -> dict:
+    return {
+        "id": op["id"],
+        "command": op["command"],
+        "started": op["started"],
+        "elapsed": round(time.time() - op["started"], 3),
+        "progress": op["progress"],
+        "message": op["message"],
+        "done": op["done"],
+        "cancel_requested": op["cancel"].is_set(),
+    }
+
+
+def list_operations() -> dict:
+    with _OPS_LOCK:
+        return {"operations": [_op_public(op) for op in _OPS.values()]}
+
+
+def cancel_operation(op_id: str) -> dict:
+    with _OPS_LOCK:
+        op = _OPS.get(op_id)
+    if op is None:
+        return {
+            "ok": False,
+            "error": {
+                "code": "not_found",
+                "message": f"unknown operation: {op_id}",
+                "detail": {"fix": "list live operations to find the id", "next_call": "system.operations"},
+            },
+        }
+    op["cancel"].set()
+    return {"ok": True, "result": {"op_id": op_id, "was_running": not op["done"]}}
+
+
 class _Box:
     __slots__ = ("event", "value", "error")
 
@@ -67,9 +133,18 @@ def _enqueue(command: str, payload: dict, timeout: float) -> dict:
     global _LAST_ACTIVITY
     _LAST_ACTIVITY = time.time()
     box = _Box()
-    _REQUESTS.put((command, payload, box))
+    op = _op_start(command)
+    _REQUESTS.put((command, payload, box, op))
     if not box.event.wait(timeout):
-        error = {"code": "timeout", "message": f"{command} exceeded {timeout}s"}
+        error = {
+            "code": "timeout",
+            "message": f"{command} exceeded {timeout}s",
+            "detail": {
+                "op_id": op["id"],
+                "fix": "the operation may still be running on Blender's main thread",
+                "next_call": "system.operations",
+            },
+        }
         _record_error(command, error)
         return {"ok": False, "error": error}
     if box.error is not None:
@@ -93,8 +168,15 @@ class _Handler(socketserver.StreamRequestHandler):
             return
         try:
             request = json.loads(line.decode("utf-8"))
-            timeout = _clamp_timeout(request.get("timeout"))
-            response = _enqueue(str(request.get("command", "")), request.get("payload") or {}, timeout)
+            command = str(request.get("command", ""))
+            if command == "system.operations":
+                # Sideband: answered on the socket thread so a busy main thread is observable.
+                response = {"ok": True, "result": list_operations()}
+            elif command == "system.cancel":
+                response = cancel_operation(str((request.get("payload") or {}).get("op_id", "")))
+            else:
+                timeout = _clamp_timeout(request.get("timeout"))
+                response = _enqueue(command, request.get("payload") or {}, timeout)
         except Exception as exc:  # noqa: BLE001
             response = {"ok": False, "error": {"code": "internal_error", "message": str(exc)}}
         self.wfile.write((json.dumps(response) + "\n").encode("utf-8"))
@@ -108,11 +190,11 @@ def _drain() -> float:
 
     while True:
         try:
-            command, payload, box = _REQUESTS.get_nowait()
+            command, payload, box, op = _REQUESTS.get_nowait()
         except queue.Empty:
             break
         try:
-            ctx = Ctx(bpy, allow_python=_ALLOW_PYTHON)
+            ctx = Ctx(bpy, allow_python=_ALLOW_PYTHON, op=op)
             box.value = dispatch_on_main(_REGISTRY, command, payload, ctx)
         except BridgeError as exc:
             box.error = exc.to_dict()
@@ -121,6 +203,7 @@ def _drain() -> float:
             box.error = {"code": "handler_error", "message": str(exc), "traceback": traceback.format_exc()}
             _record_error(command, box.error)
         finally:
+            _op_finish(op)
             box.event.set()
     return 0.02  # reschedule interval for the GUI timer
 

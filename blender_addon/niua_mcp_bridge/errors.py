@@ -15,6 +15,7 @@ PRECONDITION = "precondition_failed"
 HANDLER_ERROR = "handler_error"
 UNKNOWN_TOOL = "unknown_tool"
 PYTHON_DISABLED = "python_disabled"
+CANCELLED = "cancelled"
 
 
 class BridgeError(Exception):

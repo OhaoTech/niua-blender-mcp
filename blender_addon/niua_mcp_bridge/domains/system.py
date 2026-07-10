@@ -35,8 +35,27 @@ def health(ctx: Ctx, payload: dict) -> dict:
     return snapshot
 
 
+def operations(ctx: Ctx, payload: dict) -> dict:
+    from .. import bridge_server  # noqa: PLC0415
+
+    return bridge_server.list_operations()
+
+
+def cancel(ctx: Ctx, payload: dict) -> dict:
+    from .. import bridge_server  # noqa: PLC0415
+    from ..errors import NOT_FOUND  # noqa: PLC0415
+
+    response = bridge_server.cancel_operation(str(payload.get("op_id") or ""))
+    if not response["ok"]:
+        error = response["error"]
+        raise BridgeError(NOT_FOUND, error["message"], error.get("detail"))
+    return response["result"]
+
+
 COMMANDS = [
     # Wrapped in undo so whatever the snippet mutates is one rollback-able step.
     Command("system.execute_python", execute_python, mutates=True),
     Command("system.health", health, mutates=False, timeout_tier="fast"),
+    Command("system.operations", operations, mutates=False, timeout_tier="fast"),
+    Command("system.cancel", cancel, mutates=False, timeout_tier="fast"),
 ]

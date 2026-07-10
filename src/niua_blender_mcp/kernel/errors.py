@@ -17,6 +17,7 @@ TIMEOUT = "timeout"
 TRANSPORT = "transport_error"
 UNKNOWN_TOOL = "unknown_tool"
 PYTHON_DISABLED = "python_disabled"
+CANCELLED = "cancelled"
 
 
 class McpError(Exception):

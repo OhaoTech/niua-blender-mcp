@@ -20,4 +20,19 @@ SPECS = [
         command="system.health",
         timeout_tier="fast",
     ),
+    ToolSpec(
+        name="system.operations",
+        category="system",
+        summary="List in-flight and recent operations with progress (works even while the main thread is busy)",
+        command="system.operations",
+        timeout_tier="fast",
+    ),
+    ToolSpec(
+        name="system.cancel",
+        category="system",
+        summary="Request cancellation of a running operation by id (from system.operations)",
+        command="system.cancel",
+        params={"op_id": Str(required=True, summary="Operation id, e.g. 'op-7'")},
+        timeout_tier="fast",
+    ),
 ]

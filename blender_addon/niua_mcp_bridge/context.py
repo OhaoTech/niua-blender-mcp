@@ -12,9 +12,30 @@ from .errors import NOT_FOUND, BridgeError
 
 
 class Ctx:
-    def __init__(self, bpy_module: Any, allow_python: bool = False) -> None:
+    def __init__(self, bpy_module: Any, allow_python: bool = False, op: dict | None = None) -> None:
         self.bpy = bpy_module
         self.allow_python = allow_python
+        self._op = op  # live operation record (bridge_server._op_start); None in bare tests
+
+    def progress(self, fraction: float, message: str = "") -> None:
+        """Cooperative progress for long ops; visible via system.operations."""
+        if self._op is not None:
+            self._op["progress"] = max(0.0, min(float(fraction), 1.0))
+            self._op["message"] = str(message)
+
+    def cancelled(self) -> bool:
+        return self._op is not None and self._op["cancel"].is_set()
+
+    def check_cancelled(self) -> None:
+        """Raise a structured error if system.cancel was called for this operation."""
+        if self.cancelled():
+            from .errors import CANCELLED  # noqa: PLC0415 - avoid widening the module import surface
+
+            raise BridgeError(
+                CANCELLED,
+                "operation cancelled by request",
+                {"fix": "the partial work (if any) is one undo step away", "next_call": "system.operations"},
+            )
 
     def get_object(self, name: str) -> Any:
         obj = self.bpy.data.objects.get(name)
