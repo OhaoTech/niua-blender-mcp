@@ -9,10 +9,10 @@ from niua_mcp_bridge.core import preservation_ledger as ledger
 from niua_mcp_bridge.core import silhouette as sil
 from niua_mcp_bridge.domains import build_default_registry, feedback as fb
 
-# Reuse the fake-bpy env + cube fixtures from the existing pipeline domain tests. (Note:
-# "tests" has no __init__.py -- pytest's rootdir insertion makes the sibling module
-# importable as "domains.test_pipeline", not "tests.domains.test_pipeline".)
-from domains.test_pipeline import _CUBE_QUADS, _CUBE_VERTS, FakeMesh, FakeObj, env  # noqa: F401
+# Reuse the shared fake-bpy env + cube fixtures. (Note: "tests" has no __init__.py --
+# pytest's rootdir insertion makes the sibling module importable as "domains.fake_bpy",
+# not "tests.domains.fake_bpy".)
+from domains.fake_bpy import _CUBE_QUADS, _CUBE_VERTS, FakeMesh, FakeObj, env  # noqa: F401
 
 
 @pytest.fixture(autouse=True)

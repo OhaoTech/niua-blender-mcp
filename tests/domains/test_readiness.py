@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from niua_mcp_bridge.domains import build_default_registry, feedback as fb
 
-from domains.test_pipeline import _CUBE_QUADS, _CUBE_VERTS, FakeMesh, FakeObj, env  # noqa: F401
+from domains.fake_bpy import _CUBE_QUADS, _CUBE_VERTS, FakeMesh, FakeObj, env  # noqa: F401
 
 _PASS_TOPO = {"quad_ratio": 1.0, "ngons": 0, "non_manifold_edges": 0}
 _PASS_UV = {"has_uvs": True, "out_of_bounds_loops": 0, "overlap_detected": False, "stretch_ratio": 1.0}

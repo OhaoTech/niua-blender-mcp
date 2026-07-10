@@ -189,28 +189,6 @@ def test_quality_reports_asset_class_metadata_and_explicit_overrides(env) -> Non
     assert meta["applied_gate_overrides"] == {}
 
 
-def test_quality_ignores_pipeline_state_and_defaults_when_payload_omits_class(env) -> None:
-    # Decoupling: feedback.quality is base-layer and must resolve asset_class from the
-    # payload ONLY, never by reaching into the Layer-2 pipeline FSM singleton. Even
-    # though a pipeline run is active with a non-default asset_class, a direct
-    # feedback.quality call with no asset_class in the payload falls back to the
-    # DEFAULT profile, not the pipeline's stored one. (The pipeline-aware path is
-    # pipeline.gate_check, which resolves the class itself and passes it through the
-    # payload explicitly -- see test_pipeline.py.)
-    ctx, bpy = env
-    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS * 1501)))
-    reg = build_default_registry()
-
-    dispatch_on_main(reg, "pipeline.start", {"object": "Cube", "asset_class": "generated_cleanup"}, ctx)
-    out = dispatch_on_main(reg, "feedback.quality", {"object": "Cube"}, ctx)
-
-    meta = out["asset_class"]
-    assert meta["id"] == "hard_surface_prop"
-    assert meta["asset_class_defaulted"] is True
-    assert meta["effective_defaults"]["triangle_budget"] == 5000
-    assert out["engine"]["triangle_budget"] == 5000
-
-
 def test_quality_defaults_asset_class_with_no_payload_and_no_pipeline_run(env) -> None:
     # Part (b): no asset_class in the payload AND no pipeline run at all -- must not
     # error, and must fall back to the default profile.
@@ -242,11 +220,11 @@ def test_quality_explicit_payload_asset_class_is_used(env) -> None:
 
 
 def test_feedback_module_does_not_import_pipeline() -> None:
-    # The base (feedback.py) must not depend on the Layer-2 pipeline FSM singleton -- its
-    # control surface (start/advance/status/record_gate/rollback_pointer/reset/_STORE) and the
-    # domains.pipeline module stay untouched. feedback.readiness is the sanctioned exception:
-    # it reuses the pure, order-free gate DEFINITIONS (stage_gates/check_gates/gate_profile)
-    # that happen to live in core/pipeline.py alongside the FSM -- never the FSM control itself.
+    # The base (feedback.py) must not depend on the Layer-2 pipeline FSM singleton or its
+    # control surface (start/advance/status/record_gate/rollback_pointer/reset/_STORE).
+    # feedback.readiness is the sanctioned exception: it reuses the pure, order-free gate
+    # DEFINITIONS (stage_gates/check_gates/gate_profile) from core/gates.py -- never the
+    # FSM control itself (which lives in core/pipeline.py until it dies in Task 4).
     import ast
     import inspect
 
