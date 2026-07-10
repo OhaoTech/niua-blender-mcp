@@ -37,3 +37,6 @@ is validated against.
 
 ## Post-deletion confirmation (2026-07-10, lean-rebuild Phases 3-4)
 After deleting the pipeline FSM + craft/knowledge/verbs/prose (~2,900 lines), the real-asset baseline is byte-identical: 0.36/0.36/0.36/0.24/0.28, preservation 1.0, 5/5 measured. First agent-mode run (deterministic finisher): mean readiness 0.32 -> 0.72, zero harm flags, godot import 5/5 clean — see docs/reports/agent-finisher-first-run.md.
+
+## Post two-layer-split confirmation (2026-07-10)
+After reorganizing into interface/ vs finishing/ layers (commits e512b58..c106a91, boundary enforced by tests/test_layer_boundary.py): baseline byte-identical again — 0.36/0.36/0.36/0.24/0.28, preservation 1.0, 5/5 measured.
