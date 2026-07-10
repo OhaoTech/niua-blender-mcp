@@ -15,6 +15,11 @@ from .errors import ValidationError
 # JSON-schema primitive kinds we support.
 _KINDS = {"string", "number", "integer", "boolean", "enum", "array"}
 
+#: Per-call timeout tiers a ToolSpec may declare. The MCP server enforces these on
+#: every dispatch (bridge.call(..., timeout=TIMEOUT_SECONDS[spec.timeout_tier])) and the
+#: add-on's main-thread wait honors the same number carried on the wire (bridge_server).
+TIMEOUT_SECONDS: dict[str, float] = {"fast": 5.0, "normal": 60.0, "heavy": 600.0}
+
 
 @dataclass(frozen=True)
 class Param:
@@ -90,6 +95,11 @@ class ToolSpec:
     feedback: str | None = None
     source: str = "curated"  # "curated" | "rna"; curated wins on name collision
     tier: str = "curated"  # "curated" | "generated" | "reflection"; precedence in that order
+    timeout_tier: str = "normal"  # "fast" (~5s reads) | "normal" (~60s ops) | "heavy" (~600s measures/IO)
+
+    def __post_init__(self) -> None:
+        if self.timeout_tier not in TIMEOUT_SECONDS:
+            raise ValueError(f"unknown timeout tier: {self.timeout_tier}")
 
     def input_schema(self) -> dict[str, Any]:
         """Render an MCP/JSON-Schema object for this tool's arguments."""

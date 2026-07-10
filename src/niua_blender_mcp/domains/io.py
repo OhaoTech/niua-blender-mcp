@@ -37,6 +37,7 @@ SPECS = [
         category="io",
         summary="Import a mesh/scene file; format inferred from the extension by default",
         command="io.import",
+        timeout_tier="heavy",
         params={
             "path": Str(required=True, summary="Absolute path to the file to import"),
             "format": Enum(
@@ -53,6 +54,7 @@ SPECS = [
         category="io",
         summary="Export the scene or selected objects; format can be inferred from the path",
         command="io.export",
+        timeout_tier="heavy",
         params={
             "path": Str(required=True, summary="Output path"),
             "format": Enum(
@@ -72,6 +74,7 @@ SPECS = [
         category="io",
         summary="Optionally apply transforms on one object, then export just that object",
         command="io.prepare_asset",
+        timeout_tier="heavy",
         params={
             "object": Str(required=True, summary="Object to prepare"),
             "path": Str(required=True, summary="Output path"),

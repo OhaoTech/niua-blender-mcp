@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from .bridge import BlenderBridge, BridgeError
 from .domains import build_router
-from .kernel import McpError, Router, validate
+from .kernel import TIMEOUT_SECONDS, McpError, Router, validate
 from .kernel.errors import PYTHON_DISABLED, UNKNOWN_TOOL
 from .prompts import get_prompt, list_prompts
 from .protocol import (
@@ -118,11 +118,16 @@ class NiuaBlenderMCP:
                 "system.execute_python is disabled. Set NIUA_BLENDER_MCP_ALLOW_PYTHON=1.",
             )
 
+        timeout = TIMEOUT_SECONDS[spec.timeout_tier]
         try:
             if spec.tier == "generated":
-                result = self.bridge.call("capabilities.invoke", {"idname": spec.command, "args": json.dumps(clean)})
+                result = self.bridge.call(
+                    "capabilities.invoke",
+                    {"idname": spec.command, "args": json.dumps(clean)},
+                    timeout=timeout,
+                )
             else:
-                result = self.bridge.call(spec.command, clean)
+                result = self.bridge.call(spec.command, clean, timeout=timeout)
         except BridgeError as exc:
             return self._tool_error(exc.code, exc.message, exc.detail)
         return self._tool_result(result)

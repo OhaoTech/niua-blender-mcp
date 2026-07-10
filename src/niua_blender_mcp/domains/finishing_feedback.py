@@ -28,6 +28,7 @@ SPECS = [
         category="feedback",
         summary="Objective quality metrics for a mesh: topology, UVs, orientation, symmetry, proportion, scale, engine/material readiness (read-only)",
         command="feedback.quality",
+        timeout_tier="heavy",
         params={
             "object": Str(summary="Mesh object to measure (defaults to active)"),
             "asset_class": Enum(ASSET_CLASS_IDS, summary="Layer 2 asset-class profile"),
@@ -65,6 +66,7 @@ SPECS = [
         category="feedback",
         summary="One observe call to judge a model: multi-angle images + mesh/UV report bundled",
         command="feedback.critique",
+        timeout_tier="heavy",
         params={
             "object": Str(summary="Object to judge; whole scene if omitted"),
             "preset": Enum(
@@ -81,6 +83,7 @@ SPECS = [
         category="feedback",
         summary="Record the do-no-harm baseline: fixed-frame ortho alpha silhouettes + bbox + a session checkpoint",
         command="feedback.capture_intake",
+        timeout_tier="heavy",
         params={"object": Str(summary="Mesh object to baseline (defaults to active)")},
     ),
     ToolSpec(
@@ -88,6 +91,7 @@ SPECS = [
         category="feedback",
         summary="Do-no-harm metric: mean/min silhouette IoU of current form vs the stored intake baseline + bbox delta (read-only, no revert)",
         command="feedback.preservation",
+        timeout_tier="heavy",
         params={"object": Str(summary="Object with a stored intake baseline (defaults to active)")},
     ),
     ToolSpec(
@@ -95,6 +99,7 @@ SPECS = [
         category="feedback",
         summary="Objective game-ready scorecard: fraction of all objective gates passed, order-free + deduped (no judge, no images)",
         command="feedback.readiness",
+        timeout_tier="heavy",
         params={
             "object": Str(summary="Mesh object to score (defaults to active)"),
             "asset_class": Enum(ASSET_CLASS_IDS, summary="Layer 2 asset-class profile"),

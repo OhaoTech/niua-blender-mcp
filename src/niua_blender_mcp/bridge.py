@@ -26,11 +26,15 @@ class BlenderBridge:
     port: int = 8765
     timeout: float = 30.0
 
-    def call(self, command: str, payload: dict | None = None) -> dict[str, Any]:
-        request = json.dumps({"command": command, "payload": payload or {}}) + "\n"
+    def call(self, command: str, payload: dict | None = None, timeout: float | None = None) -> dict[str, Any]:
+        # The chosen timeout rides on the wire so the add-on's main-thread wait matches;
+        # the socket gets +5s grace so the add-on's structured timeout error (not a raw
+        # socket cut) is what the caller sees.
+        wait = self.timeout if timeout is None else timeout
+        request = json.dumps({"command": command, "payload": payload or {}, "timeout": wait}) + "\n"
         try:
-            with socket.create_connection((self.host, self.port), timeout=self.timeout) as sock:
-                sock.settimeout(self.timeout)
+            with socket.create_connection((self.host, self.port), timeout=wait + 5.0) as sock:
+                sock.settimeout(wait + 5.0)
                 sock.sendall(request.encode("utf-8"))
                 line = sock.makefile("r", encoding="utf-8").readline()
         except OSError as exc:
