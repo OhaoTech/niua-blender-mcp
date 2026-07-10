@@ -54,4 +54,16 @@ SPECS = [
         feedback="viewport",
         tier="reflection",
     ),
+    ToolSpec(
+        name="capabilities.tools",
+        category="capabilities",
+        summary="Navigate THIS server's tools: no args -> domain map; {domain} -> its tools; {name} -> one schema",
+        command="capabilities.tools",
+        params={
+            "domain": Str(summary="Craft domain from the no-args map, e.g. 'mesh', 'uv'"),
+            "name": Str(summary="Exact tool name for a full input schema, e.g. 'scene.create_object'"),
+        },
+        timeout_tier="fast",
+        tier="reflection",
+    ),
 ]

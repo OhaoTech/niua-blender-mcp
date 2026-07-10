@@ -33,6 +33,10 @@ SUPPORTED_PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "niua-blender-mcp"
 SERVER_VERSION = "0.1.0"
 
+#: Tools the server answers itself from the router -- no bridge round-trip, usable with
+#: Blender down. tests/test_parity.py exempts these from the add-on-handler mirror.
+LOCAL_COMMANDS = frozenset({"capabilities.tools"})
+
 JSON = dict[str, Any]
 
 
@@ -100,6 +104,68 @@ class NiuaBlenderMCP:
             if list_all or s.tier != "generated"
         ]
 
+    def _describe_tools(self, args: JSON) -> JSON:
+        """capabilities.tools: no args -> domain map; {domain} -> its tools; {name} -> one schema."""
+        name = args.get("name") or ""
+        domain = args.get("domain") or ""
+        specs = self.router.specs()
+        if name:
+            spec = self.router.get(name)
+            if spec is None:
+                close = sorted(s.name for s in specs if name.lower() in s.name.lower())[:10]
+                return self._tool_error(
+                    UNKNOWN_TOOL,
+                    f"unknown tool: {name}",
+                    {"close_matches": close, "fix": "browse the domain map first", "next_call": "capabilities.tools"},
+                )
+            return self._tool_result(
+                {
+                    "name": spec.name,
+                    "summary": spec.summary,
+                    "domain": spec.category,
+                    "tier": spec.tier,
+                    "mutates": spec.mutates,
+                    "timeout_tier": spec.timeout_tier,
+                    "inputSchema": spec.input_schema(),
+                }
+            )
+        if domain:
+            tools = sorted(
+                (
+                    {"name": s.name, "summary": s.summary, "mutates": s.mutates}
+                    for s in specs
+                    if s.category == domain
+                ),
+                key=lambda t: t["name"],
+            )
+            if not tools:
+                return self._tool_error(
+                    UNKNOWN_TOOL,
+                    f"unknown domain: {domain}",
+                    {
+                        "domains": sorted({s.category for s in specs}),
+                        "fix": "pick a domain from the list",
+                        "next_call": "capabilities.tools",
+                    },
+                )
+            return self._tool_result(
+                {
+                    "domain": domain,
+                    "tools": tools,
+                    "next": 'call capabilities.tools {"name": "<tool>"} for one schema',
+                }
+            )
+        by_domain: dict[str, int] = {}
+        for s in specs:
+            by_domain[s.category] = by_domain.get(s.category, 0) + 1
+        return self._tool_result(
+            {
+                "domains": [{"name": d, "tool_count": n} for d, n in sorted(by_domain.items())],
+                "total_tools": len(specs),
+                "next": 'call capabilities.tools {"domain": "<name>"} to list its tools',
+            }
+        )
+
     def _tools_call(self, params: JSON) -> JSON:
         name = params.get("name")
         arguments = params.get("arguments") or {}
@@ -111,6 +177,9 @@ class NiuaBlenderMCP:
             clean = validate(spec, arguments)
         except McpError as exc:
             return self._tool_error(exc.code, exc.message, exc.detail)
+
+        if spec.command in LOCAL_COMMANDS:
+            return self._describe_tools(clean)
 
         if spec.command == "system.execute_python" and not self.allow_python:
             return self._tool_error(
