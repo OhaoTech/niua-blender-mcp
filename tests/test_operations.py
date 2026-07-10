@@ -108,3 +108,15 @@ def test_enqueue_timeout_names_the_op_for_cancellation() -> None:
     detail = response["error"]["detail"]
     assert detail["op_id"].startswith("op-")
     assert detail["next_call"] == "system.operations"
+
+
+def test_ops_table_hard_cap_evicts_oldest_even_when_none_are_done() -> None:
+    """A wedged main thread never finishes an op, so the done-only eviction in
+    _op_start never fires -- the hard cap must still keep the table bounded by
+    evicting the oldest not-done records."""
+    started = [bridge_server._op_start(f"mesh.heavy.{i}") for i in range(bridge_server._OPS_HARD_CAP + 25)]
+    assert len(bridge_server._OPS) <= bridge_server._OPS_HARD_CAP
+    # The newest ops must have survived; the oldest were evicted first.
+    assert started[-1]["id"] in bridge_server._OPS
+    assert started[0]["id"] not in bridge_server._OPS
+    assert all(not op["done"] for op in bridge_server._OPS.values())

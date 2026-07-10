@@ -30,7 +30,10 @@ SPECS = [
     ToolSpec(
         name="system.cancel",
         category="system",
-        summary="Request cancellation of a running operation by id (from system.operations)",
+        summary=(
+            "Request cooperative cancellation of a queued/running operation (takes effect "
+            "at the operation's next check), by id from system.operations"
+        ),
         command="system.cancel",
         params={"op_id": Str(required=True, summary="Operation id, e.g. 'op-7'")},
         timeout_tier="fast",

@@ -61,6 +61,11 @@ _OPS: dict[str, dict] = {}
 _OPS_LOCK = threading.Lock()
 _OP_IDS = itertools.count(1)
 _OPS_KEEP = 50
+#: Hard cap regardless of done/not-done. The eviction below only ever removes *done*
+#: records, so a wedged main thread (nothing ever finishes) would otherwise grow this
+#: table without bound. Past the cap, evict the oldest records outright -- dicts keep
+#: insertion order, so that's the chronologically oldest, done or not.
+_OPS_HARD_CAP = 200
 
 
 def _op_start(command: str) -> dict:
@@ -78,6 +83,8 @@ def _op_start(command: str) -> dict:
         done_ids = [k for k, v in _OPS.items() if v["done"]]
         while len(_OPS) > _OPS_KEEP and done_ids:
             del _OPS[done_ids.pop(0)]
+        while len(_OPS) > _OPS_HARD_CAP:
+            del _OPS[next(iter(_OPS))]
     return op
 
 

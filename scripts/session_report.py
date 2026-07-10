@@ -56,6 +56,22 @@ def _is_png_thumbnail(value: object) -> bool:
     return raw.startswith(_PNG_MAGIC)
 
 
+def _duration_ms(entry: dict) -> float | None:
+    """The parsed duration, or None if 'duration_ms' isn't numeric -- callers decide
+    how to render/aggregate a missing value instead of crashing the whole report."""
+    try:
+        return float(entry.get("duration_ms", 0.0))
+    except (TypeError, ValueError):
+        return None
+
+
+def _duration_cell(entry: dict) -> str:
+    """Defensive like the thumbnail path: a malformed log must render '?', never crash
+    the whole report."""
+    ms = _duration_ms(entry)
+    return "?" if ms is None else f"{ms:.0f} ms"
+
+
 def _row(index: int, entry: dict) -> str:
     thumb = ""
     if entry.get("thumbnail"):
@@ -71,7 +87,7 @@ def _row(index: int, entry: dict) -> str:
         f"<td>{index}</td>"
         f"<td><code>{html.escape(str(entry.get('tool', '')))}</code></td>"
         f"<td class=\"{'ok' if ok else 'fail'}\">{'ok' if ok else 'FAILED'}</td>"
-        f"<td>{float(entry.get('duration_ms', 0.0)):.0f} ms</td>"
+        f"<td>{_duration_cell(entry)}</td>"
         f"<td><code>{html.escape(json.dumps(entry.get('arguments', {})))}</code></td>"
         f"<td><code>{html.escape(json.dumps(entry.get('summary', {})))}</code></td>"
         f"<td>{thumb}</td>"
@@ -81,7 +97,7 @@ def _row(index: int, entry: dict) -> str:
 
 def render_html(entries: list[dict], title: str = "Niua session report") -> str:
     ok_count = sum(1 for e in entries if e.get("ok"))
-    total_ms = sum(float(e.get("duration_ms", 0.0)) for e in entries)
+    total_ms = sum(ms for e in entries if (ms := _duration_ms(e)) is not None)
     skipped = getattr(entries, "skipped", 0)
     skipped_note = f" &middot; {skipped} malformed lines skipped" if skipped else ""
     rows = "".join(_row(i, e) for i, e in enumerate(entries, 1))

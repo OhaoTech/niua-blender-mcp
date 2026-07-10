@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 from niua_blender_mcp.session_log import SessionLog
@@ -78,6 +79,33 @@ def test_non_png_base64_thumbnail_is_rejected(tmp_path) -> None:
     html_text = module.render_html(module.load_entries(tmp_path / "s.jsonl"))
     assert "data:image/png" not in html_text
     assert "(invalid thumbnail)" in html_text
+
+
+def test_non_numeric_duration_ms_renders_as_a_placeholder_cell(tmp_path) -> None:
+    """A log entry whose duration_ms isn't numeric must render '?' (defensive, like the
+    thumbnail path) instead of crashing the whole report."""
+    module = _load_module()
+    log = SessionLog(tmp_path / "s.jsonl")
+    log.record(tool="scene.create_object", arguments={}, duration_ms=1.0, ok=True, summary={})
+    # SessionLog.record always writes a numeric duration_ms; simulate a malformed log
+    # (hand-edited, or written by an older/foreign producer) by appending a raw line.
+    with (tmp_path / "s.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "tool": "scene.set_transform",
+                    "arguments": {},
+                    "duration_ms": {"not": "a number"},
+                    "ok": True,
+                    "summary": {},
+                }
+            )
+            + "\n"
+        )
+    entries = module.load_entries(tmp_path / "s.jsonl")
+    html_text = module.render_html(entries)
+    assert "<td>?</td>" in html_text
+    assert "scene.set_transform" in html_text
 
 
 def test_malformed_lines_are_skipped_and_counted(tmp_path) -> None:

@@ -42,6 +42,12 @@ def operations(ctx: Ctx, payload: dict) -> dict:
 
 
 def cancel(ctx: Ctx, payload: dict) -> dict:
+    """Request cooperative cancellation of a queued/running operation (takes effect at
+    the operation's next check), by id from system.operations
+
+    Mirrors src/niua_blender_mcp/domains/system.py's system.cancel ToolSpec summary
+    (kept textually identical; not parity-checked, but should stay in sync by hand).
+    """
     from .. import bridge_server  # noqa: PLC0415
     from ..errors import NOT_FOUND  # noqa: PLC0415
 

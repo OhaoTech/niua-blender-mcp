@@ -186,8 +186,12 @@ class NiuaBlenderMCP:
             detail: JSON = dict(exc.detail) if isinstance(exc.detail, dict) else (
                 {} if exc.detail is None else {"got": exc.detail}
             )
-            detail.setdefault("fix", f"correct the argument and re-call {spec.name}")
-            detail.setdefault("next_call", f'capabilities.tools {{"name": "{spec.name}"}}')
+            detail.setdefault(
+                "fix",
+                f"correct the argument and re-call {spec.name}; "
+                f'call capabilities.tools {{"name": "{spec.name}"}} to see its schema',
+            )
+            detail.setdefault("next_call", "capabilities.tools")
             return self._tool_error(exc.code, exc.message, detail)
 
         if spec.command in LOCAL_COMMANDS:

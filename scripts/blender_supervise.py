@@ -47,6 +47,7 @@ class BlenderProcess:
                 self.proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+                self.proc.wait()  # reap the zombie; kill() alone doesn't block for exit
         self.proc = None
 
     def _wait_for_bridge(self, attempts: int = 60) -> None:
@@ -91,7 +92,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[niua-supervise] watching bridge on 127.0.0.1:{args.port}", flush=True)
     try:
         while True:
-            state = supervisor.tick()
+            try:
+                state = supervisor.tick()
+            except Exception as exc:  # noqa: BLE001 - the watchdog itself must never die
+                print(f"[niua-supervise] tick failed: {exc!r}", file=sys.stderr, flush=True)
+                time.sleep(args.interval)
+                continue
             if state != "healthy":
                 print(f"[niua-supervise] {state} (restarts={supervisor.restarts})", flush=True)
             time.sleep(args.interval)

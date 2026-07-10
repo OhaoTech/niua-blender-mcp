@@ -33,3 +33,24 @@ StructRNA-removed class of crashes).
 Constraints carried forward: tool surface changes must keep parity green; interface/finishing
 boundary respected (all of this is interface-layer except bench-report glue); objective bench
 stays byte-identical in baseline mode; ZERO niua knowledge in code.
+
+## Deferred follow-ups
+
+Found during the final review sweep of this workstream; not blocking, tracked for later:
+
+- `src/niua_blender_mcp/evals/finisher.py` calls `bridge.call(...)` directly, bypassing the
+  server's timeout-tier enforcement and the `LOCAL_COMMANDS`/validation path -- it talks to the
+  bridge below the tier system the rest of the surface goes through.
+- The CLI's `--timeout` flag is inert for dispatched calls (the per-tool timeout tier on
+  `ToolSpec` wins instead); either document that clearly or remove the flag.
+- Wire `ctx.check_cancelled()` into the five heavy `feedback.*` measures and the io import/export
+  loops -- today `system.cancel` sets the flag but only some long-running handlers ever poll it.
+- `blender_addon/niua_mcp_bridge/domains/rendering.py`'s `_find_object` raises errors that don't
+  follow the teaching-error convention (fix/next_call) used elsewhere in the domain surface.
+- `_OPS` in `bridge_server.py` is documented as single-writer (only the main thread mutates
+  entries; the socket threads only read/cancel) but that invariant lives in a comment, not an
+  enforced seam -- worth a lint or assertion if another writer is ever added.
+- Sideband errors (raised directly on the socket thread, e.g. a malformed `system.cancel`
+  request) never reach `_ERRORS`/`system.health`'s last-error ring buffer, since `_record_error`
+  is only called from `_enqueue` and `_drain`. An agent polling `system.health` can be blind to
+  a sideband failure that just happened.

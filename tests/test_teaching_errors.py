@@ -52,5 +52,7 @@ def test_validation_error_names_the_tools_schema() -> None:
     result = server._tools_call({"name": "scene.create_object", "arguments": {}})
     body = result["structuredContent"]
     assert body["code"] == INVALID_PARAMS
-    assert "scene.create_object" in body["detail"]["next_call"]
-    assert body["detail"]["fix"]
+    # next_call is the bare tool name (an agent must be able to call it verbatim); the
+    # argument hint lives in fix instead.
+    assert body["detail"]["next_call"] == "capabilities.tools"
+    assert "scene.create_object" in body["detail"]["fix"]

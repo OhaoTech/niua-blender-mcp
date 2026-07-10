@@ -17,7 +17,7 @@ def call(server, arguments: dict) -> dict:
 
 
 def test_local_commands_declares_capabilities_tools() -> None:
-    assert "capabilities.tools" in LOCAL_COMMANDS
+    assert LOCAL_COMMANDS == frozenset({"capabilities.tools"})
 
 
 def test_no_args_returns_the_domain_map() -> None:
