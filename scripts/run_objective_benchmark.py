@@ -195,7 +195,20 @@ def _godot_roundtrip(bridge: BlenderBridge, subject: str, item: dict,
     return verify_gltf_import(str(path), godot_bin=godot_bin)
 
 
-def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None) -> dict:
+class _CountingBridge:
+    """Counts the finisher's tool calls: the 'turns for a fresh agent to finish an
+    asset' metric. Reported in meta only -- items/reading stay byte-identical."""
+
+    def __init__(self, bridge: Any) -> None:
+        self._bridge = bridge
+        self.calls = 0
+
+    def call(self, command: str, payload: dict | None = None, **kwargs: Any) -> dict:
+        self.calls += 1
+        return self._bridge.call(command, payload, **kwargs)
+
+
+def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None, turns: dict | None = None) -> dict:
     subject = f"bench_{item['id']}"
     _clear_meshes(bridge)
     try:
@@ -206,13 +219,18 @@ def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None) -> dict
                                     preservation=None, preservation_available=False,
                                     godot_import=None)
     intake = _safe(bridge, "feedback.capture_intake", {"object": subject})
+    counting = _CountingBridge(bridge)
     try:
-        finisher(bridge, subject, item)                  # real work in agent mode; no-op in baseline
+        finisher(counting, subject, item)                # real work in agent mode; no-op in baseline
     except BridgeError as exc:
         print(f"  [{item['id']}] FINISHER FAILED: {str(exc)[:70]}", file=sys.stderr)
+        if turns is not None:
+            turns[item["id"]] = counting.calls
         return score_item_objective(item, readiness=None, stage_pass_fraction=None,
                                     preservation=None, preservation_available=False,
                                     godot_import=None)
+    if turns is not None:
+        turns[item["id"]] = counting.calls
     readiness = _safe(bridge, "feedback.readiness", {"object": subject, "asset_class": item["asset_class"]})
     pres = _safe(bridge, "feedback.preservation", {"object": subject})
     preservation_available = bool((intake or {}).get("available")) and bool((pres or {}).get("available"))
@@ -278,8 +296,9 @@ def main(argv: list[str] | None = None) -> int:
         lambda bridge, subject, item: _godot_roundtrip(bridge, subject, item, outdir, args.godot_bin))
 
     bridge = BlenderBridge(port=args.port, timeout=120.0)
+    turns: dict[str, int] = {}
     try:
-        cards = [run_item(bridge, it, finisher, godot_fn) for it in items]
+        cards = [run_item(bridge, it, finisher, godot_fn, turns=turns) for it in items]
     except BridgeError as exc:
         print(json.dumps({"error": {"code": exc.code, "message": exc.message, "detail": exc.detail}}))
         return 1
@@ -294,6 +313,8 @@ def main(argv: list[str] | None = None) -> int:
             "mode": args.mode,
             "finisher": args.finisher or None,
             "godot_bin": None if args.no_godot else args.godot_bin,
+            "finisher_turns": turns,
+            "finisher_turns_mean": (sum(turns.values()) / len(turns)) if turns else None,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
         "items": cards,
