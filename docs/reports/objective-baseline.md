@@ -40,3 +40,6 @@ After deleting the pipeline FSM + craft/knowledge/verbs/prose (~2,900 lines), th
 
 ## Post two-layer-split confirmation (2026-07-10)
 After reorganizing into interface/ vs finishing/ layers (commits e512b58..c106a91, boundary enforced by tests/test_layer_boundary.py): baseline byte-identical again — 0.36/0.36/0.36/0.24/0.28, preservation 1.0, 5/5 measured.
+
+## Post product-hardening confirmation (2026-07-10)
+After the hardening block (timeout tiers, system.health, op table + progress/cancel + sideband, supervisor, capabilities.tools, teaching errors, spec-lint, turns metric, session log + report — commits a562835..50adf80): baseline items/reading byte-identical — 0.36/0.36/0.36/0.24/0.28, preservation 1.0, 5/5. LIVE: supervisor self-heal verified (kill -> bridge back in ~14s); system.health + sideband system.operations answering live.
