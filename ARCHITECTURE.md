@@ -59,7 +59,9 @@ numbers.
   calls to check its own work: `quality` measures the mesh against those budgets,
   `readiness` turns that into one order-free pass-fraction (the definition-of-done),
   and `capture_intake`/`preservation` are the do-no-harm pair — baseline a silhouette
-  before editing, and prove afterward that the silhouette wasn't wrecked.
+  before editing, and prove afterward that the silhouette wasn't wrecked. The same
+  module also hosts `feedback.critique` (images + the policy quality block in one
+  observe call) and `io.profile_validate` (engine export-profile checks).
 - **`evals/finisher.py`** — the reference finishing agent: no LLM, just a deterministic
   loop (checkpoint -> apply the smallest fix for a failing gate group -> re-measure ->
   keep if readiness didn't drop and preservation held, else revert). It exists so the

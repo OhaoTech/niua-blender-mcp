@@ -97,9 +97,19 @@ def _mentions_forbidden(refs: set[str]) -> set[str]:
     return hits
 
 
+#: Floor guard: each side currently has ~70 modules. If the walk ever visits fewer than
+#: this, the roots went stale (rename/restructure) and the tripwire would be checking
+#: nothing -- fail loud instead of silently passing.
+_MIN_FILES_PER_SIDE = 40
+
+
 def _check_side(root: Path, policy_area: set[str]) -> list[str]:
     violations: list[str] = []
-    for path in _iter_py_files(root):
+    files = list(_iter_py_files(root))
+    assert len(files) >= _MIN_FILES_PER_SIDE, (
+        f"boundary walk visited only {len(files)} files under {root} -- stale root?"
+    )
+    for path in files:
         rel = path.relative_to(root)
         if _in_policy_area(rel, policy_area):
             continue
