@@ -20,7 +20,12 @@ by design — it does not run a finisher). It exists to validate the ruler live 
 Per item readiness: barrel .48 · blob .52 · shell .44 · bracket .48 · crate .56 · pumpkin .40 · rock .44.
 (preservation = 1.0 trivially — baseline is a no-op; the real preservation signal appears once a finisher runs.)
 
-## Known follow-ups (refinements, not blockers)
+## Follow-ups RESOLVED (2026-07-03)
+- All 7 items now measure preservation (fixed 2 recipes that produced degenerate meshes when run mechanically).
+- Runner is DETERMINISTIC: two full runs byte-identical (per-item scene-reset via `object.delete`).
+- Per-item readiness: barrel .48 blob .52 shell .52 bracket .48 crate .56 pumpkin .48 rock .44 (mean ~0.50); preservation 1.0 (no-op baseline).
+
+## (Historical) known follow-ups
 1. **Preservation render robustness:** 2/7 items (`generated_shell` = open mesh; `organic_pumpkin` = left in EDIT
    mode by its recipe) return preservation UNMEASURED (fail-closed → excluded from means, NOT falsely 1.0).
    Fix: `capture_intake` should force OBJECT mode + handle open meshes / non-separable alpha.
