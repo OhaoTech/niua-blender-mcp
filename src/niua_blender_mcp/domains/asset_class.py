@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..asset_classes import ASSET_CLASS_IDS
+from ..finishing.asset_classes import ASSET_CLASS_IDS
 from ..kernel import Enum, ToolSpec
 
 SPECS = [
