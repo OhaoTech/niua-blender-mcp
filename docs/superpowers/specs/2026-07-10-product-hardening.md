@@ -54,3 +54,8 @@ Found during the final review sweep of this workstream; not blocking, tracked fo
   request) never reach `_ERRORS`/`system.health`'s last-error ring buffer, since `_record_error`
   is only called from `_enqueue` and `_drain`. An agent polling `system.health` can be blind to
   a sideband failure that just happened.
+- Supervisor residuals (final re-review): a "busy" stretch neither increments nor resets the
+  failure count (stale count can trigger relaunch one tick early after a later real error);
+  if relaunch succeeds but the .blend restore raises, the restore is never retried.
+- check_cancelled wiring status correction: ZERO handlers poll it today (the plumbing exists,
+  no adopters yet).
