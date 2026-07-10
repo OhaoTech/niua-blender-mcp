@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -28,6 +29,7 @@ from .protocol import (
     json_text_content,
     success_response,
 )
+from .session_log import from_env, summarize_result
 
 SUPPORTED_PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "niua-blender-mcp"
@@ -45,6 +47,7 @@ class NiuaBlenderMCP:
     bridge: Any
     router: Router
     allow_python: bool = False
+    session_log: Any = None
 
     # -- JSON-RPC entry ----------------------------------------------------
     def handle(self, request: JSON) -> JSON | None:
@@ -197,6 +200,7 @@ class NiuaBlenderMCP:
             )
 
         timeout = TIMEOUT_SECONDS[spec.timeout_tier]
+        started = time.perf_counter()
         try:
             if spec.tier == "generated":
                 result = self.bridge.call(
@@ -207,8 +211,40 @@ class NiuaBlenderMCP:
             else:
                 result = self.bridge.call(spec.command, clean, timeout=timeout)
         except BridgeError as exc:
+            self._record_session(spec, clean, started, ok=False, error=exc)
             return self._tool_error(exc.code, exc.message, exc.detail)
+        self._record_session(spec, clean, started, ok=True, result=result)
         return self._tool_result(result)
+
+    def _record_session(self, spec, arguments: JSON, started: float, *, ok: bool,
+                        result: JSON | None = None, error: BridgeError | None = None) -> None:
+        # Zero-cost when off: the guard runs before ANY summarize/thumbnail work.
+        if self.session_log is None or not spec.mutates:
+            return
+        try:
+            if error is not None:
+                summary: JSON = {"code": error.code, "message": error.message}
+                thumbnail = None
+            else:
+                summary = summarize_result(result or {})
+                thumbnail = self._session_thumbnail(result or {})
+            self.session_log.record(
+                tool=spec.name,
+                arguments=arguments,
+                duration_ms=(time.perf_counter() - started) * 1000.0,
+                ok=ok,
+                summary=summary,
+                thumbnail=thumbnail,
+            )
+        except Exception:  # noqa: BLE001 -- logging must never break a dispatch
+            pass
+
+    @staticmethod
+    def _session_thumbnail(result: JSON) -> str | None:
+        image = result if (result.get("available") and result.get("data")) else result.get("_feedback")
+        if isinstance(image, dict) and image.get("available") and image.get("data"):
+            return str(image["data"])
+        return None
 
     def _tool_result(self, result: JSON) -> JSON:
         content = [json_text_content(result)]
@@ -236,6 +272,7 @@ def create_server(
     bridge: Any | None = None,
     router: Router | None = None,
     allow_python: bool | None = None,
+    session_log: Any | None = None,
 ) -> NiuaBlenderMCP:
     if allow_python is None:
         allow_python = os.environ.get("NIUA_BLENDER_MCP_ALLOW_PYTHON") == "1"
@@ -243,4 +280,5 @@ def create_server(
         bridge=bridge or BlenderBridge(),
         router=router or build_router(),
         allow_python=allow_python,
+        session_log=session_log if session_log is not None else from_env(),
     )
