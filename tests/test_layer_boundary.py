@@ -165,3 +165,20 @@ def test_addon_asset_class_registers_exactly_its_current_names() -> None:
 
     names = {command.name for command in asset_class.COMMANDS}
     assert names == EXPECTED_ASSET_CLASS_NAMES
+
+
+def test_client_sdk_is_interface_never_imports_finishing_or_evals() -> None:
+    """The generated tool-client SDK is interface-layer: it must not import finishing/evals."""
+    root = SERVER_ROOT / "client"
+    offenders = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            mod = ""
+            if isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+            elif isinstance(node, ast.Import):
+                mod = ",".join(a.name for a in node.names)
+            if "finishing" in mod or "evals" in mod:
+                offenders.append(f"{path.name}: {mod}")
+    assert not offenders, offenders
