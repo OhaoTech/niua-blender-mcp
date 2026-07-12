@@ -13,6 +13,7 @@ from typing import Any
 PRESERVATION_FLOOR = 0.85                       # locked global do-no-harm floor (per-class later)
 PRESERVATION_VIEWS = ("front", "right", "top")  # ortho-only; persp excluded
 PRESERVATION_RES = 256
+SURFACE_FIDELITY_FLOOR = 0.90   # locked global surface-fidelity floor (block-SSIM; per-class later)
 
 _LEDGER: dict[str, dict[str, Any]] = {}
 

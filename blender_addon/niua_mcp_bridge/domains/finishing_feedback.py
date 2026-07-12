@@ -34,6 +34,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..context import Ctx
+from ..core import fidelity_metrics as _fm
 from ..core import session as _session
 from ..core import silhouette as _sil
 from ..core import silhouette_metrics as _sm
@@ -91,11 +92,25 @@ def capture_intake(ctx: Ctx, payload: dict) -> dict:
         coverage[img["view"]] = _sm.mask_coverage(mask)
         shape = [h, w]
 
+    shaded = None
+    try:
+        fout = _sil.render_fidelity_views(ctx.bpy, obj.name, frame=out.get("frame"),
+                                          views=_ledger.PRESERVATION_VIEWS, res=_ledger.PRESERVATION_RES)
+        if fout.get("available"):
+            sviews = {}
+            for img in fout.get("images", []):
+                fw, fh, luma, fmask = _fm.png_b64_to_luma_mask(img["data"])
+                sviews[img["view"]] = {"luma": _sm.compact_encode(luma), "mask": _sm.compact_encode(fmask)}
+            if sviews:
+                shaded = {"views": sviews, "shape": [fh, fw], "frame": fout.get("frame")}
+    except Exception:  # noqa: BLE001 - fidelity is additive; never break the silhouette baseline
+        shaded = None
+
     _session.checkpoint(obj, label="niua:intake")
     _ledger.set_intake(obj.name, {
         "available": True, "res": out["res"], "frame": out["frame"],
         "size": out["measured"]["size"], "masks": masks, "shape": shape,
-        "coverage": coverage, "checkpoint_label": "niua:intake",
+        "coverage": coverage, "checkpoint_label": "niua:intake", "shaded": shaded,
     })
     return {"object": obj.name, "available": True, "views": sorted(masks),
             "coverage": coverage, "checkpoint_label": "niua:intake"}
@@ -134,6 +149,25 @@ def preservation(ctx: Ctx, payload: dict) -> dict:
     metric = _sm.mean_preservation(intake_masks, current_masks)
     delta = _sm.bbox_delta(rec["size"], cur["measured"]["size"])
     score = metric.get("preservation") if metric.get("available") else None
+
+    surface = {"available": False, "fidelity": None, "per_view": {}, "min_view": None}
+    sh = rec.get("shaded")
+    if sh:
+        try:
+            fcur = _sil.render_fidelity_views(ctx.bpy, obj.name, frame=sh.get("frame"),
+                                              views=tuple(sh["views"]), res=rec["res"])
+            if fcur.get("available"):
+                fh, fw = sh["shape"]
+                intake_lm = {v: (fw, fh, _sm.compact_decode(d["luma"]), _sm.compact_decode(d["mask"]))
+                             for v, d in sh["views"].items()}
+                cur_lm = {}
+                for img in fcur.get("images", []):
+                    cw, ch2, luma, cmask = _fm.png_b64_to_luma_mask(img["data"])
+                    cur_lm[img["view"]] = (cw, ch2, luma, cmask)
+                surface = _fm.mean_fidelity(intake_lm, cur_lm)
+        except Exception:  # noqa: BLE001 - fail-closed: fidelity unmeasured, never a fake score
+            surface = {"available": False, "fidelity": None, "per_view": {}, "min_view": None}
+
     return {
         "object": obj.name,
         "available": bool(metric.get("available")),
@@ -143,6 +177,7 @@ def preservation(ctx: Ctx, payload: dict) -> dict:
         "per_view": metric.get("per_view", {}),
         "min_view": metric.get("min_view"),
         "bbox_delta": delta,
+        "surface_fidelity": surface,
     }
 
 
