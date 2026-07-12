@@ -11,7 +11,7 @@ class RecordingBridge:
         self.result = result if result is not None else {"ok": True}
         self.raises = raises
 
-    def call(self, command: str, payload: dict) -> dict:
+    def call(self, command: str, payload: dict, timeout: float | None = None) -> dict:
         self.calls.append((command, payload))
         if self.raises is not None:
             raise self.raises

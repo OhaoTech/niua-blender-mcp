@@ -6,7 +6,8 @@ from typing import Any
 
 from ..context import Ctx
 from ..dispatch import Command
-from ..errors import HANDLER_ERROR, INVALID_PARAMS, BridgeError
+from ..errors import HANDLER_ERROR, INVALID_PARAMS, PRECONDITION, BridgeError
+from .shading import _ensure_nodes, _link_sockets, _principled
 
 _PRIMITIVES = {
     "CUBE": ("mesh", "primitive_cube_add"),
@@ -446,6 +447,99 @@ def bounds(ctx: Ctx, payload: dict) -> dict:
     return _bounds_state(obj)
 
 
+def _bake_target_material(ctx: Ctx, tgt: Any) -> Any:
+    """Create a FRESH dedicated material for the bake output and attach it as a new slot,
+    making it active. NEVER reuse/mutate a pre-existing material's node tree: session.revert
+    only restores mesh data + material SLOTS (not a material's internal nodes), so wiring the
+    baked normal into a shared pre-existing material would leave a stale normal wired in after
+    a revert -- which _find_normal_image would then pick up, depressing fidelity on later
+    moves. A brand-new material makes the slot-restore in session.revert fully undo the bake."""
+    mat = ctx.bpy.data.materials.new(name=f"{getattr(tgt, 'name', 'Object')}_baked")
+    data = getattr(tgt, "data", None)
+    materials = getattr(data, "materials", None)
+    if materials is None:
+        raise BridgeError(PRECONDITION, f"object cannot hold materials: {getattr(tgt, 'name', '')}")
+    materials.append(mat)
+    if hasattr(tgt, "active_material_index"):
+        tgt.active_material_index = len(list(materials)) - 1
+    return mat
+
+
+def bake_transfer(ctx: Ctx, payload: dict) -> dict:
+    """Bake high->low detail (selected-to-active) from ``source`` into new image
+    textures on ``target``'s material, and wire the NORMAL map into the target's
+    Principled BSDF normal input. Requires ``target`` to already have UVs.
+    """
+    src = ctx.get_object(payload.get("source"))
+    tgt = ctx.get_object(payload.get("target"))
+    if getattr(src, "type", "") != "MESH" or getattr(tgt, "type", "") != "MESH":
+        raise BridgeError(INVALID_PARAMS, "source and target must be mesh objects")
+    if not getattr(getattr(tgt, "data", None), "uv_layers", None):
+        raise BridgeError(PRECONDITION, "target has no UVs; unwrap before baking")
+
+    maps = [m.strip().upper() for m in str(payload.get("maps", "NORMAL,AO")).split(",") if m.strip()]
+    if not maps:
+        raise BridgeError(INVALID_PARAMS, "maps must contain at least one map name")
+    size = int(payload.get("size", 1024))
+    if size < 1:
+        raise BridgeError(INVALID_PARAMS, "size must be >= 1")
+    ray_distance = float(payload.get("ray_distance", 0.01))
+    if ray_distance < 0.0:
+        raise BridgeError(INVALID_PARAMS, "ray_distance must be >= 0")
+
+    mat = _bake_target_material(ctx, tgt)
+    node_tree = _ensure_nodes(mat)
+    principled = _principled(node_tree)
+
+    scene = ctx.bpy.context.scene
+    prev_engine = scene.render.engine
+    scene.render.engine = "CYCLES"  # object.bake requires Cycles
+
+    baked: list[str] = []
+    images: list[str] = []
+    try:
+        with ctx.ensure(active=tgt, mode="OBJECT", select=[src, tgt]):
+            ctx.check_poll(ctx.bpy.ops.object.bake)
+            for map_name in maps:
+                image = ctx.bpy.data.images.new(
+                    name=f"{getattr(tgt, 'name', 'Object')}_{map_name}",
+                    width=size,
+                    height=size,
+                    alpha=False,
+                    float_buffer=(map_name == "NORMAL"),
+                )
+                colorspace = getattr(image, "colorspace_settings", None)
+                if map_name == "NORMAL" and colorspace is not None and hasattr(colorspace, "name"):
+                    colorspace.name = "Non-Color"
+                node = node_tree.nodes.new("ShaderNodeTexImage")
+                node.name = getattr(image, "name", map_name)
+                node.label = map_name
+                node.image = image
+                node_tree.nodes.active = node
+
+                scene.cycles.bake_type = map_name
+                ctx.bpy.ops.object.bake(
+                    type=map_name,
+                    use_selected_to_active=True,
+                    cage_extrusion=ray_distance,
+                    use_clear=True,
+                )
+
+                if map_name == "NORMAL" and principled is not None:
+                    normal_map = node_tree.nodes.new("ShaderNodeNormalMap")
+                    normal_map.name = f"{getattr(image, 'name', 'Normal')}_NORMAL_MAP"
+                    normal_map.label = "NORMAL_MAP"
+                    _link_sockets(node_tree, node.outputs["Color"], normal_map.inputs["Color"])
+                    _link_sockets(node_tree, normal_map.outputs["Normal"], principled.inputs["Normal"])
+
+                baked.append(map_name)
+                images.append(getattr(image, "name", ""))
+    finally:
+        scene.render.engine = prev_engine
+
+    return {"object": getattr(tgt, "name", ""), "baked": baked, "images": images}
+
+
 COMMANDS = [
     Command("object.create", create_object, mutates=True, feedback="viewport"),
     Command("object.duplicate", duplicate, mutates=True, feedback="viewport"),
@@ -459,4 +553,5 @@ COMMANDS = [
     Command("object.origin_set", origin_set, mutates=True, feedback="viewport"),
     Command("object.transform_get", transform_get, mutates=False),
     Command("object.bounds", bounds, mutates=False),
+    Command("object.bake_transfer", bake_transfer, mutates=True, feedback="viewport", timeout_tier="heavy"),
 ]

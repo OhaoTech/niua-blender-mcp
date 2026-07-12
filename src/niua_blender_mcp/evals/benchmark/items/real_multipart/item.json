@@ -1,0 +1,10 @@
+{
+  "id": "real_multipart",
+  "asset_class": "organic_prop",
+  "category": "multipart_character",
+  "brief": "A generated character delivered as 10 separate mesh parts. Needs part consolidation, repair, retopo, UV, bake, and optimize into a single game-ready asset.",
+  "input": {"asset": "assets/real_multipart.glb"},
+  "stages": ["repair", "retopo", "uv", "bake", "material", "optimize", "export_preflight"],
+  "rubric": "organic_prop",
+  "senior_threshold": 7.0
+}

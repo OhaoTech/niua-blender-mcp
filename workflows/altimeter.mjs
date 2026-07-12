@@ -1,3 +1,12 @@
+// ============================================================================
+// NON-PRIMARY. This judged 5-lens panel is an OPTIONAL perceptual spot-check only.
+// The PRIMARY, deterministic grade for this tool is the objective runner:
+//   python scripts/run_objective_benchmark.py --port <p>
+// (readiness = objective gates passed, order-free; preservation = silhouette IoU vs intake;
+//  do-no-harm is a scorecard FLAG, never a revert; no LLM judge). Do NOT treat this workflow's
+//  number as the target — SEM ~0.7 — it is retained solely for occasional perceptual review.
+// ============================================================================
+//
 // Layer 2 — The Altimeter.
 //
 // Runs the held-out senior benchmark through the LIVE pipeline and scores senior
@@ -17,7 +26,8 @@
 
 export const meta = {
   name: 'altimeter',
-  description: 'Run the Layer-2 held-out benchmark through the live pipeline and score senior quality per item, producing an aggregate reading every later wave must beat.',
+  grade: 'non-primary',
+  description: 'NON-PRIMARY perceptual spot-check (judged, 5-lens panel). The PRIMARY grade is scripts/run_objective_benchmark.py (feedback.readiness + feedback.preservation, no LLM judge). Run the Layer-2 held-out benchmark through the live pipeline and score senior quality per item as an optional A/B diagnostic reading, not the target metric.',
   phases: [
     { title: 'Load' },
     { title: 'Finish' },

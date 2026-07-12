@@ -26,3 +26,8 @@ htmlcov/
 # Local capture / render scratch
 /tmp_renders/
 *.blend1
+.gstack/
+
+# Heavy real-asset benchmark fixtures (see MANIFEST.json for provenance)
+src/niua_blender_mcp/evals/benchmark/assets/*.glb
+src/niua_blender_mcp/evals/benchmark/assets/*.obj

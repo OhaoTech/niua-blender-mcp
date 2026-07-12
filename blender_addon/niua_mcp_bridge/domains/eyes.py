@@ -1,4 +1,14 @@
-"""Deeper eyes (addon): topology and UV overlay renders."""
+"""Deeper eyes (addon): topology and UV overlay renders.
+
+NOTE (two-layer split, discovered outside the plan's known move list):
+``wire_shaded``/``lookdev`` fold ``feedback.quality`` (finishing-layer policy: asset-class
+budgets, engine/material/export-profile readiness) into their ``analytics`` field, the
+same "capture + policy quality snapshot" shape as ``feedback.critique``. That makes this
+module's import of ``finishing_feedback.quality`` a genuine interface->finishing edge not
+covered by the plan's known classification list; Task C (boundary enforcement) needs to
+either declare this module a policy domain or otherwise resolve the dependency before the
+AST import-direction test can pass.
+"""
 
 from __future__ import annotations
 
@@ -205,7 +215,7 @@ def orientation(ctx: Ctx, payload: dict) -> dict:
 
 def wire_shaded(ctx: Ctx, payload: dict) -> dict:
     from ..core import capture as cap
-    from .feedback import quality
+    from .finishing_feedback import quality
 
     obj_name = payload.get("object")
     view = str(payload.get("view", "persp"))
@@ -273,7 +283,7 @@ def wire_shaded(ctx: Ctx, payload: dict) -> dict:
 
 def lookdev(ctx: Ctx, payload: dict) -> dict:
     from ..core import capture as cap
-    from .feedback import quality
+    from .finishing_feedback import quality
 
     obj_name = payload.get("object")
     count = int(payload.get("count", 6))

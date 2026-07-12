@@ -21,7 +21,47 @@ def execute_python(ctx: Ctx, payload: dict) -> dict:
     return {"ok": True}
 
 
+def health(ctx: Ctx, payload: dict) -> dict:
+    from .. import bridge_server  # noqa: PLC0415 - lazy, matches repo style; no import cycle at runtime
+
+    snapshot = bridge_server.health_snapshot()
+    snapshot.update(
+        {
+            "blender_version": getattr(ctx.bpy.app, "version_string", ""),
+            "blend_path": getattr(ctx.bpy.data, "filepath", ""),
+            "python_enabled": ctx.allow_python,
+        }
+    )
+    return snapshot
+
+
+def operations(ctx: Ctx, payload: dict) -> dict:
+    from .. import bridge_server  # noqa: PLC0415
+
+    return bridge_server.list_operations()
+
+
+def cancel(ctx: Ctx, payload: dict) -> dict:
+    """Request cooperative cancellation of a queued/running operation (takes effect at
+    the operation's next check), by id from system.operations
+
+    Mirrors src/niua_blender_mcp/domains/system.py's system.cancel ToolSpec summary
+    (kept textually identical; not parity-checked, but should stay in sync by hand).
+    """
+    from .. import bridge_server  # noqa: PLC0415
+    from ..errors import NOT_FOUND  # noqa: PLC0415
+
+    response = bridge_server.cancel_operation(str(payload.get("op_id") or ""))
+    if not response["ok"]:
+        error = response["error"]
+        raise BridgeError(NOT_FOUND, error["message"], error.get("detail"))
+    return response["result"]
+
+
 COMMANDS = [
     # Wrapped in undo so whatever the snippet mutates is one rollback-able step.
     Command("system.execute_python", execute_python, mutates=True),
+    Command("system.health", health, mutates=False, timeout_tier="fast"),
+    Command("system.operations", operations, mutates=False, timeout_tier="fast"),
+    Command("system.cancel", cancel, mutates=False, timeout_tier="fast"),
 ]

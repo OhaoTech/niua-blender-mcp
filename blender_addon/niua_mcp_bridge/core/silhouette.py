@@ -7,6 +7,9 @@ then restore the object exactly.
 """
 from __future__ import annotations
 
+import base64
+import os
+import tempfile
 from typing import Any
 
 # Bright flat fill: the object reads as a uniform bright shape against the darker EEVEE world,
@@ -74,5 +77,261 @@ def render_silhouette(bpy: Any, obj_name: str | None, preset: str = "ortho4", re
                 p.material_index = idx
 
         return {"available": True, "preset": preset, "images": images}
+    except Exception as exc:  # noqa: BLE001 - graceful degrade is the contract
+        return {"available": False, "reason": str(exc)}
+
+
+def render_preservation_views(
+    bpy: Any, obj_name: str | None, *, frame: dict | None = None, views=("front", "right", "top"), res: int = 256
+) -> dict:
+    """Fixed-frame ORTHO alpha silhouettes for the preservation metric (validated live).
+
+    Robust + fail-closed vs the RGB-luma/view_selected ``render_silhouette``:
+      * ``film_transparent=True`` + RGBA -> threshold ALPHA (world/lighting/AgX invariant),
+      * hidden ortho camera framed ONCE from ``frame`` (the stored intake bbox), never view_selected,
+      * ortho-only views, so no perspective foreshortening noise,
+      * isolates the subject by snapshotting+hiding every other object's ``hide_render`` (restored).
+
+    Returns ``{available, res, frame:{center,size}, measured:{center,size}, images:[{view,data}]}``
+    or ``{available:False, reason}`` on any failure (headless / no GL). No exception escapes -- this
+    cannot be exercised under fake-bpy (no GL); it is validated by the live acceptance pass.
+    """
+    from . import capture as cap
+
+    try:
+        center, size = cap.scene_bbox(bpy, obj_name)
+        used = frame or {"center": center, "size": size}
+        scene = bpy.context.scene
+        render = scene.render
+        cam = cap._ensure_capture_camera(bpy)
+        subject = bpy.data.objects.get(obj_name)
+        if subject is None:
+            return {"available": False, "reason": f"object not found: {obj_name}"}
+
+        prev = {
+            "camera": scene.camera,
+            "engine": getattr(render, "engine", None),
+            "x": render.resolution_x, "y": render.resolution_y, "pct": render.resolution_percentage,
+            "filepath": render.filepath, "fmt": render.image_settings.file_format,
+            "color_mode": render.image_settings.color_mode,
+            "film_transparent": getattr(render, "film_transparent", None),
+        }
+        hidden = [(o, o.hide_render) for o in scene.objects]
+        path = os.path.join(tempfile.gettempdir(), "niua_preservation.png")
+        images: list[dict] = []
+        try:
+            for o in scene.objects:
+                o.hide_render = (o is not subject)
+            scene.camera = cam
+            render.resolution_x = render.resolution_y = int(res)
+            render.resolution_percentage = 100
+            render.image_settings.file_format = "PNG"
+            render.image_settings.color_mode = "RGBA"
+            render.film_transparent = True
+            render.filepath = path
+            cap._configure_engine(bpy, scene, "MATERIAL")
+            for view in views:
+                cap._apply_frame(cam, cap.view_camera(used["center"], used["size"], view))
+                bpy.ops.render.opengl(write_still=True, view_context=False)
+                with open(path, "rb") as fh:
+                    images.append({"view": view, "data": base64.b64encode(fh.read()).decode("ascii")})
+        finally:
+            for o, was in hidden:
+                o.hide_render = was
+            scene.camera = prev["camera"]
+            if prev["engine"] is not None:
+                try:
+                    render.engine = prev["engine"]
+                except Exception:  # noqa: BLE001
+                    pass
+            render.resolution_x, render.resolution_y = prev["x"], prev["y"]
+            render.resolution_percentage = prev["pct"]
+            render.filepath, render.image_settings.file_format = prev["filepath"], prev["fmt"]
+            render.image_settings.color_mode = prev["color_mode"]
+            if prev["film_transparent"] is not None:
+                render.film_transparent = prev["film_transparent"]
+        return {"available": True, "res": int(res), "frame": used,
+                "measured": {"center": center, "size": size}, "images": images}
+    except Exception as exc:  # noqa: BLE001 - graceful degrade is the contract
+        return {"available": False, "reason": str(exc)}
+
+
+def _find_normal_image(obj: Any):
+    """The baked normal-map image wired into obj's active material (TexImage -> NormalMap ->
+    Principled.Normal, as object.bake_transfer wires it), or None. Used by the fidelity render to
+    reproduce the baked surface shape under neutral clay albedo."""
+    mat = getattr(obj, "active_material", None)
+    if mat is None or not getattr(mat, "use_nodes", False):
+        return None
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return None
+    for node in nt.nodes:
+        if getattr(node, "bl_idname", "") == "ShaderNodeNormalMap":
+            link = next((l for l in nt.links
+                         if l.to_node is node and getattr(l.to_socket, "name", "") == "Color"), None)
+            if link is not None and getattr(link.from_node, "bl_idname", "") == "ShaderNodeTexImage":
+                return getattr(link.from_node, "image", None)
+    return None
+
+
+def render_fidelity_views(
+    bpy: Any, obj_name: str, *, frame: dict | None = None, views=("front", "right", "top"), res: int = 256
+) -> dict:
+    """Fixed-frame EEVEE shaded renders (neutral clay + one fixed sun) for the surface-fidelity
+    metric. Isolates the subject, ALWAYS renders it with a neutral clay material (wiring in the
+    subject's baked normal map if present) + smooth shading so the shaded luminance reflects
+    SURFACE SHAPE only -- never albedo -- renders RGBA (alpha = mask), then restores every touched
+    piece of state. Degrades to {available:false} headless. LIVE-validated.
+    """
+    from . import capture as cap
+    import base64, os, tempfile
+
+    subject = bpy.data.objects.get(obj_name)
+    if subject is None or getattr(subject, "type", None) != "MESH":
+        return {"available": False, "reason": f"object not a mesh: {obj_name}"}
+    try:
+        center, size = cap.scene_bbox(bpy, obj_name)
+        used = frame or {"center": center, "size": size}
+        scene = bpy.context.scene
+        render = scene.render
+        cam = cap._ensure_capture_camera(bpy)
+
+        prev = {
+            "camera": scene.camera, "engine": getattr(render, "engine", None),
+            "x": render.resolution_x, "y": render.resolution_y, "pct": render.resolution_percentage,
+            "filepath": render.filepath, "fmt": render.image_settings.file_format,
+            "color_mode": render.image_settings.color_mode,
+            "film_transparent": getattr(render, "film_transparent", None),
+        }
+        hidden = [(o, o.hide_render) for o in scene.objects]
+        prev_smooth = [p.use_smooth for p in subject.data.polygons]
+        prev_materials = None
+        path = os.path.join(tempfile.gettempdir(), "niua_fidelity.png")
+        images: list[dict] = []
+        # Datablock handles must be defined before the inner try so the finally block can
+        # always test them -- creating them (or setting their properties) can itself raise,
+        # and the finally must then remove whatever WAS created so nothing orphans across
+        # the live render loop (else niua_fidelity_clay.001/.002... pile up per asset).
+        clay = None
+        sun_data = None
+        sun_obj = None
+        added_clay = False
+        normal_img = None
+        prev_normal_colorspace = None
+        # Pin EEVEE determinism for the ruler: a fixed sample count (and reprojection/denoise/
+        # motion-blur disabled where present) so the shaded fidelity render is reproducible run
+        # to run, not noisy TAA convergence. Attr names vary across EEVEE/EEVEE-Next Blender
+        # versions, so every snapshot+set is guarded with hasattr and every set wrapped in a
+        # best-effort try -- an attr we can't touch just stays at the scene's existing value.
+        eevee = getattr(scene, "eevee", None)
+        prev_eevee: dict[str, Any] = {}
+        if eevee is not None:
+            for attr, value in (
+                ("taa_render_samples", 16),
+                ("use_taa_reprojection", False),
+                ("use_motion_blur", False),
+            ):
+                if hasattr(eevee, attr):
+                    prev_eevee[attr] = getattr(eevee, attr)
+                    try:
+                        setattr(eevee, attr, value)
+                    except Exception:  # noqa: BLE001 - best-effort pin, never fatal
+                        pass
+        try:
+            clay = bpy.data.materials.new("niua_fidelity_clay")
+            clay.use_nodes = True
+            bsdf = clay.node_tree.nodes.get("Principled BSDF")
+            if bsdf is not None:
+                bsdf.inputs["Base Color"].default_value = (0.6, 0.6, 0.6, 1.0)
+                if "Roughness" in bsdf.inputs:
+                    bsdf.inputs["Roughness"].default_value = 0.7
+            sun_data = bpy.data.lights.new("niua_fidelity_sun", type="SUN")
+            sun_data.energy = 3.0
+            sun_obj = bpy.data.objects.new("niua_fidelity_sun", sun_data)
+            sun_obj.rotation_euler = (0.9, 0.2, 0.5)
+            scene.collection.objects.link(sun_obj)
+            for o in scene.objects:
+                o.hide_render = (o is not subject and o is not sun_obj)
+            # Isolate SURFACE SHAPE: ALWAYS render with neutral clay albedo (so a material/albedo
+            # change -- pbr_maps adding empty slots, or the bake adding a base-color map -- never
+            # confounds the metric), but wire the subject's BAKED NORMAL MAP into the clay when it
+            # has one, so a baked low-poly shades like the high-poly (the whole point) while the
+            # intake high-poly (no normal map) shades by geometry. Snapshot + restore the real slots.
+            prev_materials = list(subject.data.materials)
+            normal_img = _find_normal_image(subject)
+            if bsdf is not None and normal_img is not None:
+                nt = clay.node_tree
+                tex = nt.nodes.new("ShaderNodeTexImage")
+                tex.image = normal_img
+                try:
+                    colorspace = normal_img.colorspace_settings
+                    prev_normal_colorspace = colorspace.name
+                    colorspace.name = "Non-Color"
+                except Exception:  # noqa: BLE001
+                    pass
+                nmap = nt.nodes.new("ShaderNodeNormalMap")
+                nt.links.new(tex.outputs["Color"], nmap.inputs["Color"])
+                nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+            subject.data.materials.clear()
+            subject.data.materials.append(clay)
+            added_clay = True   # "we swapped the slots" -> restore the real materials in finally
+            for p in subject.data.polygons:
+                p.use_smooth = True
+            scene.camera = cam
+            try:
+                render.engine = "BLENDER_EEVEE_NEXT"
+            except Exception:  # noqa: BLE001 - older EEVEE id
+                render.engine = "BLENDER_EEVEE"
+            render.resolution_x = render.resolution_y = int(res)
+            render.resolution_percentage = 100
+            render.image_settings.file_format = "PNG"
+            render.image_settings.color_mode = "RGBA"
+            render.film_transparent = True
+            render.filepath = path
+            for view in views:
+                cap._apply_frame(cam, cap.view_camera(used["center"], used["size"], view))
+                bpy.ops.render.render(write_still=True)
+                with open(path, "rb") as fh:
+                    images.append({"view": view, "data": base64.b64encode(fh.read()).decode("ascii")})
+        finally:
+            if added_clay and prev_materials is not None:
+                subject.data.materials.clear()
+                for m in prev_materials:
+                    subject.data.materials.append(m)
+            for p, was in zip(subject.data.polygons, prev_smooth):
+                p.use_smooth = was
+            if normal_img is not None and prev_normal_colorspace is not None:
+                try:
+                    normal_img.colorspace_settings.name = prev_normal_colorspace
+                except Exception:  # noqa: BLE001
+                    pass
+            if eevee is not None:
+                for attr, was in prev_eevee.items():
+                    try:
+                        setattr(eevee, attr, was)
+                    except Exception:  # noqa: BLE001
+                        pass
+            if sun_obj is not None:
+                bpy.data.objects.remove(sun_obj, do_unlink=True)
+            if sun_data is not None:
+                bpy.data.lights.remove(sun_data)
+            if clay is not None:
+                bpy.data.materials.remove(clay)
+            for o, was in hidden:
+                o.hide_render = was
+            scene.camera = prev["camera"]
+            if prev["engine"] is not None:
+                try:
+                    render.engine = prev["engine"]
+                except Exception:  # noqa: BLE001
+                    pass
+            render.resolution_x, render.resolution_y = prev["x"], prev["y"]
+            render.resolution_percentage = prev["pct"]
+            render.filepath, render.image_settings.file_format = prev["filepath"], prev["fmt"]
+            render.image_settings.color_mode = prev["color_mode"]
+            if prev["film_transparent"] is not None:
+                render.film_transparent = prev["film_transparent"]
+        return {"available": True, "res": int(res), "frame": used, "images": images}
     except Exception as exc:  # noqa: BLE001 - graceful degrade is the contract
         return {"available": False, "reason": str(exc)}

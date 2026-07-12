@@ -83,12 +83,42 @@ Loop:
      1.0 on the intended axis; a low value means it is lopsided.
    - Topology: prefer high `quad_ratio`, low `ngon_ratio`, low `pole_count`, and
      `non_manifold_edges == 0` and `loose_verts == 0` (those last two are hard defects).
+   - Do-no-harm: after establishing a baseline with `feedback.capture_intake` (once, at intake),
+     call `feedback.preservation` to check the silhouette IoU vs that baseline. A drop below ~0.85
+     (or `bbox_delta.changed == true`) means the form itself was altered — that is HARM on a finisher,
+     even if the topology numbers improved.
+   - Game-ready: call `feedback.readiness` for the objective definition-of-done — the fraction of
+     all game-ready gates passed (topology / UV / material / engine / export), aggregated in no
+     order. Read `per_group` to see which axis is blocking.
 
 5. KEEP OR REVERT:
    - If the edit improved the form against the targets, keep it and `session.checkpoint`
      again to make it the new baseline.
    - If it regressed (worse silhouette, broke symmetry, introduced non-manifold/loose geometry,
      dropped quad_ratio), call `session.revert` with {{{obj_arg}}} and try a different edit.
+
+   THE CORE LOOP (do no harm while making it game-ready): once per subject, `feedback.capture_intake`
+   to set the baseline. Then, each iteration: `session.checkpoint` -> make ONE edit -> re-measure
+   `feedback.readiness` AND `feedback.preservation` -> KEEP the edit only if readiness went up (or
+   held) AND preservation stayed >= 0.85; otherwise `session.revert`. This keeps the pass a monotone
+   hill-climb that cannot score below where it started — the machine does not revert for you.
+
+   INTAKE TRIAGE (once, before any edit): decide what you are holding from the multi-angle
+   captures, and set `asset_class` yourself on every `feedback.readiness` / `feedback.quality`
+   call — organic_prop for sculpt/creature forms, hard_surface_prop for machined/panel forms,
+   generated_cleanup for noisy generated or scanned meshes. Never let the class default silently:
+   a wrong class is a wrong numeric contract. If the input has no readable form at all (a blob,
+   noise, an empty hull), DECLINE it: you are a technical finisher — report that the input needs
+   regeneration rather than smoothing noise into a smooth nothing.
+
+   THE STANDARD FINISHING ORDER (guidance, not a gate — the readiness gates are order-free):
+   repair (doubles / normals / non-manifold) -> density to budget (decimate or retopo) ->
+   tris-to-quads -> UV unwrap + pack -> materials / PBR maps -> LODs -> collision ->
+   apply transforms -> export. Deviate when the mesh tells you to; re-measure after every step.
+
+   THE APEX DONE-SIGNAL: readiness == 1.0 in Blender is still a proxy. Ground truth is a clean
+   engine import of the exported .glb (no errors, sidecar + import artifacts produced). When a
+   `godot` binary is available, round-trip the export headlessly before declaring done.
 
 6. REPEAT until the quality targets are met: clean silhouette from all angles, intended
    symmetry ~1.0, quad-dominant topology, zero non-manifold edges and loose verts.

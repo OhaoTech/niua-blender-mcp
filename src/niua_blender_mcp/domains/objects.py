@@ -190,4 +190,20 @@ SPECS = [
         command="object.bounds",
         params={"object": Str(required=True, summary="Object name")},
     ),
+    ToolSpec(
+        name="object.bake_transfer",
+        category="object",
+        summary="Bake high->low detail (normal/AO) from a source mesh into a target mesh's maps",
+        command="object.bake_transfer",
+        params={
+            "source": Str(required=True, summary="High-poly source object"),
+            "target": Str(required=True, summary="Low-poly target object (must have UVs)"),
+            "maps": Str(default="NORMAL,AO", summary="Comma-separated maps to bake: NORMAL, AO"),
+            "size": Int(default=1024, minimum=1, maximum=8192, summary="Baked image size in pixels"),
+            "ray_distance": Float(default=0.01, minimum=0.0, summary="Cage extrusion / ray distance"),
+        },
+        mutates=True,
+        feedback="viewport",
+        timeout_tier="heavy",
+    ),
 ]

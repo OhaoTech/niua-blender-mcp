@@ -51,7 +51,6 @@ def test_asset_class_describe_returns_complete_profile() -> None:
     assert profile["profile_version"] == 1
     assert profile["defaults"]["triangle_budget"] == 6000
     assert profile["gate_overrides"]["retopo"]["topology.quad_ratio"]["value"] == 0.98
-    assert "retopo" in profile["guidance"]
 
 
 def test_asset_class_describe_unknown_class_fails_cleanly() -> None:

@@ -14,7 +14,6 @@ from contextlib import contextmanager
 
 import pytest
 
-from niua_mcp_bridge.core import pipeline as pipeline_store
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
@@ -139,7 +138,6 @@ class FakeBpy(types.ModuleType):
 
 @pytest.fixture()
 def env(monkeypatch):
-    pipeline_store.reset()
     bpy = FakeBpy()
     monkeypatch.setitem(sys.modules, "bpy", bpy)
     monkeypatch.delitem(sys.modules, "bmesh", raising=False)
@@ -189,13 +187,27 @@ def test_quality_reports_asset_class_metadata_and_explicit_overrides(env) -> Non
     assert meta["applied_gate_overrides"] == {}
 
 
-def test_quality_uses_pipeline_asset_class_state_when_payload_omits_class(env) -> None:
+def test_quality_defaults_asset_class_with_no_payload_and_no_pipeline_run(env) -> None:
+    # Part (b): no asset_class in the payload AND no pipeline run at all -- must not
+    # error, and must fall back to the default profile.
+    ctx, bpy = env
+    bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS)))
+
+    out = _quality(env, "Cube")
+
+    meta = out["asset_class"]
+    assert meta["id"] == "hard_surface_prop"
+    assert meta["asset_class_defaulted"] is True
+    assert meta["effective_defaults"]["triangle_budget"] == 5000
+
+
+def test_quality_explicit_payload_asset_class_is_used(env) -> None:
+    # Part (a): an explicit asset_class in the payload is honored -- the engine/material
+    # blocks reflect that class's overrides -- regardless of any pipeline state.
     ctx, bpy = env
     bpy.add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS * 1501)))
-    reg = build_default_registry()
 
-    dispatch_on_main(reg, "pipeline.start", {"object": "Cube", "asset_class": "generated_cleanup"}, ctx)
-    out = dispatch_on_main(reg, "feedback.quality", {"object": "Cube"}, ctx)
+    out = _quality(env, "Cube", asset_class="generated_cleanup")
 
     meta = out["asset_class"]
     assert meta["id"] == "generated_cleanup"
@@ -203,6 +215,39 @@ def test_quality_uses_pipeline_asset_class_state_when_payload_omits_class(env) -
     assert meta["effective_defaults"]["triangle_budget"] == 6000
     assert out["engine"]["triangle_budget"] == 6000
     assert out["engine"]["within_triangle_budget"] is False
+
+
+def test_feedback_module_does_not_import_pipeline() -> None:
+    # The base (feedback.py) must not depend on the Layer-2 pipeline FSM singleton or its
+    # control surface (start/advance/status/record_gate/rollback_pointer/reset/_STORE).
+    # feedback.readiness is the sanctioned exception: it reuses the pure, order-free gate
+    # DEFINITIONS (stage_gates/check_gates/gate_profile) from core/gates.py -- never the
+    # FSM control itself (core/pipeline.py, deleted in Task 4).
+    import ast
+    import inspect
+
+    import niua_mcp_bridge.domains.feedback as feedback_mod
+
+    _ALLOWED_CORE_PIPELINE_NAMES = {"check_gates", "gate_profile", "stage_gates"}
+
+    source = inspect.getsource(feedback_mod)
+    tree = ast.parse(source)
+    imported_modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            imported_modules.add(node.module)
+            if node.module == "core.pipeline":
+                names = {alias.name for alias in node.names}
+                assert names <= _ALLOWED_CORE_PIPELINE_NAMES, names
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                imported_modules.add(alias.name)
+
+    banned = {name for name in imported_modules if "pipeline" in name and name != "core.pipeline"}
+    assert not banned, banned
+    assert not hasattr(feedback_mod, "pipeline_store")
+    for fsm_symbol in ("start", "advance", "status", "record_gate", "rollback_pointer", "reset", "get_state"):
+        assert not hasattr(feedback_mod, fsm_symbol), fsm_symbol
 
 
 def test_quality_unknown_asset_class_fails_cleanly(env) -> None:

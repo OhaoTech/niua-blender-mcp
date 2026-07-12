@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from .bridge import BlenderBridge, BridgeError
 from .domains import build_router
-from .kernel import McpError, Router, validate
+from .kernel import TIMEOUT_SECONDS, McpError, Router, validate
 from .kernel.errors import PYTHON_DISABLED, UNKNOWN_TOOL
 from .prompts import get_prompt, list_prompts
 from .protocol import (
@@ -28,10 +29,15 @@ from .protocol import (
     json_text_content,
     success_response,
 )
+from .session_log import from_env, summarize_result
 
 SUPPORTED_PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "niua-blender-mcp"
 SERVER_VERSION = "0.1.0"
+
+#: Tools the server answers itself from the router -- no bridge round-trip, usable with
+#: Blender down. tests/test_parity.py exempts these from the add-on-handler mirror.
+LOCAL_COMMANDS = frozenset({"capabilities.tools"})
 
 JSON = dict[str, Any]
 
@@ -41,6 +47,7 @@ class NiuaBlenderMCP:
     bridge: Any
     router: Router
     allow_python: bool = False
+    session_log: Any = None
 
     # -- JSON-RPC entry ----------------------------------------------------
     def handle(self, request: JSON) -> JSON | None:
@@ -100,17 +107,95 @@ class NiuaBlenderMCP:
             if list_all or s.tier != "generated"
         ]
 
+    def _describe_tools(self, args: JSON) -> JSON:
+        """capabilities.tools: no args -> domain map; {domain} -> its tools; {name} -> one schema."""
+        name = args.get("name") or ""
+        domain = args.get("domain") or ""
+        specs = self.router.specs()
+        if name:
+            spec = self.router.get(name)
+            if spec is None:
+                close = sorted(s.name for s in specs if name.lower() in s.name.lower())[:10]
+                return self._tool_error(
+                    UNKNOWN_TOOL,
+                    f"unknown tool: {name}",
+                    {"close_matches": close, "fix": "browse the domain map first", "next_call": "capabilities.tools"},
+                )
+            return self._tool_result(
+                {
+                    "name": spec.name,
+                    "summary": spec.summary,
+                    "domain": spec.category,
+                    "tier": spec.tier,
+                    "mutates": spec.mutates,
+                    "timeout_tier": spec.timeout_tier,
+                    "inputSchema": spec.input_schema(),
+                }
+            )
+        if domain:
+            tools = sorted(
+                (
+                    {"name": s.name, "summary": s.summary, "mutates": s.mutates}
+                    for s in specs
+                    if s.category == domain
+                ),
+                key=lambda t: t["name"],
+            )
+            if not tools:
+                return self._tool_error(
+                    UNKNOWN_TOOL,
+                    f"unknown domain: {domain}",
+                    {
+                        "domains": sorted({s.category for s in specs}),
+                        "fix": "pick a domain from the list",
+                        "next_call": "capabilities.tools",
+                    },
+                )
+            return self._tool_result(
+                {
+                    "domain": domain,
+                    "tools": tools,
+                    "next": 'call capabilities.tools {"name": "<tool>"} for one schema',
+                }
+            )
+        by_domain: dict[str, int] = {}
+        for s in specs:
+            by_domain[s.category] = by_domain.get(s.category, 0) + 1
+        return self._tool_result(
+            {
+                "domains": [{"name": d, "tool_count": n} for d, n in sorted(by_domain.items())],
+                "total_tools": len(specs),
+                "next": 'call capabilities.tools {"domain": "<name>"} to list its tools',
+            }
+        )
+
     def _tools_call(self, params: JSON) -> JSON:
         name = params.get("name")
         arguments = params.get("arguments") or {}
         spec = self.router.get(name) if isinstance(name, str) else None
         if spec is None:
-            return self._tool_error(UNKNOWN_TOOL, f"unknown tool: {name}")
+            return self._tool_error(
+                UNKNOWN_TOOL,
+                f"unknown tool: {name}",
+                {"fix": "navigate the tool surface first", "next_call": "capabilities.tools"},
+            )
 
         try:
             clean = validate(spec, arguments)
         except McpError as exc:
-            return self._tool_error(exc.code, exc.message, exc.detail)
+            detail: JSON = dict(exc.detail) if isinstance(exc.detail, dict) else (
+                {} if exc.detail is None else {"got": exc.detail}
+            )
+            detail.setdefault(
+                "fix",
+                f"correct the argument and re-call {spec.name}; "
+                f'call capabilities.tools {{"name": "{spec.name}"}} to see its schema',
+            )
+            detail.setdefault("next_call", "capabilities.tools")
+            return self._tool_error(exc.code, exc.message, detail)
+
+        if spec.command in LOCAL_COMMANDS:
+            return self._describe_tools(clean)
 
         if spec.command == "system.execute_python" and not self.allow_python:
             return self._tool_error(
@@ -118,14 +203,52 @@ class NiuaBlenderMCP:
                 "system.execute_python is disabled. Set NIUA_BLENDER_MCP_ALLOW_PYTHON=1.",
             )
 
+        timeout = TIMEOUT_SECONDS[spec.timeout_tier]
+        started = time.perf_counter()
         try:
             if spec.tier == "generated":
-                result = self.bridge.call("capabilities.invoke", {"idname": spec.command, "args": json.dumps(clean)})
+                result = self.bridge.call(
+                    "capabilities.invoke",
+                    {"idname": spec.command, "args": json.dumps(clean)},
+                    timeout=timeout,
+                )
             else:
-                result = self.bridge.call(spec.command, clean)
+                result = self.bridge.call(spec.command, clean, timeout=timeout)
         except BridgeError as exc:
+            self._record_session(spec, clean, started, ok=False, error=exc)
             return self._tool_error(exc.code, exc.message, exc.detail)
+        self._record_session(spec, clean, started, ok=True, result=result)
         return self._tool_result(result)
+
+    def _record_session(self, spec, arguments: JSON, started: float, *, ok: bool,
+                        result: JSON | None = None, error: BridgeError | None = None) -> None:
+        # Zero-cost when off: the guard runs before ANY summarize/thumbnail work.
+        if self.session_log is None or not spec.mutates:
+            return
+        try:
+            if error is not None:
+                summary: JSON = {"code": error.code, "message": error.message}
+                thumbnail = None
+            else:
+                summary = summarize_result(result or {})
+                thumbnail = self._session_thumbnail(result or {})
+            self.session_log.record(
+                tool=spec.name,
+                arguments=arguments,
+                duration_ms=(time.perf_counter() - started) * 1000.0,
+                ok=ok,
+                summary=summary,
+                thumbnail=thumbnail,
+            )
+        except Exception:  # noqa: BLE001 -- logging must never break a dispatch
+            pass
+
+    @staticmethod
+    def _session_thumbnail(result: JSON) -> str | None:
+        image = result if (result.get("available") and result.get("data")) else result.get("_feedback")
+        if isinstance(image, dict) and image.get("available") and image.get("data"):
+            return str(image["data"])
+        return None
 
     def _tool_result(self, result: JSON) -> JSON:
         content = [json_text_content(result)]
@@ -153,6 +276,7 @@ def create_server(
     bridge: Any | None = None,
     router: Router | None = None,
     allow_python: bool | None = None,
+    session_log: Any | None = None,
 ) -> NiuaBlenderMCP:
     if allow_python is None:
         allow_python = os.environ.get("NIUA_BLENDER_MCP_ALLOW_PYTHON") == "1"
@@ -160,4 +284,5 @@ def create_server(
         bridge=bridge or BlenderBridge(),
         router=router or build_router(),
         allow_python=allow_python,
+        session_log=session_log if session_log is not None else from_env(),
     )
