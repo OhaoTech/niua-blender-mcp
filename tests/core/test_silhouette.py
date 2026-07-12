@@ -422,3 +422,16 @@ def test_render_silhouette_non_mesh_degrades():
 
     out = silhouette.render_silhouette(_BpyNoMesh, "X")
     assert out["available"] is False and "reason" in out
+
+
+# -- render_fidelity_views: import-safety only (LIVE-validated, no GL under fake-bpy) --
+
+
+def test_render_fidelity_views_exists_and_is_callable_signature():
+    from niua_mcp_bridge.core import silhouette
+
+    assert hasattr(silhouette, "render_fidelity_views")
+    import inspect
+
+    params = inspect.signature(silhouette.render_fidelity_views).parameters
+    assert "obj_name" in params and "frame" in params and "views" in params and "res" in params
