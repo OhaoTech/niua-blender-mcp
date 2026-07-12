@@ -217,7 +217,8 @@ def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None, turns: 
         print(f"  [{item['id']}] BUILD FAILED (import/join): {str(exc)[:70]}", file=sys.stderr)
         return score_item_objective(item, readiness=None, stage_pass_fraction=None,
                                     preservation=None, preservation_available=False,
-                                    godot_import=None)
+                                    godot_import=None,
+                                    surface_fidelity=None, surface_fidelity_available=False)
     intake = _safe(bridge, "feedback.capture_intake", {"object": subject})
     counting = _CountingBridge(bridge)
     try:
@@ -228,13 +229,15 @@ def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None, turns: 
             turns[item["id"]] = counting.calls
         return score_item_objective(item, readiness=None, stage_pass_fraction=None,
                                     preservation=None, preservation_available=False,
-                                    godot_import=None)
+                                    godot_import=None,
+                                    surface_fidelity=None, surface_fidelity_available=False)
     if turns is not None:
         turns[item["id"]] = counting.calls
     readiness = _safe(bridge, "feedback.readiness", {"object": subject, "asset_class": item["asset_class"]})
     pres = _safe(bridge, "feedback.preservation", {"object": subject})
     preservation_available = bool((intake or {}).get("available")) and bool((pres or {}).get("available"))
     godot = godot_fn(bridge, subject, item) if godot_fn else None
+    sf = (pres or {}).get("surface_fidelity") or {}
     return score_item_objective(
         item,
         readiness=(readiness or {}).get("readiness"),
@@ -242,6 +245,8 @@ def run_item(bridge: BlenderBridge, item: dict, finisher, godot_fn=None, turns: 
         preservation=(pres or {}).get("preservation"),
         preservation_available=preservation_available,
         godot_import=godot,
+        surface_fidelity=sf.get("fidelity") if sf.get("available") else None,
+        surface_fidelity_available=bool(sf.get("available")),
     )
 
 

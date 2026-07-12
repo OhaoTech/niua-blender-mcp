@@ -97,6 +97,71 @@ def test_godot_axis_unmeasured_is_none_not_false():
         assert card["godot_import_ok"] is None
 
 
+def test_low_surface_fidelity_flags_harm():
+    card = score_item_objective(
+        {"id": "x", "asset_class": "hard_surface_prop"},
+        readiness=0.6, stage_pass_fraction=0.6,
+        preservation=1.0, preservation_available=True,
+        surface_fidelity=0.5, surface_fidelity_available=True)
+    assert card["surface_fidelity_measured"] is True
+    assert card["harm_flagged"] is True  # fidelity below floor = harm even if silhouette passed
+
+
+def test_unmeasured_fidelity_is_none_not_zero():
+    card = score_item_objective(
+        {"id": "x", "asset_class": "hard_surface_prop"},
+        readiness=0.6, stage_pass_fraction=0.6,
+        preservation=1.0, preservation_available=True,
+        surface_fidelity=None, surface_fidelity_available=False)
+    assert card["surface_fidelity_measured"] is False
+    assert card["surface_fidelity"] is None
+    assert card["harm_flagged"] is False
+
+
+def test_surface_fidelity_pass_does_not_flag_harm():
+    card = score_item_objective(
+        {"id": "x", "asset_class": "hard_surface_prop"},
+        readiness=0.6, stage_pass_fraction=0.6,
+        preservation=1.0, preservation_available=True,
+        surface_fidelity=0.95, surface_fidelity_available=True)
+    assert card["surface_fidelity_measured"] is True
+    assert card["surface_fidelity"] == 0.95
+    assert card["harm_flagged"] is False
+
+
+def test_preservation_harm_still_fires_without_fidelity_axis():
+    # Existing preservation-below-floor harm behavior must be untouched by the new axis.
+    card = score_item_objective(
+        ITEM, readiness=1.0, stage_pass_fraction=1.0,
+        preservation=0.80, preservation_available=True)
+    assert card["surface_fidelity_measured"] is False
+    assert card["harm_flagged"] is True
+
+
+def test_aggregate_excludes_unmeasured_from_fidelity_mean():
+    cards = [
+        score_item_objective({"id": "a", "asset_class": "hard_surface_prop"},
+                             readiness=1.0, stage_pass_fraction=1.0, preservation=0.95, preservation_available=True,
+                             surface_fidelity=0.92, surface_fidelity_available=True),
+        score_item_objective({"id": "b", "asset_class": "hard_surface_prop"},
+                             readiness=0.5, stage_pass_fraction=0.4, preservation=0.95, preservation_available=True,
+                             surface_fidelity=None, surface_fidelity_available=False),
+    ]
+    agg = aggregate_objective(cards)
+    assert agg["n_fidelity_measured"] == 1
+    assert abs(agg["mean_surface_fidelity"] - 0.92) < 1e-9
+
+
+def test_aggregate_mean_surface_fidelity_none_when_unmeasured():
+    assert aggregate_objective([])["mean_surface_fidelity"] is None
+    card = score_item_objective({"id": "c", "asset_class": "organic_prop"},
+                                readiness=0.0, stage_pass_fraction=0.0, preservation=None, preservation_available=False,
+                                surface_fidelity=None, surface_fidelity_available=False)
+    agg = aggregate_objective([card])
+    assert agg["mean_surface_fidelity"] is None
+    assert agg["n_fidelity_measured"] == 0
+
+
 def test_aggregate_counts_godot_axis():
     ok = {"godot_import_measured": True, "godot_import_ok": True}
     bad = {"godot_import_measured": True, "godot_import_ok": False}

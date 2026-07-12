@@ -13,7 +13,9 @@ tools rather than a real 0.0 score. `preservation_measured` / `readiness_measure
 distinction through to `aggregate_objective`, which excludes unmeasured items from the
 corresponding mean instead of silently coercing `None` to 0 and reporting it as a failure.
 `godot_import` follows the same rule: no binary / no export = unmeasured `None`, never a fake
-fail.
+fail. `surface_fidelity` follows it too: no shaded-render / no intake baseline = unmeasured
+`None`, never a fake fail -- and `harm_flagged` fires when EITHER the silhouette-based
+`preservation` axis OR this fidelity axis is measured and below its floor.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 PRESERVATION_FLOOR_DEFAULT = 0.85
+SURFACE_FIDELITY_FLOOR_DEFAULT = 0.90
 
 
 def _num(x: Any) -> float:
@@ -36,6 +39,9 @@ def score_item_objective(
     preservation_available: bool,
     floor: float = PRESERVATION_FLOOR_DEFAULT,
     godot_import: dict | None = None,
+    surface_fidelity: float | None = None,
+    surface_fidelity_available: bool = False,
+    fidelity_floor: float = SURFACE_FIDELITY_FLOOR_DEFAULT,
 ) -> dict:
     """Score one benchmark item from already-measured readiness + preservation readings.
 
@@ -52,12 +58,21 @@ def score_item_objective(
     "measured" only when `godot_import["available"]` is truthy; otherwise `godot_import_ok` is
     `None` (unmeasured), never a fake `False`.
 
+    `surface_fidelity` is a fourth, additive axis (shaded-render block-SSIM vs the intake
+    baseline, distinct from the silhouette-IoU `preservation` axis above): "measured" only when
+    `surface_fidelity_available` is truthy AND a numeric score came back, mirroring the
+    `preservation`/`godot_import` unmeasured-is-`None` rule. Do-no-harm now fires when EITHER
+    the silhouette axis OR the fidelity axis is measured-and-below-its-floor -- a decimate that
+    keeps the silhouette but destroys surface detail must still flag harm.
+
     No all-gate `success` boolean: the two continuous axes (`readiness`, `preservation`) are the
     headline, plus the do-no-harm `harm_flagged` and the informational `fully_ready`.
     """
     readiness_measured = readiness is not None
     preservation_measured = bool(preservation_available) and preservation is not None
     godot_measured = bool(godot_import and godot_import.get("available"))
+    fid_measured = bool(surface_fidelity_available) and surface_fidelity is not None
+    fid_harm = fid_measured and surface_fidelity < fidelity_floor
     return {
         "id": item.get("id"),
         "asset_class": item.get("asset_class"),
@@ -67,10 +82,12 @@ def score_item_objective(
         "preservation": preservation if preservation_measured else None,
         "preservation_measured": preservation_measured,
         "preservation_pass": preservation_measured and preservation >= floor,
-        "harm_flagged": preservation_measured and preservation < floor,
+        "harm_flagged": (preservation_measured and preservation < floor) or fid_harm,
         "fully_ready": readiness_measured and readiness == 1.0,
         "godot_import_ok": bool(godot_import.get("ok")) if godot_measured else None,
         "godot_import_measured": godot_measured,
+        "surface_fidelity": surface_fidelity if fid_measured else None,
+        "surface_fidelity_measured": fid_measured,
     }
 
 
@@ -100,6 +117,12 @@ def aggregate_objective(cards: list[dict], floor: float = PRESERVATION_FLOOR_DEF
     mean_p = (
         sum(c["preservation"] for c in pres_measured) / len(pres_measured)
         if pres_measured
+        else None
+    )
+    fid_measured = [c for c in cards if c.get("surface_fidelity_measured")]
+    mean_fid = (
+        sum(c["surface_fidelity"] for c in fid_measured) / len(fid_measured)
+        if fid_measured
         else None
     )
 
@@ -135,4 +158,6 @@ def aggregate_objective(cards: list[dict], floor: float = PRESERVATION_FLOOR_DEF
         "valid": n > 0 and (n - len(pres_measured)) == 0,
         "n_godot_measured": sum(1 for c in cards if c.get("godot_import_measured")),
         "n_godot_import_ok": sum(1 for c in cards if c.get("godot_import_ok")),
+        "mean_surface_fidelity": mean_fid,
+        "n_fidelity_measured": len(fid_measured),
     }
