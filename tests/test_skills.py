@@ -133,3 +133,46 @@ def test_bake_and_finish_all_tools_used_are_registered():
     known = {("capabilities.invoke" if s.tier == "generated" else s.command)
              for s in build_router().specs()}
     assert bake_and_finish.TOOLS_USED <= known, sorted(bake_and_finish.TOOLS_USED - known)
+
+
+def _pres_with_pass(silhouette, fidelity, sf_pass):
+    """Like _pres, but with an addon-authoritative surface_fidelity_pass key present --
+    exercises the PRIMARY path in _harm_ok (defers to the addon's own floor) rather than
+    the SURFACE_FIDELITY_FLOOR fallback recomputation."""
+    out = _pres(silhouette=silhouette, fidelity=fidelity)
+    out["surface_fidelity"]["surface_fidelity_pass"] = sf_pass
+    out["surface_fidelity"]["floor"] = 0.70  # a stricter addon-side floor than the 0.60 fallback
+    return out
+
+
+class FidelityPassBridge(FakeBridge):
+    """FakeBridge whose feedback.preservation carries the primary surface_fidelity_pass key."""
+    def __init__(self, *a, fidelity_after=1.0, sf_pass_after=True, **k):
+        super().__init__(*a, **k)
+        self.fidelity_after = fidelity_after
+        self.sf_pass_after = sf_pass_after
+
+    def call(self, tool, payload):
+        r = super().call(tool, payload)
+        if tool == "feedback.preservation":
+            moved = self.state is not self.before
+            fid = self.fidelity_after if moved else 1.0
+            sf_pass = self.sf_pass_after if moved else True
+            return _pres_with_pass(self.preservation, fid, sf_pass)
+        return r
+
+
+def test_surface_fidelity_pass_key_forces_revert_even_above_fallback_threshold():
+    """fidelity=0.65 is ABOVE the 0.60 fallback SURFACE_FIDELITY_FLOOR, so if _harm_ok used
+    the fallback numeric comparison this move would be kept. But the addon's authoritative
+    surface_fidelity_pass=False must win -- proving the primary path (not the fallback) gates."""
+    from niua_blender_mcp.client import ToolSession
+    from niua_blender_mcp.finishing.skills import bake_and_finish
+    bridge = FidelityPassBridge(before=_readiness(0.4, ["engine.within_triangle_budget"]),
+                                effects={"modifiers.apply": _readiness(0.6)},
+                                fidelity_after=0.65, sf_pass_after=False)
+    session = ToolSession(bridge)
+    report = bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
+    move = next((m for m in report["moves"] if m["move"] == "bake_transfer"), None)
+    assert move is not None and move["kept"] is False  # authoritative floor forced a revert
+    assert any(c[0] == "session.revert" for c in bridge.calls)

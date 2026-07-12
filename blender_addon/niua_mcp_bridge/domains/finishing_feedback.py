@@ -168,6 +168,11 @@ def preservation(ctx: Ctx, payload: dict) -> dict:
         except Exception:  # noqa: BLE001 - fail-closed: fidelity unmeasured, never a fake score
             surface = {"available": False, "fidelity": None, "per_view": {}, "min_view": None}
 
+    if surface.get("available"):
+        sf_score = surface.get("fidelity")
+        surface["surface_fidelity_pass"] = sf_score is not None and sf_score >= _ledger.SURFACE_FIDELITY_FLOOR
+        surface["floor"] = _ledger.SURFACE_FIDELITY_FLOOR
+
     return {
         "object": obj.name,
         "available": bool(metric.get("available")),

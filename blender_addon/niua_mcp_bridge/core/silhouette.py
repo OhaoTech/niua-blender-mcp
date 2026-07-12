@@ -217,6 +217,27 @@ def render_fidelity_views(
         sun_data = None
         sun_obj = None
         added_clay = False
+        normal_img = None
+        prev_normal_colorspace = None
+        # Pin EEVEE determinism for the ruler: a fixed sample count (and reprojection/denoise/
+        # motion-blur disabled where present) so the shaded fidelity render is reproducible run
+        # to run, not noisy TAA convergence. Attr names vary across EEVEE/EEVEE-Next Blender
+        # versions, so every snapshot+set is guarded with hasattr and every set wrapped in a
+        # best-effort try -- an attr we can't touch just stays at the scene's existing value.
+        eevee = getattr(scene, "eevee", None)
+        prev_eevee: dict[str, Any] = {}
+        if eevee is not None:
+            for attr, value in (
+                ("taa_render_samples", 16),
+                ("use_taa_reprojection", False),
+                ("use_motion_blur", False),
+            ):
+                if hasattr(eevee, attr):
+                    prev_eevee[attr] = getattr(eevee, attr)
+                    try:
+                        setattr(eevee, attr, value)
+                    except Exception:  # noqa: BLE001 - best-effort pin, never fatal
+                        pass
         try:
             clay = bpy.data.materials.new("niua_fidelity_clay")
             clay.use_nodes = True
@@ -244,7 +265,9 @@ def render_fidelity_views(
                 tex = nt.nodes.new("ShaderNodeTexImage")
                 tex.image = normal_img
                 try:
-                    normal_img.colorspace_settings.name = "Non-Color"
+                    colorspace = normal_img.colorspace_settings
+                    prev_normal_colorspace = colorspace.name
+                    colorspace.name = "Non-Color"
                 except Exception:  # noqa: BLE001
                     pass
                 nmap = nt.nodes.new("ShaderNodeNormalMap")
@@ -278,6 +301,17 @@ def render_fidelity_views(
                     subject.data.materials.append(m)
             for p, was in zip(subject.data.polygons, prev_smooth):
                 p.use_smooth = was
+            if normal_img is not None and prev_normal_colorspace is not None:
+                try:
+                    normal_img.colorspace_settings.name = prev_normal_colorspace
+                except Exception:  # noqa: BLE001
+                    pass
+            if eevee is not None:
+                for attr, was in prev_eevee.items():
+                    try:
+                        setattr(eevee, attr, was)
+                    except Exception:  # noqa: BLE001
+                        pass
             if sun_obj is not None:
                 bpy.data.objects.remove(sun_obj, do_unlink=True)
             if sun_data is not None:

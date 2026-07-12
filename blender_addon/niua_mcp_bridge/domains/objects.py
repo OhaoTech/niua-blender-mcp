@@ -448,18 +448,20 @@ def bounds(ctx: Ctx, payload: dict) -> dict:
 
 
 def _bake_target_material(ctx: Ctx, tgt: Any) -> Any:
-    """Resolve (or create) the material that receives the baked maps, and make sure
-    it is attached to the target's material slots and uses nodes."""
-    mat = getattr(tgt, "active_material", None)
-    if mat is None:
-        mat = ctx.bpy.data.materials.new(name=f"{getattr(tgt, 'name', 'Object')}_baked")
-        data = getattr(tgt, "data", None)
-        materials = getattr(data, "materials", None)
-        if materials is None:
-            raise BridgeError(PRECONDITION, f"object cannot hold materials: {getattr(tgt, 'name', '')}")
-        materials.append(mat)
-        if hasattr(tgt, "active_material_index"):
-            tgt.active_material_index = len(list(materials)) - 1
+    """Create a FRESH dedicated material for the bake output and attach it as a new slot,
+    making it active. NEVER reuse/mutate a pre-existing material's node tree: session.revert
+    only restores mesh data + material SLOTS (not a material's internal nodes), so wiring the
+    baked normal into a shared pre-existing material would leave a stale normal wired in after
+    a revert -- which _find_normal_image would then pick up, depressing fidelity on later
+    moves. A brand-new material makes the slot-restore in session.revert fully undo the bake."""
+    mat = ctx.bpy.data.materials.new(name=f"{getattr(tgt, 'name', 'Object')}_baked")
+    data = getattr(tgt, "data", None)
+    materials = getattr(data, "materials", None)
+    if materials is None:
+        raise BridgeError(PRECONDITION, f"object cannot hold materials: {getattr(tgt, 'name', '')}")
+    materials.append(mat)
+    if hasattr(tgt, "active_material_index"):
+        tgt.active_material_index = len(list(materials)) - 1
     return mat
 
 

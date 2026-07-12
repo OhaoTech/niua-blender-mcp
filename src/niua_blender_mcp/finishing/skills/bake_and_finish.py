@@ -20,11 +20,15 @@ from typing import Any, Callable
 from ...bridge import BridgeError
 from .base import Skill
 
-# Server-side mirror of blender_addon/niua_mcp_bridge/finishing/preservation_ledger.py's
-# floors. That module is addon-only (imports live inside niua_mcp_bridge, which is not
-# importable from the server process), so the constants are duplicated here exactly like
+# Server-side copies of blender_addon/niua_mcp_bridge/finishing/preservation_ledger.py's
+# floor values. That module is addon-only (imports live inside niua_mcp_bridge, which is
+# not importable from the server process), so the values are duplicated here exactly like
 # make_game_ready.py hardcodes its own PRESERVATION_FLOOR = 0.85.
 PRESERVATION_FLOOR = 0.85
+# Fallback-only: the addon's preservation_ledger.SURFACE_FIDELITY_FLOOR is the live,
+# authoritative floor -- it's baked into surface_fidelity["surface_fidelity_pass"] by
+# feedback.preservation. This constant only matters for an old addon build whose
+# preservation() response predates that key (see _harm_ok below).
 SURFACE_FIDELITY_FLOOR = 0.60  # evidence-calibrated; see finishing/preservation_ledger.py + surface-fidelity-validation.md
 _EPS = 1e-9
 
@@ -52,6 +56,12 @@ def _harm_ok(session, subject):
     Unmeasured axis never blocks (measure-and-flag): if the bridge can't report
     silhouette or fidelity, that axis passes by default and only the axes that
     were actually measured gate the keep decision.
+
+    Fidelity gating defers to the addon's own authoritative floor
+    (preservation_ledger.SURFACE_FIDELITY_FLOOR, live-mirrored into
+    surface_fidelity["surface_fidelity_pass"] by feedback.preservation) when that key
+    is present; SURFACE_FIDELITY_FLOOR here is only a fallback for an old addon build
+    whose response predates that key.
     """
     try:
         pres = session.feedback.preservation(object=subject)
@@ -61,7 +71,10 @@ def _harm_ok(session, subject):
     sf = pres.get("surface_fidelity") or {}
     fid = sf.get("fidelity") if sf.get("available") else None
     sil_ok = (not pres.get("available")) or sil is None or sil >= PRESERVATION_FLOOR
-    fid_ok = fid is None or fid >= SURFACE_FIDELITY_FLOOR
+    if "surface_fidelity_pass" in sf:
+        fid_ok = fid is None or bool(sf.get("surface_fidelity_pass"))
+    else:
+        fid_ok = fid is None or fid >= SURFACE_FIDELITY_FLOOR
     return (sil_ok and fid_ok), sil, fid
 
 
