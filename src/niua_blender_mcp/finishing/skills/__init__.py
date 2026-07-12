@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from .base import Skill
+from .bake_and_finish import SKILL as _BAKE_AND_FINISH
 from .make_game_ready import SKILL as _MAKE_GAME_READY
 
-_SKILLS: dict[str, Skill] = {_MAKE_GAME_READY.name: _MAKE_GAME_READY}
+_SKILLS: dict[str, Skill] = {
+    _MAKE_GAME_READY.name: _MAKE_GAME_READY,
+    _BAKE_AND_FINISH.name: _BAKE_AND_FINISH,
+}
 
 
 def list_skills() -> list[dict]:

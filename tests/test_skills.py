@@ -90,3 +90,46 @@ def test_finisher_delegates_to_skill_same_report_shape():
                         effects={"uv.smart_unwrap": _readiness(0.7)})
     report = finisher.finish(bridge, "subject", {"id": "t", "asset_class": ITEM_CLASS})
     assert set(report) == {"readiness_start", "readiness_final", "moves"}
+
+
+def _pres(silhouette=1.0, fidelity=1.0):
+    return {"available": True, "preservation": silhouette, "preservation_pass": silhouette >= 0.85,
+            "surface_fidelity": {"available": True, "fidelity": fidelity,
+                                 "per_view": {}, "min_view": {"view": "front", "ssim": fidelity}}}
+
+
+class FidelityBridge(FakeBridge):
+    """FakeBridge whose feedback.preservation returns a scriptable surface_fidelity."""
+    def __init__(self, *a, fidelity_after=1.0, **k):
+        super().__init__(*a, **k)
+        self.fidelity_after = fidelity_after
+    def call(self, tool, payload):
+        r = super().call(tool, payload)
+        if tool == "feedback.preservation":
+            fid = self.fidelity_after if self.state is not self.before else 1.0
+            return _pres(silhouette=self.preservation, fidelity=fid)
+        return r
+
+
+def test_bake_and_finish_registered():
+    from niua_blender_mcp.finishing import skills
+    assert "bake_and_finish" in {s["name"] for s in skills.list_skills()}
+
+
+def test_low_fidelity_step_is_reverted_even_if_readiness_rose():
+    from niua_blender_mcp.client import ToolSession
+    from niua_blender_mcp.finishing.skills import bake_and_finish
+    bridge = FidelityBridge(before=_readiness(0.4, ["engine.within_triangle_budget"]),
+                            effects={"modifiers.apply": _readiness(0.6)}, fidelity_after=0.5)
+    session = ToolSession(bridge)
+    report = bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
+    move = next((m for m in report["moves"] if m["move"] == "bake_transfer"), None)
+    assert move is not None and move["kept"] is False  # low fidelity forced a revert
+    assert any(c[0] == "session.revert" for c in bridge.calls)
+
+
+def test_bake_and_finish_all_tools_used_are_registered():
+    from niua_blender_mcp.finishing.skills import bake_and_finish
+    known = {("capabilities.invoke" if s.tier == "generated" else s.command)
+             for s in build_router().specs()}
+    assert bake_and_finish.TOOLS_USED <= known, sorted(bake_and_finish.TOOLS_USED - known)
