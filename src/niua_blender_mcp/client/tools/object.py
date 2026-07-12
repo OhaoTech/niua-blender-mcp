@@ -5,6 +5,20 @@
 from ..session import _drop_none
 
 
+def bake_transfer(_session, *, source=None, target=None, maps=None, size=None, ray_distance=None):
+    """Bake high->low detail (normal/AO) from a source mesh into a target mesh's maps
+
+    Parameters (omit to use the server default):
+    source: High-poly source object
+    target: Low-poly target object (must have UVs)
+    maps: Comma-separated maps to bake: NORMAL, AO; server default: 'NORMAL,AO'
+    size: Baked image size in pixels; server default: 1024
+    ray_distance: Cage extrusion / ray distance; server default: 0.01
+    """
+    _payload = {"source": source, "target": target, "maps": maps, "size": size, "ray_distance": ray_distance}
+    return _session.call("object.bake_transfer", _drop_none(_payload))
+
+
 def bounds(_session, *, object=None):
     """Read an object's local and world bounds
 
