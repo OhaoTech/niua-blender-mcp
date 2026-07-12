@@ -46,3 +46,6 @@ After the hardening block (timeout tiers, system.health, op table + progress/can
 
 ## Post code-mode-substrate confirmation (2026-07-12)
 Finisher ported to the make_game_ready SKILL over the generated tool-client SDK; evals/finisher.py delegates. Agent-mode benchmark byte-identical — 0.76/0.80/0.80/0.60/0.64, 0 harm. Code-mode token win: per-asset 1.5-2.3x (pessimistic), per-session amortized 7.6x and up — mechanism proven: 16-25k tokens of intermediates per asset collapse to a ~230-token summary. See docs/reports/code-mode-token-win.md.
+
+## Post surface-fidelity + bake confirmation (2026-07-12)
+Surface-fidelity ruler + bake_and_finish skill #2 landed. Metric catches raw-decimate garbage (0.19-0.34) that silhouette IoU missed (0.90-0.99); good high->low bakes score 0.82-0.90. bake_and_finish keeps good bakes (3/5 dense assets to budget), honestly reverts the 2 densest (need quad retopo first). 818 offline pass. See docs/reports/bake-and-finish-first-run.md + surface-fidelity-validation.md.
