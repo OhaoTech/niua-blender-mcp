@@ -3,8 +3,41 @@ from __future__ import annotations
 
 import base64
 import io
+import struct
+import zlib
 
 from niua_mcp_bridge.core import silhouette_metrics as sm
+
+
+def _make_png(w, h, channels, fill):
+    """Build a minimal 8-bit PNG. fill(x,y) -> tuple of `channels` byte values."""
+    color_type = {1: 0, 2: 4, 3: 2, 4: 6}[channels]
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)  # filter type 0
+        for x in range(w):
+            raw.extend(fill(x, y))
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, color_type, 0, 0, 0)
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b"")
+    return png
+
+
+def test_decode_png_rgba_returns_raw_pixels():
+    png = _make_png(2, 1, 4, lambda x, y: (10 * (x + 1), 20, 30, 200))
+    w, h, ch, px = sm.decode_png_rgba(png)
+    assert (w, h, ch) == (2, 1, 4)
+    assert list(px) == [10, 20, 30, 200, 20, 20, 30, 200]
+
+
+def test_decode_png_coverage_still_returns_alpha_for_rgba():
+    png = _make_png(2, 1, 4, lambda x, y: (0, 0, 0, 128 + x))
+    w, h, cov = sm.decode_png_coverage(png)
+    assert (w, h) == (2, 1)
+    assert list(cov) == [128, 129]  # alpha channel, unchanged behavior
 
 
 def _rgba(rows: list[list[int]]) -> str:

@@ -16,11 +16,10 @@ import zlib
 
 _PNG_SIG = b"\x89PNG\r\n\x1a\n"
 _CHANNELS = {0: 1, 2: 3, 4: 2, 6: 4}  # gray, RGB, gray+alpha, RGBA (8-bit)
-_ALPHA_INDEX = {4: 1, 6: 3}           # coverage = alpha channel for these color types
 
 
-def decode_png_coverage(png: bytes) -> tuple[int, int, bytes]:
-    """Decode an 8-bit PNG to (width, height, coverage-bytes). Alpha for 4/6, luma for 0/2."""
+def decode_png_rgba(png: bytes) -> tuple[int, int, int, bytes]:
+    """Decode an 8-bit PNG to (width, height, channels, defiltered-pixel-bytes)."""
     if png[:8] != _PNG_SIG:
         raise ValueError("not a PNG")
     pos = 8
@@ -40,10 +39,9 @@ def decode_png_coverage(png: bytes) -> tuple[int, int, bytes]:
     if width is None or bit_depth != 8 or color_type not in _CHANNELS:
         raise ValueError(f"unsupported PNG (depth={bit_depth}, color_type={color_type})")
     ch = _CHANNELS[color_type]
-    alpha_i = _ALPHA_INDEX.get(color_type)
     raw = zlib.decompress(bytes(idat))
     stride = width * ch
-    out = bytearray(width * height)
+    pixels = bytearray(width * height * ch)
     prev = bytearray(stride)
     i = 0
     for y in range(height):
@@ -69,19 +67,29 @@ def decode_png_coverage(png: bytes) -> tuple[int, int, bytes]:
                     line[x] = (line[x] + pr) & 0xFF
                 else:
                     raise ValueError(f"bad PNG filter {ftype}")
-        row = y * width
-        if alpha_i is not None:               # coverage = alpha (film_transparent path)
-            for px in range(width):
-                out[row + px] = line[px * ch + alpha_i]
-        elif ch >= 3:                          # opaque RGB -> luma fallback
-            for px in range(width):
-                base = px * ch
-                out[row + px] = (line[base] + line[base + 1] + line[base + 2]) // 3
-        else:                                  # opaque grayscale
-            for px in range(width):
-                out[row + px] = line[px * ch]
+        pixels[y * stride : (y + 1) * stride] = line
         prev = line
-    return int(width), int(height), bytes(out)
+    return int(width), int(height), int(ch), bytes(pixels)
+
+
+def decode_png_coverage(png: bytes) -> tuple[int, int, bytes]:
+    """Decode an 8-bit PNG to (width, height, coverage-bytes). Alpha for 4/6, luma for 0/2."""
+    w, h, ch, px = decode_png_rgba(png)
+    # coverage = alpha channel for alpha-bearing pixel layouts: GA (2 channels) / RGBA (4
+    # channels) carry alpha last. Equivalent to the old color_type-keyed _ALPHA_INDEX
+    # {4: 1, 6: 3} because _CHANNELS is a bijection {0:1, 2:3, 4:2, 6:4} between color_type
+    # and channel count in this 8-bit-only decoder.
+    alpha_i = {2: 1, 4: 3}.get(ch)
+    out = bytearray(w * h)
+    for i in range(w * h):
+        base = i * ch
+        if alpha_i is not None:                # coverage = alpha (film_transparent path)
+            out[i] = px[base + alpha_i]
+        elif ch >= 3:                          # opaque RGB -> luma fallback
+            out[i] = (px[base] + px[base + 1] + px[base + 2]) // 3
+        else:                                  # opaque grayscale
+            out[i] = px[base]
+    return w, h, bytes(out)
 
 
 def png_b64_to_mask(data_b64: str, threshold: int = 128) -> tuple[int, int, bytes]:
