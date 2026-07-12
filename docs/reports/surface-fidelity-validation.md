@@ -33,3 +33,6 @@ The silhouette metric passed all three (0.90–0.99) — this is the exact false
 - Determinism confirmed live; no denoise/AA-dither issues observed (self = exactly 1.0).
 - The metric is measure-and-flag: unmeasured (headless/no-GL) → `available:false`, never a fake pass — consistent with the silhouette axis.
 - Operational note: a stale Blender process from a prior session initially served pre-A4 code (surface_fidelity absent); a clean relaunch of the addon resolved it. Re-verified the running addon returns `surface_fidelity` before trusting these numbers.
+
+## Floor recalibration (2026-07-12, Phase B live findings — supersedes the 0.90 above)
+The 0.90 floor stated above was an unvalidated Phase-A guess. Phase B's live bake evidence showed the metric cleanly separates two populations: naive-decimate garbage 0.19-0.34, good high->low bakes 0.82-0.90. The floor was recalibrated to **0.60** (in the gap: still rejects the garbage this metric was built to catch, accepts a real bake). See docs/reports/bake-and-finish-first-run.md.
