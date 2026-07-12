@@ -25,7 +25,7 @@ from .base import Skill
 # importable from the server process), so the constants are duplicated here exactly like
 # make_game_ready.py hardcodes its own PRESERVATION_FLOOR = 0.85.
 PRESERVATION_FLOOR = 0.85
-SURFACE_FIDELITY_FLOOR = 0.90
+SURFACE_FIDELITY_FLOOR = 0.60  # evidence-calibrated; see finishing/preservation_ledger.py + surface-fidelity-validation.md
 _EPS = 1e-9
 
 

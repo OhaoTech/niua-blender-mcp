@@ -88,10 +88,18 @@ def main(argv: list[str] | None = None) -> int:
         subject = f"bench_{item['id']}"
         _clear_meshes(bridge)
         _build_input(bridge, item, subject)
+        # Establish the do-no-harm baseline BEFORE the skill runs, so the skill's
+        # preservation/fidelity gate has an intake to compare against (a fidelity-gated skill
+        # like bake_and_finish is inert without this -- both axes report unmeasured otherwise).
+        bridge.call("feedback.capture_intake", {"object": subject})
         session = RecordingSession(bridge)
         summary = skill.run(session, subject, {"asset_class": item["asset_class"], "id": item["id"]})
+        pres = bridge.call("feedback.preservation", {"object": subject})
+        sf = pres.get("surface_fidelity") or {}
         acct = accounting.token_accounting(session.recorded, sdk_sources, schemas, summary)
         cards.append({"id": item["id"], "readiness_final": summary.get("readiness_final"),
+                      "preservation": pres.get("preservation"),
+                      "surface_fidelity": sf.get("fidelity") if sf.get("available") else None,
                       "accounting": acct})
         print(f"[{item['id']}] readiness_final={summary.get('readiness_final')} "
               f"tool_by_tool={acct['tool_by_tool_tokens']} code_mode={acct['code_mode_tokens']} "

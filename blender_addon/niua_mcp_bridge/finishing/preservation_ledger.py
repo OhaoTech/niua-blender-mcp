@@ -13,7 +13,7 @@ from typing import Any
 PRESERVATION_FLOOR = 0.85                       # locked global do-no-harm floor (per-class later)
 PRESERVATION_VIEWS = ("front", "right", "top")  # ortho-only; persp excluded
 PRESERVATION_RES = 256
-SURFACE_FIDELITY_FLOOR = 0.90   # locked global surface-fidelity floor (block-SSIM; per-class later)
+SURFACE_FIDELITY_FLOOR = 0.60   # evidence-calibrated (2026-07-12): naive-decimate garbage scores 0.19-0.32, a good high->low bake scores ~0.77; floor sits in the gap. Rejects the troll, accepts a real bake.
 
 _LEDGER: dict[str, dict[str, Any]] = {}
 

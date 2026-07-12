@@ -156,13 +156,33 @@ def render_preservation_views(
         return {"available": False, "reason": str(exc)}
 
 
+def _find_normal_image(obj: Any):
+    """The baked normal-map image wired into obj's active material (TexImage -> NormalMap ->
+    Principled.Normal, as object.bake_transfer wires it), or None. Used by the fidelity render to
+    reproduce the baked surface shape under neutral clay albedo."""
+    mat = getattr(obj, "active_material", None)
+    if mat is None or not getattr(mat, "use_nodes", False):
+        return None
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return None
+    for node in nt.nodes:
+        if getattr(node, "bl_idname", "") == "ShaderNodeNormalMap":
+            link = next((l for l in nt.links
+                         if l.to_node is node and getattr(l.to_socket, "name", "") == "Color"), None)
+            if link is not None and getattr(link.from_node, "bl_idname", "") == "ShaderNodeTexImage":
+                return getattr(link.from_node, "image", None)
+    return None
+
+
 def render_fidelity_views(
     bpy: Any, obj_name: str, *, frame: dict | None = None, views=("front", "right", "top"), res: int = 256
 ) -> dict:
     """Fixed-frame EEVEE shaded renders (neutral clay + one fixed sun) for the surface-fidelity
-    metric. Isolates the subject, applies a temporary clay material + smooth shading so the shaded
-    luminance reflects SURFACE detail (and any baked normal map), renders RGBA (alpha = mask), then
-    restores every touched piece of state. Degrades to {available:false} headless. LIVE-validated.
+    metric. Isolates the subject, ALWAYS renders it with a neutral clay material (wiring in the
+    subject's baked normal map if present) + smooth shading so the shaded luminance reflects
+    SURFACE SHAPE only -- never albedo -- renders RGBA (alpha = mask), then restores every touched
+    piece of state. Degrades to {available:false} headless. LIVE-validated.
     """
     from . import capture as cap
     import base64, os, tempfile
@@ -186,6 +206,7 @@ def render_fidelity_views(
         }
         hidden = [(o, o.hide_render) for o in scene.objects]
         prev_smooth = [p.use_smooth for p in subject.data.polygons]
+        prev_materials = None
         path = os.path.join(tempfile.gettempdir(), "niua_fidelity.png")
         images: list[dict] = []
         # Datablock handles must be defined before the inner try so the finally block can
@@ -211,15 +232,27 @@ def render_fidelity_views(
             scene.collection.objects.link(sun_obj)
             for o in scene.objects:
                 o.hide_render = (o is not subject and o is not sun_obj)
-            # temp clay: replace all slots with the clay material (keep normal-map materials?
-            # no -- the metric wants surface SHAPE incl. baked normal, so clay replaces albedo but
-            # a caller that wants the baked normal applied must have it wired into the object's OWN
-            # material. For the intake high-poly there is no normal map; clay is correct. For a
-            # baked low-poly, its own material carries the normal -- so DO NOT override slots when
-            # the subject already has a material; only add clay when it has none.)
-            if not subject.data.materials:
-                subject.data.materials.append(clay)
-                added_clay = True
+            # Isolate SURFACE SHAPE: ALWAYS render with neutral clay albedo (so a material/albedo
+            # change -- pbr_maps adding empty slots, or the bake adding a base-color map -- never
+            # confounds the metric), but wire the subject's BAKED NORMAL MAP into the clay when it
+            # has one, so a baked low-poly shades like the high-poly (the whole point) while the
+            # intake high-poly (no normal map) shades by geometry. Snapshot + restore the real slots.
+            prev_materials = list(subject.data.materials)
+            normal_img = _find_normal_image(subject)
+            if bsdf is not None and normal_img is not None:
+                nt = clay.node_tree
+                tex = nt.nodes.new("ShaderNodeTexImage")
+                tex.image = normal_img
+                try:
+                    normal_img.colorspace_settings.name = "Non-Color"
+                except Exception:  # noqa: BLE001
+                    pass
+                nmap = nt.nodes.new("ShaderNodeNormalMap")
+                nt.links.new(tex.outputs["Color"], nmap.inputs["Color"])
+                nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+            subject.data.materials.clear()
+            subject.data.materials.append(clay)
+            added_clay = True   # "we swapped the slots" -> restore the real materials in finally
             for p in subject.data.polygons:
                 p.use_smooth = True
             scene.camera = cam
@@ -239,8 +272,10 @@ def render_fidelity_views(
                 with open(path, "rb") as fh:
                     images.append({"view": view, "data": base64.b64encode(fh.read()).decode("ascii")})
         finally:
-            if added_clay and clay is not None:
-                subject.data.materials.pop()
+            if added_clay and prev_materials is not None:
+                subject.data.materials.clear()
+                for m in prev_materials:
+                    subject.data.materials.append(m)
             for p, was in zip(subject.data.polygons, prev_smooth):
                 p.use_smooth = was
             if sun_obj is not None:

@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 PRESERVATION_FLOOR_DEFAULT = 0.85
-SURFACE_FIDELITY_FLOOR_DEFAULT = 0.90
+SURFACE_FIDELITY_FLOOR_DEFAULT = 0.60
 
 
 def _num(x: Any) -> float:
