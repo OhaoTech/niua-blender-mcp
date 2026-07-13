@@ -542,8 +542,12 @@ def bake_transfer(ctx: Ctx, payload: dict) -> dict:
 
 def retopo(ctx: Ctx, payload: dict) -> dict:
     """Retopologize an object to a clean quad mesh at a face budget: voxel remesh (robust
-    cleanup -> watertight manifold) then quadriflow to target_faces. No decimate fallback --
-    fails cleanly if either remesh step fails.
+    cleanup -> watertight manifold) then quadriflow to target_faces. Voxel-remesh/quadriflow
+    RuntimeErrors fail cleanly (no silent fallback). Blender's quadriflow operator can also
+    *cancel* without raising -- e.g. at aggressive targets it silently leaves the voxel-remeshed
+    mesh in place, many times over budget. To guarantee the budget in that case, a decimate
+    collapse is applied to the (clean, watertight) voxel mesh so the tool never returns a mesh
+    that blows the tri budget.
     """
     bpy = ctx.bpy
     obj = ctx.get_object(payload.get("object"))
@@ -581,8 +585,22 @@ def retopo(ctx: Ctx, payload: dict) -> dict:
         raise BridgeError(PRECONDITION, f"retopo failed: {exc}") from exc
 
     m = obj.data
-    faces = len(m.polygons)
     tris = sum((len(p.vertices) - 2) for p in m.polygons)
+    tri_budget = target_faces * 2
+    if tris > tri_budget:
+        # quadriflow cancelled or under-reduced -- the voxel-remeshed mesh is still clean and
+        # watertight, so decimate-collapsing IT (not raw generator garbage) is still a good
+        # bake target. This guarantees the tool never returns a mesh over ~2x target_faces.
+        ratio = tri_budget / tris
+        with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+            modifier = obj.modifiers.new(name="RETOPO_DECIMATE", type="DECIMATE")
+            modifier.ratio = ratio
+            ctx.check_poll(bpy.ops.object.modifier_apply)
+            bpy.ops.object.modifier_apply(modifier=modifier.name)
+        m = obj.data
+        tris = sum((len(p.vertices) - 2) for p in m.polygons)
+
+    faces = len(m.polygons)
     return {"object": obj.name, "faces": faces, "tris": tris}
 
 

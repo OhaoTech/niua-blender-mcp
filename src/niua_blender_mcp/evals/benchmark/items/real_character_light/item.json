@@ -1,6 +1,6 @@
 {
   "id": "real_character_light",
-  "asset_class": "organic_prop",
+  "asset_class": "character",
   "category": "humanoid_character",
   "brief": "A generated humanoid character (lighter mesh). Generator output needing retopo, UV, bake, and optimize; a measurable-weight counterpart to the dense character.",
   "input": {"asset": "assets/real_character_light.glb"},

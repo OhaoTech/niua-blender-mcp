@@ -31,6 +31,7 @@ def test_asset_class_list_returns_summaries() -> None:
     out = dispatch_on_main(reg, "asset_class.list", {}, ctx)
 
     assert [item["id"] for item in out["asset_classes"]] == [
+        "character",
         "from_scratch_prop",
         "generated_cleanup",
         "hard_surface_prop",

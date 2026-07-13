@@ -1,6 +1,6 @@
 {
   "id": "real_creature",
-  "asset_class": "organic_prop",
+  "asset_class": "character",
   "category": "creature",
   "brief": "A generated organic creature (non-humanoid). Dense generator mesh with irregular topology; needs repair, retopo, UV, bake, optimize while preserving its silhouette.",
   "input": {"asset": "assets/real_creature.glb"},

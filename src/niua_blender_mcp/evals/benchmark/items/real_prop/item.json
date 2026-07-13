@@ -1,6 +1,6 @@
 {
   "id": "real_prop",
-  "asset_class": "hard_surface_prop",
+  "asset_class": "character",
   "category": "prop_vessel",
   "brief": "A generated prop (vessel), very dense scan-style geometry. Needs aggressive retopo/decimation to a prop tri-budget, UV, bake, and export while preserving the form.",
   "input": {"asset": "assets/real_prop.glb"},

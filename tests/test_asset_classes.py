@@ -10,7 +10,13 @@ def test_server_and_addon_asset_class_registries_match() -> None:
     server = {profile["id"]: profile for profile in server_asset_classes.list_asset_classes()}
     addon = {profile["id"]: profile for profile in addon_asset_classes.list_asset_classes()}
 
-    assert sorted(server) == ["from_scratch_prop", "generated_cleanup", "hard_surface_prop", "organic_prop"]
+    assert sorted(server) == [
+        "character",
+        "from_scratch_prop",
+        "generated_cleanup",
+        "hard_surface_prop",
+        "organic_prop",
+    ]
     assert server == addon
 
 

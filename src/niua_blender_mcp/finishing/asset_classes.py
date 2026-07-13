@@ -43,6 +43,11 @@ _PROFILES: dict[str, dict[str, Any]] = {
         "from_scratch_prop", "From-scratch prop",
         "Freshly authored prop with tighter budgets because topology and materials are controllable from the start.",
         {"triangle_budget": 4000, "material_budget": 3, "texture_budget": 6}),
+    "character": _profile(
+        "character", "Character",
+        "Rigged/animated game character; higher triangle budget than a prop because silhouette + surface read at close range.",
+        {"triangle_budget": 18000, "material_budget": 4, "texture_budget": 8,
+         "max_lod_triangle_ratio": 0.6, "max_lod_bounds_delta": 0.12}),
 }
 
 ASSET_CLASS_IDS = sorted(_PROFILES)

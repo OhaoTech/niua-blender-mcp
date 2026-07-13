@@ -8,7 +8,7 @@ def test_list_items_includes_real_asset():
 
 def test_load_item_resolves_rubric_and_asset_path():
     item = load_item("real_character")
-    assert item["asset_class"] == "organic_prop"
+    assert item["asset_class"] == "character"
     assert item["senior_threshold"] == 7.0
     assert item["stages"][0] == "repair"
     # asset-input item: references a generic fixture and the loader resolves it to an absolute path
