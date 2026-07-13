@@ -120,12 +120,36 @@ def test_low_fidelity_step_is_reverted_even_if_readiness_rose():
     from niua_blender_mcp.client import ToolSession
     from niua_blender_mcp.finishing.skills import bake_and_finish
     bridge = FidelityBridge(before=_readiness(0.4, ["engine.within_triangle_budget"]),
-                            effects={"modifiers.apply": _readiness(0.6)}, fidelity_after=0.5)
+                            effects={"object.retopo": _readiness(0.6)}, fidelity_after=0.5)
     session = ToolSession(bridge)
     report = bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
     move = next((m for m in report["moves"] if m["move"] == "bake_transfer"), None)
     assert move is not None and move["kept"] is False  # low fidelity forced a revert
     assert any(c[0] == "session.revert" for c in bridge.calls)
+
+
+def test_bake_transfer_uses_retopo_not_decimate():
+    from niua_blender_mcp.client import ToolSession
+    from niua_blender_mcp.finishing.skills import bake_and_finish
+    # readiness marks the triangle-budget gate failing so the bake move fires
+    bridge = FidelityBridge(before=_readiness(0.4, ["engine.within_triangle_budget"]),
+                            effects={"object.bake_transfer": _readiness(0.6)}, fidelity_after=0.9)
+    session = ToolSession(bridge)
+    bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
+    tools = [c[0] for c in bridge.calls]
+    assert "object.retopo" in tools
+    assert "modifiers.add" not in tools  # decimate path is gone from the bake move
+    # target_faces derived from the budget (5000 tris in the fake quality) -> ~2500 faces
+    retopo_call = next(c for c in bridge.calls if c[0] == "object.retopo")
+    assert retopo_call[1]["target_faces"] == 2500
+
+
+def test_retopo_in_tools_used_and_registered():
+    from niua_blender_mcp.domains import build_router
+    from niua_blender_mcp.finishing.skills import bake_and_finish
+    assert "object.retopo" in bake_and_finish.TOOLS_USED
+    known = {("capabilities.invoke" if s.tier == "generated" else s.command) for s in build_router().specs()}
+    assert bake_and_finish.TOOLS_USED <= known
 
 
 def test_bake_and_finish_all_tools_used_are_registered():
@@ -169,7 +193,7 @@ def test_surface_fidelity_pass_key_forces_revert_even_above_fallback_threshold()
     from niua_blender_mcp.client import ToolSession
     from niua_blender_mcp.finishing.skills import bake_and_finish
     bridge = FidelityPassBridge(before=_readiness(0.4, ["engine.within_triangle_budget"]),
-                                effects={"modifiers.apply": _readiness(0.6)},
+                                effects={"object.retopo": _readiness(0.6)},
                                 fidelity_after=0.65, sf_pass_after=False)
     session = ToolSession(bridge)
     report = bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})

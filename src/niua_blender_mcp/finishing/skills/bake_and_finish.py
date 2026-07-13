@@ -1,7 +1,8 @@
 """Skill #2: bake-transfer finish. Like make_game_ready, but the detail lost to
 
-decimation is recovered by baking the pre-decimate high-poly onto the low-poly
-before it's discarded, and the do-no-harm gate reads BOTH silhouette
+retopo (voxel-remesh -> quadriflow-to-budget) is recovered by baking the
+pre-retopo high-poly onto the low-poly before it's discarded, and the
+do-no-harm gate reads BOTH silhouette
 (preservation) AND surface fidelity (SSIM) from a single feedback.preservation
 call — a step is only kept if readiness held and *both* measured axes stayed
 above their floors (an axis the bridge doesn't report never blocks; that's
@@ -94,15 +95,13 @@ def _repair(session, subject, info):
 
 def _bake_transfer(session, subject, info):
     high = f"{subject}__high"
-    session.object.duplicate(object=subject, name=high)  # keep pre-decimate detail as bake source
+    session.object.duplicate(object=subject, name=high)  # keep the pre-retopo detail as bake source
     q = session.feedback.quality(object=subject, asset_class=info["asset_class"])
-    tris = int(q.get("topology", {}).get("tris") or 0)
     budget = int(q.get("asset_class", {}).get("effective_defaults", {}).get("triangle_budget") or 0)
-    if tris > 0 and budget > 0 and budget < tris:
-        ratio = max(0.01, min(1.0, budget / tris))
-        session.modifiers.add(object=subject, type="DECIMATE", name="niua_decimate")
-        session.modifiers.set(object=subject, name="niua_decimate", property="ratio", value=str(ratio))
-        session.modifiers.apply(object=subject, name="niua_decimate")
+    tris = int(q.get("topology", {}).get("tris") or 0)
+    if budget > 0 and (tris <= 0 or budget < tris):
+        target_faces = max(1, budget // 2)  # budget is in tris; quadriflow targets quad FACES
+        session.object.retopo(object=subject, target_faces=target_faces)
     session.mesh.select_all(object=subject, action="SELECT")
     session.uv.smart_unwrap(object=subject)
     session.uv.pack_islands(object=subject)
@@ -151,12 +150,11 @@ TOOLS_USED = {
     "feedback.readiness", "feedback.preservation", "feedback.quality",
     "session.checkpoint", "session.revert", "scene.info", "object.delete",
     "mesh.select_all", "mesh.remove_doubles", "mesh.recalc_normals", "mesh.tris_to_quads",
-    "modifiers.add", "modifiers.set", "modifiers.apply",
     "uv.smart_unwrap", "uv.pack_islands",
     "shading.prepare_pbr_maps",
     "object.lod_create", "object.collision_proxy_create", "object.collision_hulls_create",
     "object.transform_apply",
-    "object.duplicate", "object.bake_transfer",
+    "object.duplicate", "object.bake_transfer", "object.retopo",
 }
 
 
@@ -215,10 +213,10 @@ def run(session, subject: str, params: dict) -> dict:
 SKILL = Skill(
     name="bake_and_finish",
     description=("Take a raw generated mesh to game-ready with bake-transfer detail recovery: "
-                 "repair, duplicate the high-poly as a bake source, decimate to the triangle "
-                 "budget, unwrap, bake normal+AO maps from the high-poly, quads, PBR maps, LODs, "
-                 "collision, apply transforms — each step kept only if readiness holds and both "
-                 "silhouette AND surface fidelity are preserved."),
+                 "repair, duplicate the high-poly as a bake source, retopo (voxel-remesh -> "
+                 "quadriflow) to the triangle budget, unwrap, bake normal+AO maps from the "
+                 "high-poly, quads, PBR maps, LODs, collision, apply transforms — each step kept "
+                 "only if readiness holds and both silhouette AND surface fidelity are preserved."),
     asset_classes=("hard_surface_prop", "organic_prop", "generated_cleanup", "from_scratch_prop"),
     run=run,
 )
