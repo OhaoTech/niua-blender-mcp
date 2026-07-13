@@ -540,6 +540,52 @@ def bake_transfer(ctx: Ctx, payload: dict) -> dict:
     return {"object": getattr(tgt, "name", ""), "baked": baked, "images": images}
 
 
+def retopo(ctx: Ctx, payload: dict) -> dict:
+    """Retopologize an object to a clean quad mesh at a face budget: voxel remesh (robust
+    cleanup -> watertight manifold) then quadriflow to target_faces. No decimate fallback --
+    fails cleanly if either remesh step fails.
+    """
+    bpy = ctx.bpy
+    obj = ctx.get_object(payload.get("object"))
+    if getattr(obj, "type", None) != "MESH":
+        raise BridgeError(INVALID_PARAMS, "retopo target must be a mesh")
+    target_faces = int(payload.get("target_faces", 0))
+    if target_faces < 1:
+        raise BridgeError(INVALID_PARAMS, "target_faces must be >= 1")
+    voxel_size = float(payload.get("voxel_size", 0.0))
+    adaptivity = float(payload.get("adaptivity", 0.0))
+    preserve_sharp = bool(payload.get("preserve_sharp", True))
+    preserve_boundary = bool(payload.get("preserve_boundary", True))
+    if voxel_size <= 0.0:
+        dims = list(getattr(obj, "dimensions", (0.0, 0.0, 0.0)))
+        longest = max(dims) if dims and max(dims) > 0 else 1.0
+        voxel_size = longest / 128.0
+
+    try:
+        with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+            mesh = obj.data
+            mesh.remesh_voxel_size = voxel_size
+            if hasattr(mesh, "remesh_voxel_adaptivity"):
+                mesh.remesh_voxel_adaptivity = adaptivity
+            ctx.check_poll(bpy.ops.object.voxel_remesh)
+            bpy.ops.object.voxel_remesh()
+            ctx.check_poll(bpy.ops.object.quadriflow_remesh)
+            bpy.ops.object.quadriflow_remesh(
+                mode="FACES",
+                target_faces=target_faces,
+                use_preserve_sharp=preserve_sharp,
+                use_preserve_boundary=preserve_boundary,
+                smooth_normals=True,
+            )
+    except RuntimeError as exc:
+        raise BridgeError(PRECONDITION, f"retopo failed: {exc}") from exc
+
+    m = obj.data
+    faces = len(m.polygons)
+    tris = sum((len(p.vertices) - 2) for p in m.polygons)
+    return {"object": obj.name, "faces": faces, "tris": tris}
+
+
 COMMANDS = [
     Command("object.create", create_object, mutates=True, feedback="viewport"),
     Command("object.duplicate", duplicate, mutates=True, feedback="viewport"),
@@ -554,4 +600,5 @@ COMMANDS = [
     Command("object.transform_get", transform_get, mutates=False),
     Command("object.bounds", bounds, mutates=False),
     Command("object.bake_transfer", bake_transfer, mutates=True, feedback="viewport", timeout_tier="heavy"),
+    Command("object.retopo", retopo, mutates=True, feedback="viewport", timeout_tier="heavy"),
 ]

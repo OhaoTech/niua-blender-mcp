@@ -143,6 +143,21 @@ def rename(_session, *, object=None, name=None):
     return _session.call("object.rename", _drop_none(_payload))
 
 
+def retopo(_session, *, object=None, target_faces=None, voxel_size=None, adaptivity=None, preserve_sharp=None, preserve_boundary=None):
+    """Retopologize a mesh to clean quads at a face budget (voxel remesh -> quadriflow)
+
+    Parameters (omit to use the server default):
+    object: Mesh object to retopologize
+    target_faces: Target quad face count
+    voxel_size: Voxel size for the cleanup pass; 0 = auto from bbox; server default: 0.0
+    adaptivity: Voxel adaptivity (0 = uniform); server default: 0.0
+    preserve_sharp: Preserve sharp edges in quadriflow; server default: True
+    preserve_boundary: Preserve open boundaries in quadriflow; server default: True
+    """
+    _payload = {"object": object, "target_faces": target_faces, "voxel_size": voxel_size, "adaptivity": adaptivity, "preserve_sharp": preserve_sharp, "preserve_boundary": preserve_boundary}
+    return _session.call("object.retopo", _drop_none(_payload))
+
+
 def transform_apply(_session, *, object=None, location=None, rotation=None, scale=None, properties=None, isolate_users=None):
     """Apply an object's transform
 
