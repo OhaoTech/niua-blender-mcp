@@ -47,7 +47,8 @@ _PROFILES: dict[str, dict[str, Any]] = {
         "character", "Character",
         "Rigged/animated game character; higher triangle budget than a prop because silhouette + surface read at close range.",
         {"triangle_budget": 18000, "material_budget": 4, "texture_budget": 8,
-         "max_lod_triangle_ratio": 0.6, "max_lod_bounds_delta": 0.12}),
+         "max_lod_triangle_ratio": 0.6, "max_lod_bounds_delta": 0.12},
+        {"retopo": {"topology.quad_ratio": {"op": ">=", "value": 0.30}}}),
 }
 
 ASSET_CLASS_IDS = sorted(_PROFILES)

@@ -144,18 +144,31 @@ def rename(_session, *, object=None, name=None):
 
 
 def retopo(_session, *, object=None, target_faces=None, voxel_size=None, adaptivity=None, preserve_sharp=None, preserve_boundary=None):
-    """Retopologize a mesh to clean quads at a face budget (voxel remesh -> quadriflow)
+    """Retopologize a mesh to a clean, manifold mesh at a face budget (voxel remesh -> decimate collapse)
 
     Parameters (omit to use the server default):
     object: Mesh object to retopologize
     target_faces: Target quad face count
     voxel_size: Voxel size for the cleanup pass; 0 = auto from bbox; server default: 0.0
     adaptivity: Voxel adaptivity (0 = uniform); server default: 0.0
-    preserve_sharp: Preserve sharp edges in quadriflow; server default: True
-    preserve_boundary: Preserve open boundaries in quadriflow; server default: True
+    preserve_sharp: Reserved for API compatibility; unused now that quadriflow has been dropped; server default: True
+    preserve_boundary: Reserved for API compatibility; unused now that quadriflow has been dropped; server default: True
     """
     _payload = {"object": object, "target_faces": target_faces, "voxel_size": voxel_size, "adaptivity": adaptivity, "preserve_sharp": preserve_sharp, "preserve_boundary": preserve_boundary}
     return _session.call("object.retopo", _drop_none(_payload))
+
+
+def shrinkwrap(_session, *, object=None, target=None, offset=None, apply=None):
+    """Snap a mesh's vertices onto a target object's surface via a SHRINKWRAP modifier
+
+    Parameters (omit to use the server default):
+    object: Mesh object to snap onto the target surface
+    target: Target object supplying the surface to snap onto
+    offset: Distance to offset the snapped surface along its normal; server default: 0.0
+    apply: Apply the shrinkwrap modifier immediately; server default: True
+    """
+    _payload = {"object": object, "target": target, "offset": offset, "apply": apply}
+    return _session.call("object.shrinkwrap", _drop_none(_payload))
 
 
 def transform_apply(_session, *, object=None, location=None, rotation=None, scale=None, properties=None, isolate_users=None):

@@ -540,14 +540,45 @@ def bake_transfer(ctx: Ctx, payload: dict) -> dict:
     return {"object": getattr(tgt, "name", ""), "baked": baked, "images": images}
 
 
+_VOXEL_COUNT_CAP = 5_000_000
+
+
+def _capped_voxel_size(dims: list[float], voxel_size: float) -> float:
+    """Raise voxel_size (never lower it) so the approximate voxel count implied by the
+    object's bbox stays under _VOXEL_COUNT_CAP. Prevents object.voxel_remesh from OOM-ing
+    / crashing Blender on large and/or dense (e.g. multi-part) meshes -- this is what
+    segfaulted Blender on the 10-part real_multipart mesh before the cap existed.
+    """
+    if len(dims) < 3 or voxel_size <= 0.0:
+        return voxel_size
+    bbox_volume = dims[0] * dims[1] * dims[2]
+    if bbox_volume <= 0.0:
+        return voxel_size
+    voxel_count = bbox_volume / (voxel_size**3)
+    if voxel_count <= _VOXEL_COUNT_CAP:
+        return voxel_size
+    capped = (bbox_volume / _VOXEL_COUNT_CAP) ** (1.0 / 3.0)
+    return max(voxel_size, capped)
+
+
 def retopo(ctx: Ctx, payload: dict) -> dict:
-    """Retopologize an object to a clean quad mesh at a face budget: voxel remesh (robust
-    cleanup -> watertight manifold) then quadriflow to target_faces. Voxel-remesh/quadriflow
-    RuntimeErrors fail cleanly (no silent fallback). Blender's quadriflow operator can also
-    *cancel* without raising -- e.g. at aggressive targets it silently leaves the voxel-remeshed
-    mesh in place, many times over budget. To guarantee the budget in that case, a decimate
-    collapse is applied to the (clean, watertight) voxel mesh so the tool never returns a mesh
-    that blows the tri budget.
+    """Retopologize an object to a clean mesh at a face budget: voxel remesh (robust
+    cleanup -> watertight manifold, regardless of input topology) then a decimate collapse
+    that guarantees the tool never returns a mesh over the target face budget.
+
+    quadriflow_remesh was dropped from this pipeline: it silently *cancels* without
+    raising at aggressive targets (leaving the voxel-remeshed mesh many times over budget)
+    and it segfaults Blender outright on dense multi-part meshes. Voxel-remesh + decimate
+    is the primitive that survives those inputs; the resulting quad purity is lower, but
+    bake_and_finish's shrinkwrap step (snapping this mesh back onto the high-poly surface)
+    recovers the lost surface detail via the baked normal map.
+
+    A voxel-resolution safety cap guards ``object.voxel_remesh`` itself: voxel_size is
+    raised (never lowered) so the approximate voxel count implied by the object's bbox
+    never exceeds a fixed ceiling, so a huge/dense bbox can't runaway-allocate voxels and
+    crash Blender.
+
+    Voxel-remesh RuntimeErrors fail cleanly (no silent fallback).
     """
     bpy = ctx.bpy
     obj = ctx.get_object(payload.get("object"))
@@ -558,12 +589,11 @@ def retopo(ctx: Ctx, payload: dict) -> dict:
         raise BridgeError(INVALID_PARAMS, "target_faces must be >= 1")
     voxel_size = float(payload.get("voxel_size", 0.0))
     adaptivity = float(payload.get("adaptivity", 0.0))
-    preserve_sharp = bool(payload.get("preserve_sharp", True))
-    preserve_boundary = bool(payload.get("preserve_boundary", True))
+    dims = list(getattr(obj, "dimensions", (0.0, 0.0, 0.0)))
     if voxel_size <= 0.0:
-        dims = list(getattr(obj, "dimensions", (0.0, 0.0, 0.0)))
         longest = max(dims) if dims and max(dims) > 0 else 1.0
         voxel_size = longest / 128.0
+    voxel_size = _capped_voxel_size(dims, voxel_size)
 
     try:
         with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
@@ -573,14 +603,6 @@ def retopo(ctx: Ctx, payload: dict) -> dict:
                 mesh.remesh_voxel_adaptivity = adaptivity
             ctx.check_poll(bpy.ops.object.voxel_remesh)
             bpy.ops.object.voxel_remesh()
-            ctx.check_poll(bpy.ops.object.quadriflow_remesh)
-            bpy.ops.object.quadriflow_remesh(
-                mode="FACES",
-                target_faces=target_faces,
-                use_preserve_sharp=preserve_sharp,
-                use_preserve_boundary=preserve_boundary,
-                smooth_normals=True,
-            )
     except RuntimeError as exc:
         raise BridgeError(PRECONDITION, f"retopo failed: {exc}") from exc
 
@@ -588,9 +610,9 @@ def retopo(ctx: Ctx, payload: dict) -> dict:
     tris = sum((len(p.vertices) - 2) for p in m.polygons)
     tri_budget = target_faces * 2
     if tris > tri_budget:
-        # quadriflow cancelled or under-reduced -- the voxel-remeshed mesh is still clean and
-        # watertight, so decimate-collapsing IT (not raw generator garbage) is still a good
-        # bake target. This guarantees the tool never returns a mesh over ~2x target_faces.
+        # The voxel-remeshed mesh is clean and watertight, so decimate-collapsing IT (not
+        # raw generator garbage) is still a good bake target. This guarantees the tool
+        # never returns a mesh over ~2x target_faces.
         ratio = tri_budget / tris
         with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
             modifier = obj.modifiers.new(name="RETOPO_DECIMATE", type="DECIMATE")
@@ -602,6 +624,30 @@ def retopo(ctx: Ctx, payload: dict) -> dict:
 
     faces = len(m.polygons)
     return {"object": obj.name, "faces": faces, "tris": tris}
+
+
+def shrinkwrap(ctx: Ctx, payload: dict) -> dict:
+    """Snap ``object``'s vertices onto ``target``'s surface with a SHRINKWRAP modifier
+    (NEAREST_SURFACEPOINT). Used to pull a reduced/remeshed mesh back onto the original
+    high-poly surface, removing the offset/blocky lumps-and-holes a voxel remesh leaves
+    behind, before baking detail back onto it.
+    """
+    bpy = ctx.bpy
+    obj = ctx.get_object(payload.get("object"))
+    target = ctx.get_object(payload.get("target"))
+    offset = float(payload.get("offset", 0.0))
+    apply_mod = bool(payload.get("apply", True))
+
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        modifier = obj.modifiers.new(name="RETOPO_SHRINKWRAP", type="SHRINKWRAP")
+        modifier.wrap_method = "NEAREST_SURFACEPOINT"
+        modifier.target = target
+        modifier.offset = offset
+        if apply_mod:
+            ctx.check_poll(bpy.ops.object.modifier_apply)
+            bpy.ops.object.modifier_apply(modifier=modifier.name)
+
+    return {"object": getattr(obj, "name", ""), "target": getattr(target, "name", "")}
 
 
 COMMANDS = [
@@ -619,4 +665,5 @@ COMMANDS = [
     Command("object.bounds", bounds, mutates=False),
     Command("object.bake_transfer", bake_transfer, mutates=True, feedback="viewport", timeout_tier="heavy"),
     Command("object.retopo", retopo, mutates=True, feedback="viewport", timeout_tier="heavy"),
+    Command("object.shrinkwrap", shrinkwrap, mutates=True, feedback="viewport", timeout_tier="heavy"),
 ]

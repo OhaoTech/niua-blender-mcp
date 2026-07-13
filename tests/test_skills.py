@@ -147,9 +147,15 @@ def test_bake_retopo_uses_retopo_not_decimate_when_kept():
     tools = [c[0] for c in bridge.calls]
     assert "object.retopo" in tools
     assert "modifiers.add" not in tools  # decimate path never ran
+    assert "object.shrinkwrap" in tools  # snapped back onto the high-poly surface before unwrap
     # target_faces derived from the budget (5000 tris in the fake quality) -> ~2500 faces
     retopo_call = next(c for c in bridge.calls if c[0] == "object.retopo")
     assert retopo_call[1]["target_faces"] == 2500
+    shrinkwrap_call = next(c for c in bridge.calls if c[0] == "object.shrinkwrap")
+    assert shrinkwrap_call[1]["object"] == "subject"
+    assert shrinkwrap_call[1]["target"] == "subject__high"
+    unwrap_index = tools.index("uv.smart_unwrap")
+    assert tools.index("object.shrinkwrap") < unwrap_index  # shrinkwrap runs before unwrap
 
 
 def test_bake_decimate_fires_as_fallback_when_bake_retopo_reverts():
@@ -187,12 +193,16 @@ def test_bake_decimate_fires_as_fallback_when_bake_retopo_reverts():
     tools = [c[0] for c in bridge.calls]
     assert "object.retopo" in tools
     assert "modifiers.add" in tools and "modifiers.apply" in tools
+    # shrinkwrap fires for BOTH reducers via the shared _bake_with plumbing: once after
+    # the reverted bake_retopo attempt, once after the kept bake_decimate attempt.
+    assert tools.count("object.shrinkwrap") == 2
 
 
 def test_retopo_in_tools_used_and_registered():
     from niua_blender_mcp.domains import build_router
     from niua_blender_mcp.finishing.skills import bake_and_finish
     assert "object.retopo" in bake_and_finish.TOOLS_USED
+    assert "object.shrinkwrap" in bake_and_finish.TOOLS_USED
     known = {("capabilities.invoke" if s.tier == "generated" else s.command) for s in build_router().specs()}
     assert bake_and_finish.TOOLS_USED <= known
 

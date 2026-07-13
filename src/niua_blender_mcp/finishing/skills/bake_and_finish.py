@@ -7,10 +7,13 @@ above their floors (an axis the bridge doesn't report never blocks; that's
 measure-and-flag, not silent pass).
 
 Two reducers, gated identically, in this fixed order: bake_retopo (voxel-remesh
--> quadriflow) then bake_decimate (DECIMATE modifier). Neither reducer wins
-universally -- retopo helps bulky/hard-surface meshes but its voxel step can
-merge thin features (fingers, blades) on organic figures, where a straight
-decimate holds fidelity better. Rather than pick a reducer heuristically, the
+-> decimate collapse to budget) then bake_decimate (DECIMATE modifier straight
+on the high-poly). Neither reducer wins universally -- retopo helps
+bulky/hard-surface meshes but its voxel step can merge thin features (fingers,
+blades) on organic figures, where a straight decimate holds fidelity better.
+Both reducers shrinkwrap the reduced mesh back onto the pre-reduction
+high-poly surface before the bake, removing the offset/blocky lumps-and-holes
+a voxel remesh leaves behind. Rather than pick a reducer heuristically, the
 accept/revert loop *is* the router:
 
   - bake_retopo fires first (its gate, engine.within_triangle_budget, is
@@ -118,11 +121,12 @@ def _budget_and_tris(session, subject, info):
 
 
 def _reduce_retopo(session, subject, budget, tris):
-    """Voxel-remesh -> quadriflow to the budget. Clean quad low-poly, but the
-    voxel step can merge thin/adjacent features (fingers, blades) on organic
-    meshes -- that's caught downstream by the surface-fidelity gate, not here."""
+    """Voxel-remesh -> decimate collapse to the budget. Clean, manifold low-poly,
+    but the voxel step can merge thin/adjacent features (fingers, blades) on
+    organic meshes -- that's caught downstream by the surface-fidelity gate, not
+    here."""
     if budget > 0 and (tris <= 0 or budget < tris):
-        target_faces = max(1, budget // 2)  # budget is in tris; quadriflow targets quad FACES
+        target_faces = max(1, budget // 2)  # budget is in tris; retopo targets FACES
         session.object.retopo(object=subject, target_faces=target_faces)
 
 
@@ -138,12 +142,15 @@ def _reduce_decimate(session, subject, budget, tris):
 
 def _bake_with(session, subject, info, reduce_fn):
     """Shared bake plumbing for both reducers: duplicate the high-poly, run
-    reduce_fn to hit the triangle budget, unwrap, bake normal+AO from the
-    high-poly, then discard the high-poly source."""
+    reduce_fn to hit the triangle budget, shrinkwrap the reduced mesh back onto
+    the high-poly surface (removes voxel-remesh offset/lumps-and-holes before
+    the bake has to carry them), unwrap, bake normal+AO from the high-poly,
+    then discard the high-poly source."""
     high = f"{subject}__high"
     session.object.duplicate(object=subject, name=high)  # keep the pre-reduction detail as bake source
     budget, tris = _budget_and_tris(session, subject, info)
     reduce_fn(session, subject, budget, tris)
+    session.object.shrinkwrap(object=subject, target=high)  # snap onto the high-poly surface
     session.mesh.select_all(object=subject, action="SELECT")
     session.uv.smart_unwrap(object=subject)
     session.uv.pack_islands(object=subject)
@@ -210,7 +217,7 @@ TOOLS_USED = {
     "shading.prepare_pbr_maps",
     "object.lod_create", "object.collision_proxy_create", "object.collision_hulls_create",
     "object.transform_apply",
-    "object.duplicate", "object.bake_transfer", "object.retopo",
+    "object.duplicate", "object.bake_transfer", "object.retopo", "object.shrinkwrap",
 }
 
 
@@ -270,10 +277,11 @@ SKILL = Skill(
     name="bake_and_finish",
     description=("Take a raw generated mesh to game-ready with bake-transfer detail recovery: "
                  "repair, duplicate the high-poly as a bake source, reduce to the triangle "
-                 "budget via retopo (voxel-remesh -> quadriflow) or, if that hurts fidelity, "
-                 "decimate instead, unwrap, bake normal+AO maps from the high-poly, quads, PBR "
-                 "maps, LODs, collision, apply transforms — each step kept only if readiness "
-                 "holds and both silhouette AND surface fidelity are preserved."),
+                 "budget via retopo (voxel-remesh -> decimate collapse) or, if that hurts "
+                 "fidelity, decimate instead, shrinkwrap the reduced mesh back onto the "
+                 "high-poly surface, unwrap, bake normal+AO maps from the high-poly, quads, "
+                 "PBR maps, LODs, collision, apply transforms — each step kept only if "
+                 "readiness holds and both silhouette AND surface fidelity are preserved."),
     asset_classes=("hard_surface_prop", "organic_prop", "generated_cleanup", "from_scratch_prop"),
     run=run,
 )

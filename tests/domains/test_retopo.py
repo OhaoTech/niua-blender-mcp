@@ -1,8 +1,10 @@
 """Offline registration/parity/spec coverage for object.retopo.
 
-The remesh itself (bpy.ops.object.voxel_remesh / quadriflow_remesh) is LIVE-validated
-elsewhere; these tests only cover that the tool is registered on both sides, its spec
-fields are correct, and the regenerated SDK exposes it.
+The remesh itself (bpy.ops.object.voxel_remesh, then a decimate collapse to the face
+budget -- quadriflow_remesh was dropped: it silently cancels at aggressive targets and
+segfaults Blender on dense multi-part meshes) is LIVE-validated elsewhere; these tests
+cover that the tool is registered on both sides, its spec fields are correct, the
+regenerated SDK exposes it, and the voxel-resolution safety cap's pure math.
 """
 
 from __future__ import annotations
@@ -32,3 +34,29 @@ def test_sdk_exposes_retopo_after_regen():
 
     session = ToolSession(bridge=None)
     assert hasattr(session.object, "retopo")
+
+
+def test_voxel_cap_leaves_small_bbox_untouched():
+    from niua_mcp_bridge.domains.objects import _capped_voxel_size
+
+    # 1x1x1 bbox / (0.05**3 voxel_size) ~= 8000 voxels -- far under the 5M cap.
+    assert _capped_voxel_size([1.0, 1.0, 1.0], 0.05) == 0.05
+
+
+def test_voxel_cap_raises_voxel_size_for_a_huge_bbox():
+    from niua_mcp_bridge.domains.objects import _VOXEL_COUNT_CAP, _capped_voxel_size
+
+    dims = [100.0, 100.0, 100.0]
+    requested = 0.05  # bbox_volume / requested**3 = 1e6 / 1.25e-4 = 8e9, way over the cap
+    capped = _capped_voxel_size(dims, requested)
+    assert capped > requested
+    bbox_volume = dims[0] * dims[1] * dims[2]
+    assert bbox_volume / (capped**3) <= _VOXEL_COUNT_CAP + 1e-6
+
+
+def test_voxel_cap_never_shrinks_the_requested_size():
+    from niua_mcp_bridge.domains.objects import _capped_voxel_size
+
+    # A large voxel_size already keeps the count under the cap -- the cap must not
+    # refine (lower) it, only ever coarsen an under-sized request.
+    assert _capped_voxel_size([100.0, 100.0, 100.0], 5.0) == 5.0

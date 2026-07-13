@@ -92,6 +92,20 @@ def test_gate_overrides_replace_existing_paths_only() -> None:
     assert applied == {"retopo": {"topology.quad_ratio": {"op": ">=", "value": 0.98}}}
 
 
+@pytest.mark.parametrize("module", [server_asset_classes, addon_asset_classes])
+def test_character_class_relaxes_retopo_quad_ratio_gate(module) -> None:
+    """Baked character assets carry surface detail in the normal map (see
+    bake_and_finish's shrinkwrap step), so the strict 0.95 quad-ratio gate other
+    classes hold retopo to is over-strict for them -- relaxed to 0.30."""
+    base = [{"path": "topology.quad_ratio", "op": ">=", "value": 0.95}]
+    profile = module.get_asset_class("character")
+
+    gates, applied = module.apply_gate_overrides(base, profile, "retopo")
+
+    assert gates == [{"path": "topology.quad_ratio", "op": ">=", "value": 0.30}]
+    assert applied == {"retopo": {"topology.quad_ratio": {"op": ">=", "value": 0.30}}}
+
+
 def test_invalid_gate_override_path_raises_value_error() -> None:
     base = [{"path": "topology.quad_ratio", "op": ">=", "value": 0.95}]
     profile = {
