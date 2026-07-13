@@ -1,12 +1,29 @@
 """Skill #2: bake-transfer finish. Like make_game_ready, but the detail lost to
-
-retopo (voxel-remesh -> quadriflow-to-budget) is recovered by baking the
-pre-retopo high-poly onto the low-poly before it's discarded, and the
-do-no-harm gate reads BOTH silhouette
+budget reduction is recovered by baking the pre-reduction high-poly onto the
+low-poly before it's discarded, and the do-no-harm gate reads BOTH silhouette
 (preservation) AND surface fidelity (SSIM) from a single feedback.preservation
 call — a step is only kept if readiness held and *both* measured axes stayed
 above their floors (an axis the bridge doesn't report never blocks; that's
 measure-and-flag, not silent pass).
+
+Two reducers, gated identically, in this fixed order: bake_retopo (voxel-remesh
+-> quadriflow) then bake_decimate (DECIMATE modifier). Neither reducer wins
+universally -- retopo helps bulky/hard-surface meshes but its voxel step can
+merge thin features (fingers, blades) on organic figures, where a straight
+decimate holds fidelity better. Rather than pick a reducer heuristically, the
+accept/revert loop *is* the router:
+
+  - bake_retopo fires first (its gate, engine.within_triangle_budget, is
+    failing on the raw high-poly). If retopo+bake is KEPT (fidelity held) the
+    budget is now met, so bake_decimate's gate is no longer failing and it
+    SKIPS.
+  - If bake_retopo is REVERTED (fidelity dropped), the object is back to
+    high-poly, so the budget gate still fails and bake_decimate FIRES,
+    decimating + baking instead. The loop keeps it if fidelity holds there.
+
+So each asset ends up with whichever reducer preserved fidelity, decided by
+the same surface_fidelity ruler that gates every other move -- no new metric,
+no per-asset-class heuristic.
 
 Same accept/revert loop and report shape as make_game_ready.py; see that
 module's docstring for the general loop rationale. This file intentionally
@@ -93,20 +110,53 @@ def _repair(session, subject, info):
     session.mesh.recalc_normals(object=subject)
 
 
-def _bake_transfer(session, subject, info):
-    high = f"{subject}__high"
-    session.object.duplicate(object=subject, name=high)  # keep the pre-retopo detail as bake source
+def _budget_and_tris(session, subject, info):
     q = session.feedback.quality(object=subject, asset_class=info["asset_class"])
     budget = int(q.get("asset_class", {}).get("effective_defaults", {}).get("triangle_budget") or 0)
     tris = int(q.get("topology", {}).get("tris") or 0)
+    return budget, tris
+
+
+def _reduce_retopo(session, subject, budget, tris):
+    """Voxel-remesh -> quadriflow to the budget. Clean quad low-poly, but the
+    voxel step can merge thin/adjacent features (fingers, blades) on organic
+    meshes -- that's caught downstream by the surface-fidelity gate, not here."""
     if budget > 0 and (tris <= 0 or budget < tris):
         target_faces = max(1, budget // 2)  # budget is in tris; quadriflow targets quad FACES
         session.object.retopo(object=subject, target_faces=target_faces)
+
+
+def _reduce_decimate(session, subject, budget, tris):
+    """DECIMATE modifier to the budget ratio -- the pre-retopo path, recovered
+    as the fallback reducer for meshes where retopo's voxel step hurts fidelity."""
+    if tris > 0 and budget > 0 and budget < tris:
+        ratio = max(0.01, min(1.0, budget / tris))
+        session.modifiers.add(object=subject, type="DECIMATE", name="niua_decimate")
+        session.modifiers.set(object=subject, name="niua_decimate", property="ratio", value=str(ratio))
+        session.modifiers.apply(object=subject, name="niua_decimate")
+
+
+def _bake_with(session, subject, info, reduce_fn):
+    """Shared bake plumbing for both reducers: duplicate the high-poly, run
+    reduce_fn to hit the triangle budget, unwrap, bake normal+AO from the
+    high-poly, then discard the high-poly source."""
+    high = f"{subject}__high"
+    session.object.duplicate(object=subject, name=high)  # keep the pre-reduction detail as bake source
+    budget, tris = _budget_and_tris(session, subject, info)
+    reduce_fn(session, subject, budget, tris)
     session.mesh.select_all(object=subject, action="SELECT")
     session.uv.smart_unwrap(object=subject)
     session.uv.pack_islands(object=subject)
     session.object.bake_transfer(source=high, target=subject, maps="NORMAL,AO")
     session.object.delete(objects=high)  # remove the high-poly source; low-poly carries baked detail
+
+
+def _bake_retopo(session, subject, info):
+    _bake_with(session, subject, info, _reduce_retopo)
+
+
+def _bake_decimate(session, subject, info):
+    _bake_with(session, subject, info, _reduce_decimate)
 
 
 def _tris_to_quads(session, subject, info):
@@ -134,7 +184,12 @@ def _apply_transform(session, subject, info):
 MOVES: list[tuple[str, tuple[str, ...], Callable[[Any, str, dict], None]]] = [
     ("repair", ("orientation.degenerate_faces", "orientation.inward_facing_faces",
                 "topology.non_manifold_edges"), _repair),
-    ("bake_transfer", ("engine.within_triangle_budget",), _bake_transfer),
+    # Both reducers share the same gate: bake_retopo tries first, and if it's kept the
+    # budget gate stops failing so bake_decimate is a no-op skip; if bake_retopo is
+    # reverted (fidelity dropped) the gate is still failing and bake_decimate fires as
+    # the fallback reducer. See module docstring for the full routing rationale.
+    ("bake_retopo", ("engine.within_triangle_budget",), _bake_retopo),
+    ("bake_decimate", ("engine.within_triangle_budget",), _bake_decimate),
     ("tris_to_quads", ("topology.quad_ratio", "topology.ngons"), _tris_to_quads),
     ("pbr_maps", ("material.pbr_maps_present", "material.bake_maps_present",
                   "material.data_maps_non_color", "material.textures_within_size",
@@ -150,6 +205,7 @@ TOOLS_USED = {
     "feedback.readiness", "feedback.preservation", "feedback.quality",
     "session.checkpoint", "session.revert", "scene.info", "object.delete",
     "mesh.select_all", "mesh.remove_doubles", "mesh.recalc_normals", "mesh.tris_to_quads",
+    "modifiers.add", "modifiers.set", "modifiers.apply",
     "uv.smart_unwrap", "uv.pack_islands",
     "shading.prepare_pbr_maps",
     "object.lod_create", "object.collision_proxy_create", "object.collision_hulls_create",
@@ -213,10 +269,11 @@ def run(session, subject: str, params: dict) -> dict:
 SKILL = Skill(
     name="bake_and_finish",
     description=("Take a raw generated mesh to game-ready with bake-transfer detail recovery: "
-                 "repair, duplicate the high-poly as a bake source, retopo (voxel-remesh -> "
-                 "quadriflow) to the triangle budget, unwrap, bake normal+AO maps from the "
-                 "high-poly, quads, PBR maps, LODs, collision, apply transforms — each step kept "
-                 "only if readiness holds and both silhouette AND surface fidelity are preserved."),
+                 "repair, duplicate the high-poly as a bake source, reduce to the triangle "
+                 "budget via retopo (voxel-remesh -> quadriflow) or, if that hurts fidelity, "
+                 "decimate instead, unwrap, bake normal+AO maps from the high-poly, quads, PBR "
+                 "maps, LODs, collision, apply transforms — each step kept only if readiness "
+                 "holds and both silhouette AND surface fidelity are preserved."),
     asset_classes=("hard_surface_prop", "organic_prop", "generated_cleanup", "from_scratch_prop"),
     run=run,
 )

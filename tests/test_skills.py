@@ -116,32 +116,77 @@ def test_bake_and_finish_registered():
     assert "bake_and_finish" in {s["name"] for s in skills.list_skills()}
 
 
-def test_low_fidelity_step_is_reverted_even_if_readiness_rose():
+def test_low_fidelity_bake_retopo_is_reverted_even_if_readiness_rose():
     from niua_blender_mcp.client import ToolSession
     from niua_blender_mcp.finishing.skills import bake_and_finish
+    # object.retopo does NOT clear the triangle-budget gate here, so after bake_retopo
+    # reverts, bake_decimate's gate is still failing and it fires too (also low fidelity).
     bridge = FidelityBridge(before=_readiness(0.4, ["engine.within_triangle_budget"]),
-                            effects={"object.retopo": _readiness(0.6)}, fidelity_after=0.5)
+                            effects={"object.retopo": _readiness(0.6, ["engine.within_triangle_budget"])},
+                            fidelity_after=0.5)
     session = ToolSession(bridge)
     report = bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
-    move = next((m for m in report["moves"] if m["move"] == "bake_transfer"), None)
-    assert move is not None and move["kept"] is False  # low fidelity forced a revert
+    retopo_move = next((m for m in report["moves"] if m["move"] == "bake_retopo"), None)
+    assert retopo_move is not None and retopo_move["kept"] is False  # low fidelity forced a revert
     assert any(c[0] == "session.revert" for c in bridge.calls)
 
 
-def test_bake_transfer_uses_retopo_not_decimate():
+def test_bake_retopo_uses_retopo_not_decimate_when_kept():
     from niua_blender_mcp.client import ToolSession
     from niua_blender_mcp.finishing.skills import bake_and_finish
-    # readiness marks the triangle-budget gate failing so the bake move fires
+    # readiness marks the triangle-budget gate failing so bake_retopo fires; once kept,
+    # the fake readiness clears that gate so bake_decimate's gate no longer fails -> skip.
     bridge = FidelityBridge(before=_readiness(0.4, ["engine.within_triangle_budget"]),
-                            effects={"object.bake_transfer": _readiness(0.6)}, fidelity_after=0.9)
+                            effects={"object.retopo": _readiness(0.6)}, fidelity_after=0.9)
     session = ToolSession(bridge)
-    bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
+    report = bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
+    retopo_move = next(m for m in report["moves"] if m["move"] == "bake_retopo")
+    assert retopo_move["kept"] is True
+    decimate_move = next((m for m in report["moves"] if m["move"] == "bake_decimate"), None)
+    assert decimate_move is None  # gate no longer failing -> move skipped entirely
     tools = [c[0] for c in bridge.calls]
     assert "object.retopo" in tools
-    assert "modifiers.add" not in tools  # decimate path is gone from the bake move
+    assert "modifiers.add" not in tools  # decimate path never ran
     # target_faces derived from the budget (5000 tris in the fake quality) -> ~2500 faces
     retopo_call = next(c for c in bridge.calls if c[0] == "object.retopo")
     assert retopo_call[1]["target_faces"] == 2500
+
+
+def test_bake_decimate_fires_as_fallback_when_bake_retopo_reverts():
+    """The best-of-both routing: when bake_retopo is reverted for low fidelity, the
+    triangle-budget gate is still failing on the next move, so bake_decimate fires as
+    the fallback reducer -- and if IT holds fidelity, it's kept instead."""
+    from niua_blender_mcp.client import ToolSession
+    from niua_blender_mcp.finishing.skills import bake_and_finish
+
+    class RoutingBridge(FakeBridge):
+        """object.retopo drops fidelity (organic mesh, thin features merged) but leaves
+        the budget gate failing; modifiers.apply (decimate) hits budget AND holds fidelity."""
+        def call(self, tool, payload):
+            r = FakeBridge.call(self, tool, payload)
+            if tool == "feedback.preservation":
+                if self.state is self.before:
+                    return _pres(silhouette=self.preservation, fidelity=1.0)
+                after_decimate = any(c[0] == "modifiers.apply" for c in self.calls)
+                fid = 0.9 if after_decimate else 0.2
+                return _pres(silhouette=self.preservation, fidelity=fid)
+            return r
+
+    bridge = RoutingBridge(
+        before=_readiness(0.4, ["engine.within_triangle_budget"]),
+        effects={
+            "object.retopo": _readiness(0.6, ["engine.within_triangle_budget"]),
+            "modifiers.apply": _readiness(0.6),
+        },
+    )
+    session = ToolSession(bridge)
+    report = bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
+    moves = {m["move"]: m for m in report["moves"]}
+    assert "bake_retopo" in moves and moves["bake_retopo"]["kept"] is False
+    assert "bake_decimate" in moves and moves["bake_decimate"]["kept"] is True
+    tools = [c[0] for c in bridge.calls]
+    assert "object.retopo" in tools
+    assert "modifiers.add" in tools and "modifiers.apply" in tools
 
 
 def test_retopo_in_tools_used_and_registered():
@@ -197,6 +242,6 @@ def test_surface_fidelity_pass_key_forces_revert_even_above_fallback_threshold()
                                 fidelity_after=0.65, sf_pass_after=False)
     session = ToolSession(bridge)
     report = bake_and_finish.run(session, "subject", {"asset_class": "hard_surface_prop"})
-    move = next((m for m in report["moves"] if m["move"] == "bake_transfer"), None)
+    move = next((m for m in report["moves"] if m["move"] == "bake_retopo"), None)
     assert move is not None and move["kept"] is False  # authoritative floor forced a revert
     assert any(c[0] == "session.revert" for c in bridge.calls)
