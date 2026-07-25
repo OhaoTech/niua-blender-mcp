@@ -48,13 +48,13 @@ bake_decimate  fid 0.274  REVERTED
 ```
 
 so the asset kept a **0.990** fidelity but stayed at 74,889 triangles, 4× over budget. The
-![real_character at 74,889 tris](../images/acceptance/real_character.png)
-
-*`real_character`: fidelity 0.990, form perfectly held — and 4× over budget.*
-
 gate was right (0.27 is garbage), and the honest reading is not "the character has surface
 noise" but **"no current reducer can take this asset to budget without destroying it."**
 That is a reducer problem, not a threshold problem, and no floor tweak will fix it.
+
+![real_character at 74,889 tris](../images/acceptance/real_character.png)
+
+*`real_character`: fidelity 0.990, form perfectly held — and 4× over budget.*
 
 **4. Nothing is `fully_ready`.** Mean readiness 0.75 against a 0.85 floor. Assets that hold
 form but miss budget, or hit budget with partial gate coverage, do not clear the bar — as
