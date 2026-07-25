@@ -22,7 +22,7 @@ bl_info = {
     "location": "View3D > Sidebar > Niua",
     "description": "Agentic Blender bridge for the Niua Blender MCP server",
     "category": "System",
-    "doc_url": "https://github.com/FrankYin/niua-blender-mcp",
+    "doc_url": "https://github.com/OhaoTech/niua-blender-mcp",
     "license": "SPDX:GPL-3.0-or-later",
 }
 

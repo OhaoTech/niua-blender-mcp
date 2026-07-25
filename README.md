@@ -1,5 +1,7 @@
 # Blender Finisher
 
+[![tests](https://github.com/OhaoTech/niua-blender-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/OhaoTech/niua-blender-mcp/actions/workflows/tests.yml)
+
 **Rough mesh → measured game-ready asset.** An MCP server with a ruler.
 
 Point an LLM at a dense, generated mesh and get back a budgeted, baked, importable game
@@ -55,7 +57,7 @@ report if any check fails — do not improvise around a failure.
    If Blender is missing, stop and tell me how to install it for this OS.
 
 2. Clone and install the server:
-     git clone https://github.com/FrankYin/niua-blender-mcp && cd niua-blender-mcp
+     git clone https://github.com/OhaoTech/niua-blender-mcp && cd niua-blender-mcp
      python -m pip install -e .
 
 3. Install the Blender add-on (this asks Blender where its add-ons live, so no guessing):
