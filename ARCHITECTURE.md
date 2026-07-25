@@ -41,7 +41,7 @@ deterministic and judge-free — no LLM grades its own homework.
 | **Interface** | “How do I drive Blender safely?” | kernel, bridge, most `domains/`, capture |
 | **Finishing** | “Is this a shippable game asset?” | `finishing/`, `evals/`, policy domains |
 
-Two invariants, both CI-enforced:
+Two invariants, both enforced by the test suite:
 
 - finishing may import interface; **interface must never import finishing** — `tests/test_layer_boundary.py`
 - **the server must never import `bpy`** — `tests/test_no_bpy_in_server.py`; this one also

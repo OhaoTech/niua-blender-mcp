@@ -35,7 +35,7 @@ generic wire protocol, are separate works — the classic distinction between *l
 *inter-process communication*. Apache-2.0 therefore applies to the server, and its
 permissive terms are compatible with GPL-3.0 for anyone redistributing the pair.
 
-The architectural rule that keeps this true is already enforced in CI by
+The architectural rule that keeps this true is enforced by the test suite in
 `tests/test_layer_boundary.py` (import-direction guard) and `tests/test_parity.py`
 (server/add-on command parity). **Keeping `bpy` out of `src/` is a licensing invariant,
 not only a design one.**
