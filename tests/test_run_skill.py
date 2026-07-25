@@ -36,5 +36,17 @@ def test_recording_session_records_calls():
 
 def test_skill_tools_used_are_registered():
     runner = _load_runner()
-    from niua_blender_mcp.finishing.skills.make_game_ready import TOOLS_USED
-    assert TOOLS_USED <= runner.known_tools()
+    from niua_blender_mcp.finishing.skills.bake_and_finish import TOOLS_USED as BAKE_TOOLS
+    from niua_blender_mcp.finishing.skills.make_game_ready import TOOLS_USED as LEGACY_TOOLS
+    known = runner.known_tools()
+    assert BAKE_TOOLS <= known
+    assert LEGACY_TOOLS <= known
+
+
+def test_runner_default_skill_is_bake_and_finish():
+    runner = _load_runner()
+    from niua_blender_mcp.finishing.skills import DEFAULT_SKILL
+    assert DEFAULT_SKILL == "bake_and_finish"
+    src = Path(runner.__file__).read_text(encoding="utf-8")
+    assert "DEFAULT_SKILL" in src
+    assert 'default=DEFAULT_SKILL' in src

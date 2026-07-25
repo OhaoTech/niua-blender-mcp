@@ -209,13 +209,14 @@ SPECS = [
     ToolSpec(
         name="object.retopo",
         category="object",
-        summary="Retopologize a mesh to a clean, manifold mesh at a face budget (voxel remesh -> decimate collapse)",
+        summary="Retopologize a mesh to a face budget (voxel+decimate, or decimate-only when voxel is unsafe)",
         command="object.retopo",
         params={
             "object": Str(required=True, summary="Mesh object to retopologize"),
             "target_faces": Int(required=True, minimum=1, summary="Target quad face count"),
             "voxel_size": Float(default=0.0, minimum=0.0, summary="Voxel size for the cleanup pass; 0 = auto from bbox"),
             "adaptivity": Float(default=0.0, minimum=0.0, maximum=1.0, summary="Voxel adaptivity (0 = uniform)"),
+            "mode": Str(default="auto", summary="auto | decimate — auto skips voxel on multi-island/high non-manifold meshes"),
             "preserve_sharp": Bool(default=True, summary="Reserved for API compatibility; unused now that quadriflow has been dropped"),
             "preserve_boundary": Bool(default=True, summary="Reserved for API compatibility; unused now that quadriflow has been dropped"),
         },

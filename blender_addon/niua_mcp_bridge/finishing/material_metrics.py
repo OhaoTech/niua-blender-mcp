@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 PBR_MAPS = ("BASE_COLOR", "NORMAL", "ROUGHNESS", "AO", "CAVITY")
-BAKE_MAPS = ("NORMAL", "AO", "CAVITY")
+# Bake gate matches object.bake_transfer / bake_and_finish (NORMAL+AO). CAVITY is
+# optional PBR garnish from prepare_pbr_maps, not required to pass the bake stage.
+BAKE_MAPS = ("NORMAL", "AO")
 DATA_MAPS = ("NORMAL", "ROUGHNESS", "AO", "CAVITY")
 
 _ALIASES = {
@@ -100,10 +102,12 @@ def material_quality(obj: Any, payload: dict[str, Any]) -> dict[str, Any]:
     def _map_entries(map_name: str) -> list[dict[str, Any]]:
         return [entry for entry in texture_nodes if entry["map"] == map_name]
 
-    data_maps_non_color = all(
-        _map_entries(map_name)
-        and all(entry["colorspace"] == "Non-Color" for entry in _map_entries(map_name))
-        for map_name in DATA_MAPS
+    # Only judge colorspace on data maps that are actually present (bake may only
+    # produce NORMAL+AO; missing ROUGHNESS/CAVITY must not fail the bake gate).
+    present_data_maps = [map_name for map_name in DATA_MAPS if map_name in present_maps]
+    data_maps_non_color = bool(present_data_maps) and all(
+        all(entry["colorspace"] == "Non-Color" for entry in _map_entries(map_name))
+        for map_name in present_data_maps
     )
     textures_within_size = bool(texture_nodes) and all(
         entry["size"] and max(entry["size"]) <= max_texture_size for entry in texture_nodes

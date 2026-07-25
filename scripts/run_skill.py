@@ -22,7 +22,7 @@ from niua_blender_mcp.bridge import BlenderBridge  # noqa: E402
 from niua_blender_mcp.client import ToolSession, accounting, generate  # noqa: E402
 from niua_blender_mcp.domains import build_router  # noqa: E402
 from niua_blender_mcp.evals.benchmark import list_items, load_item  # noqa: E402
-from niua_blender_mcp.finishing.skills import get_skill  # noqa: E402
+from niua_blender_mcp.finishing.skills import DEFAULT_SKILL, get_skill  # noqa: E402
 from run_objective_benchmark import _build_input, _clear_meshes, assert_tools_registered  # noqa: E402
 
 
@@ -62,7 +62,8 @@ def _sdk_sources_for(tools: set[str]) -> dict[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Run a skill in code mode and size the token win.")
-    ap.add_argument("--skill", default="make_game_ready")
+    ap.add_argument("--skill", default=DEFAULT_SKILL,
+                    help=f"finishing skill name (default: {DEFAULT_SKILL}, the anti-blob path)")
     ap.add_argument("--items", default="", help="comma-separated item ids (all if empty)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--outdir", default="/tmp/niua_skill_run")
@@ -75,12 +76,14 @@ def main(argv: list[str] | None = None) -> int:
         ids = [i for i in ids if i in wanted]
     items = [load_item(i) for i in ids]
 
-    # The skill declares its tools on the module; guard them offline before any bridge call.
-    from niua_blender_mcp.finishing.skills import make_game_ready
-    assert_tools_registered(items, extra_tools=frozenset(make_game_ready.TOOLS_USED))
+    # Guard the *requested* skill's tool surface offline (TOOLS_USED on that skill's module).
+    import importlib
+    skill_mod = importlib.import_module(skill.run.__module__)
+    tools_used = frozenset(getattr(skill_mod, "TOOLS_USED", ()))
+    assert_tools_registered(items, extra_tools=tools_used)
 
-    schemas = _schemas_for(make_game_ready.TOOLS_USED)
-    sdk_sources = _sdk_sources_for(make_game_ready.TOOLS_USED)
+    schemas = _schemas_for(tools_used)
+    sdk_sources = _sdk_sources_for(tools_used)
 
     bridge = BlenderBridge(port=args.port, timeout=600.0)
     cards = []

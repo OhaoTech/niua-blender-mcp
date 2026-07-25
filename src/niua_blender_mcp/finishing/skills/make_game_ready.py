@@ -1,10 +1,14 @@
-"""Skill #1: make an asset game-ready. The deterministic finisher, ported onto the SDK.
+"""Skill #1: make an asset game-ready (legacy / light-prop path).
 
-Same accept/revert loop as the original finisher (checkpoint -> act -> re-measure
-readiness + preservation -> keep iff readiness held AND preservation >= floor, else
-revert + delete stray helpers), but every tool call goes through the code-mode SDK
-(session.<domain>.<tool>(...)) instead of raw bridge.call. This is the single source
-of the loop logic; evals/finisher.py delegates here.
+Same accept/revert loop as bake_and_finish (checkpoint -> act -> re-measure
+readiness + preservation -> keep iff readiness held AND silhouette is measured
+and >= floor, else revert + delete stray helpers), driven through the code-mode
+SDK. Fail-closed: unmeasured preservation reverts — never a silent pass.
+
+NOT the default product finisher for dense generator meshes. Raw decimate-to-budget
+without bake is the blob path the gatekeeper rejected; evals/finisher.py and the
+objective benchmark use bake_and_finish instead. Keep this skill for light props
+or explicit agent choice only.
 """
 
 from __future__ import annotations
@@ -37,13 +41,18 @@ def _failing(readiness, *paths):
 
 
 def _preservation_ok(session, subject):
+    """Silhouette do-no-harm — fail-closed.
+
+    Unavailable / null / bridge error => not ok (move will revert). Never treat
+    unmeasured as a silent pass.
+    """
     try:
         pres = session.feedback.preservation(object=subject)
     except BridgeError:
-        return True, None
+        return False, None
     score = pres.get("preservation")
     if not pres.get("available") or score is None:
-        return True, None
+        return False, score
     return score >= PRESERVATION_FLOOR, score
 
 
@@ -158,6 +167,7 @@ def run(session, subject: str, params: dict) -> dict:
             apply_move(session, subject, info)
         except BridgeError as exc:
             _revert(session, subject, label, objs_before)
+            current = before
             moves_report.append({"move": name, "kept": False, "error": str(exc)[:120]})
             _log(item_id, f"{name}: ERROR {str(exc)[:80]} -> reverted")
             continue
@@ -170,6 +180,8 @@ def run(session, subject: str, params: dict) -> dict:
             current = after
         else:
             _revert(session, subject, label, objs_before)
+            # See bake_and_finish: material edits can outlive mesh revert; keep control state.
+            current = before
         moves_report.append({"move": name, "kept": kept,
                              "readiness_before": before.get("readiness"),
                              "readiness_after": after.get("readiness"),
@@ -177,16 +189,17 @@ def run(session, subject: str, params: dict) -> dict:
         _log(item_id, f"{name}: {_fmt(before.get('readiness'))} -> {_fmt(after.get('readiness'))} "
                       f"pres={_fmt(pres)} {'KEPT' if kept else 'REVERTED'}")
 
-    final = _readiness(session, subject, asset_class)
+    final = current if current is not None else start
     return {"readiness_start": start.get("readiness"),
             "readiness_final": final.get("readiness"), "moves": moves_report}
 
 
 SKILL = Skill(
     name="make_game_ready",
-    description=("Take a raw generated mesh to game-ready: repair, decimate to the triangle "
+    description=("Legacy light-prop finish (no bake): repair, decimate to the triangle "
                  "budget, quads, UV unwrap, PBR maps, LODs, collision, apply transforms — each "
-                 "step kept only if readiness holds and the silhouette is preserved."),
+                 "step kept only if readiness holds and silhouette is measured and preserved. "
+                 "Prefer bake_and_finish for dense generated meshes (anti-blob default)."),
     asset_classes=("hard_surface_prop", "organic_prop", "generated_cleanup", "from_scratch_prop"),
     run=run,
 )

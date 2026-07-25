@@ -1,10 +1,15 @@
-"""Skill #2: bake-transfer finish. Like make_game_ready, but the detail lost to
-budget reduction is recovered by baking the pre-reduction high-poly onto the
-low-poly before it's discarded, and the do-no-harm gate reads BOTH silhouette
-(preservation) AND surface fidelity (SSIM) from a single feedback.preservation
-call — a step is only kept if readiness held and *both* measured axes stayed
-above their floors (an axis the bridge doesn't report never blocks; that's
-measure-and-flag, not silent pass).
+"""Default finishing skill: bake-transfer finish (the anti-blob path).
+
+Like make_game_ready, but the detail lost to budget reduction is recovered by
+baking the pre-reduction high-poly onto the low-poly before it's discarded, and
+the do-no-harm gate reads BOTH silhouette (preservation) AND surface fidelity
+(SSIM) from a single feedback.preservation call — a step is only kept if
+readiness held and *both* axes are measured and above their floors.
+
+Fail-closed (gatekeeper): if preservation or surface fidelity is unavailable
+(headless without GL, bridge error, missing intake), the move is REVERTED —
+never kept. Unmeasured is not a silent pass; that is how raw-decimate blobs
+used to ship.
 
 Two reducers, gated identically, in this fixed order: bake_retopo (voxel-remesh
 -> decimate collapse to budget) then bake_decimate (DECIMATE modifier straight
@@ -30,7 +35,8 @@ no per-asset-class heuristic.
 
 Same accept/revert loop and report shape as make_game_ready.py; see that
 module's docstring for the general loop rationale. This file intentionally
-mirrors its structure so the two skills stay easy to diff.
+mirrors its structure so the two skills stay easy to diff. evals/finisher.py
+delegates here (default product finisher).
 """
 
 from __future__ import annotations
@@ -72,11 +78,12 @@ def _failing(readiness, *paths):
 
 
 def _harm_ok(session, subject):
-    """Both do-no-harm axes from one preservation call.
+    """Both do-no-harm axes from one preservation call — fail-closed.
 
-    Unmeasured axis never blocks (measure-and-flag): if the bridge can't report
-    silhouette or fidelity, that axis passes by default and only the axes that
-    were actually measured gate the keep decision.
+    Silhouette and surface fidelity must both be *measured* and pass their floors.
+    Unavailable (no GL / headless / missing intake), null scores, or bridge errors
+    return harm_ok=False so the accept/revert loop REVERTS the move. Never treat
+    unmeasured as a silent pass (that is how decimate blobs shipped before).
 
     Fidelity gating defers to the addon's own authoritative floor
     (preservation_ledger.SURFACE_FIDELITY_FLOOR, live-mirrored into
@@ -87,15 +94,17 @@ def _harm_ok(session, subject):
     try:
         pres = session.feedback.preservation(object=subject)
     except BridgeError:
-        return True, None, None
+        return False, None, None
     sil = pres.get("preservation")
     sf = pres.get("surface_fidelity") or {}
     fid = sf.get("fidelity") if sf.get("available") else None
-    sil_ok = (not pres.get("available")) or sil is None or sil >= PRESERVATION_FLOOR
-    if "surface_fidelity_pass" in sf:
-        fid_ok = fid is None or bool(sf.get("surface_fidelity_pass"))
+    sil_ok = bool(pres.get("available")) and sil is not None and sil >= PRESERVATION_FLOOR
+    if not sf.get("available") or fid is None:
+        fid_ok = False
+    elif "surface_fidelity_pass" in sf:
+        fid_ok = bool(sf.get("surface_fidelity_pass"))
     else:
-        fid_ok = fid is None or fid >= SURFACE_FIDELITY_FLOOR
+        fid_ok = fid >= SURFACE_FIDELITY_FLOOR
     return (sil_ok and fid_ok), sil, fid
 
 
@@ -249,6 +258,7 @@ def run(session, subject: str, params: dict) -> dict:
             apply_move(session, subject, info)
         except BridgeError as exc:
             _revert(session, subject, label, objs_before)
+            current = before  # control state: never advance past a failed move
             moves_report.append({"move": name, "kept": False, "error": str(exc)[:120]})
             _log(item_id, f"{name}: ERROR {str(exc)[:80]} -> reverted")
             continue
@@ -261,6 +271,10 @@ def run(session, subject: str, params: dict) -> dict:
             current = after
         else:
             _revert(session, subject, label, objs_before)
+            # Mesh checkpoint does not deep-copy shared materials; re-measuring after
+            # revert can still see material side-effects. Trust the pre-move scorecard
+            # so the next gate decisions do not cascade on polluted readiness.
+            current = before
         moves_report.append({"move": name, "kept": kept,
                              "readiness_before": before.get("readiness"),
                              "readiness_after": after.get("readiness"),
@@ -268,7 +282,9 @@ def run(session, subject: str, params: dict) -> dict:
         _log(item_id, f"{name}: {_fmt(before.get('readiness'))} -> {_fmt(after.get('readiness'))} "
                       f"pres={_fmt(sil)} fid={_fmt(fid)} {'KEPT' if kept else 'REVERTED'}")
 
-    final = _readiness(session, subject, asset_class)
+    # Control-state final: last KEPT scorecard (or intake). Avoid re-measure pollution
+    # from unreverted material node edits on shared datablocks.
+    final = current if current is not None else start
     return {"readiness_start": start.get("readiness"),
             "readiness_final": final.get("readiness"), "moves": moves_report}
 
@@ -282,6 +298,7 @@ SKILL = Skill(
                  "high-poly surface, unwrap, bake normal+AO maps from the high-poly, quads, "
                  "PBR maps, LODs, collision, apply transforms — each step kept only if "
                  "readiness holds and both silhouette AND surface fidelity are preserved."),
-    asset_classes=("hard_surface_prop", "organic_prop", "generated_cleanup", "from_scratch_prop"),
+    asset_classes=("hard_surface_prop", "organic_prop", "generated_cleanup",
+                   "from_scratch_prop", "character"),
     run=run,
 )

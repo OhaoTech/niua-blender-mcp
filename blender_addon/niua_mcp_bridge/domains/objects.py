@@ -509,7 +509,8 @@ def bake_transfer(ctx: Ctx, payload: dict) -> dict:
                     float_buffer=(map_name == "NORMAL"),
                 )
                 colorspace = getattr(image, "colorspace_settings", None)
-                if map_name == "NORMAL" and colorspace is not None and hasattr(colorspace, "name"):
+                # Data maps must be Non-Color or the material gate (and engines) misread them.
+                if map_name in ("NORMAL", "AO", "ROUGHNESS", "CAVITY") and colorspace is not None and hasattr(colorspace, "name"):
                     colorspace.name = "Non-Color"
                 node = node_tree.nodes.new("ShaderNodeTexImage")
                 node.name = getattr(image, "name", map_name)
@@ -561,24 +562,80 @@ def _capped_voxel_size(dims: list[float], voxel_size: float) -> float:
     return max(voxel_size, capped)
 
 
+# Voxel remesh has segfaulted Blender on multi-island / high non-manifold generator
+# meshes (C-level; Python cannot catch). Prefer decimate-only when risk is high.
+_VOXEL_UNSAFE_PARTS = 2
+_VOXEL_UNSAFE_NON_MANIFOLD = 5000
+
+
+def _mesh_topology_risk(mesh: Any) -> dict[str, int]:
+    """Return loose-part count and non-manifold edge count (0s if bmesh unavailable)."""
+    try:
+        import bmesh  # type: ignore
+    except ImportError:
+        return {"parts": 0, "non_manifold_edges": 0}
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(mesh)
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        non_manifold = sum(1 for e in bm.edges if not e.is_manifold)
+        seen: set[int] = set()
+        parts = 0
+        for v in bm.verts:
+            if v.index in seen:
+                continue
+            parts += 1
+            stack = [v]
+            seen.add(v.index)
+            while stack:
+                cur = stack.pop()
+                for e in cur.link_edges:
+                    other = e.other_vert(cur)
+                    if other.index not in seen:
+                        seen.add(other.index)
+                        stack.append(other)
+        return {"parts": parts, "non_manifold_edges": non_manifold}
+    finally:
+        bm.free()
+
+
+def _voxel_unsafe(mesh: Any) -> tuple[bool, str]:
+    """True when voxel_remesh is likely to crash or destroy multi-part topology."""
+    risk = _mesh_topology_risk(mesh)
+    if risk["parts"] >= _VOXEL_UNSAFE_PARTS:
+        return True, f"loose_parts={risk['parts']}"
+    if risk["non_manifold_edges"] >= _VOXEL_UNSAFE_NON_MANIFOLD:
+        return True, f"non_manifold_edges={risk['non_manifold_edges']}"
+    return False, ""
+
+
+def _decimate_to_tri_budget(ctx: Ctx, obj: Any, tri_budget: int) -> int:
+    """Collapse faces with DECIMATE until tris <= tri_budget. Returns post tris."""
+    m = obj.data
+    tris = sum((len(p.vertices) - 2) for p in m.polygons)
+    if tris <= tri_budget or tri_budget < 1:
+        return tris
+    ratio = max(1e-6, min(1.0, tri_budget / tris))
+    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+        modifier = obj.modifiers.new(name="RETOPO_DECIMATE", type="DECIMATE")
+        modifier.ratio = ratio
+        ctx.check_poll(ctx.bpy.ops.object.modifier_apply)
+        ctx.bpy.ops.object.modifier_apply(modifier=modifier.name)
+    m = obj.data
+    return sum((len(p.vertices) - 2) for p in m.polygons)
+
+
 def retopo(ctx: Ctx, payload: dict) -> dict:
-    """Retopologize an object to a clean mesh at a face budget: voxel remesh (robust
-    cleanup -> watertight manifold, regardless of input topology) then a decimate collapse
-    that guarantees the tool never returns a mesh over the target face budget.
+    """Retopologize an object to a clean mesh at a face budget.
 
-    quadriflow_remesh was dropped from this pipeline: it silently *cancels* without
-    raising at aggressive targets (leaving the voxel-remeshed mesh many times over budget)
-    and it segfaults Blender outright on dense multi-part meshes. Voxel-remesh + decimate
-    is the primitive that survives those inputs; the resulting quad purity is lower, but
-    bake_and_finish's shrinkwrap step (snapping this mesh back onto the high-poly surface)
-    recovers the lost surface detail via the baked normal map.
+    Default path: voxel remesh (watertight cleanup) then decimate collapse to guarantee
+    the face/tri budget. When the mesh looks crash-prone for voxel remesh (multi-island
+    or very high non-manifold counts — the multiparts that have segfaulted Blender), or
+    when ``mode='decimate'``, skip voxel and decimate-only. That still hits budget so
+    bake_and_finish can continue; shrinkwrap + bake recover surface detail.
 
-    A voxel-resolution safety cap guards ``object.voxel_remesh`` itself: voxel_size is
-    raised (never lowered) so the approximate voxel count implied by the object's bbox
-    never exceeds a fixed ceiling, so a huge/dense bbox can't runaway-allocate voxels and
-    crash Blender.
-
-    Voxel-remesh RuntimeErrors fail cleanly (no silent fallback).
+    Voxel size is capped so huge bboxes cannot allocate runaway voxels.
     """
     bpy = ctx.bpy
     obj = ctx.get_object(payload.get("object"))
@@ -587,43 +644,47 @@ def retopo(ctx: Ctx, payload: dict) -> dict:
     target_faces = int(payload.get("target_faces", 0))
     if target_faces < 1:
         raise BridgeError(INVALID_PARAMS, "target_faces must be >= 1")
-    voxel_size = float(payload.get("voxel_size", 0.0))
-    adaptivity = float(payload.get("adaptivity", 0.0))
-    dims = list(getattr(obj, "dimensions", (0.0, 0.0, 0.0)))
-    if voxel_size <= 0.0:
-        longest = max(dims) if dims and max(dims) > 0 else 1.0
-        voxel_size = longest / 128.0
-    voxel_size = _capped_voxel_size(dims, voxel_size)
-
-    try:
-        with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
-            mesh = obj.data
-            mesh.remesh_voxel_size = voxel_size
-            if hasattr(mesh, "remesh_voxel_adaptivity"):
-                mesh.remesh_voxel_adaptivity = adaptivity
-            ctx.check_poll(bpy.ops.object.voxel_remesh)
-            bpy.ops.object.voxel_remesh()
-    except RuntimeError as exc:
-        raise BridgeError(PRECONDITION, f"retopo failed: {exc}") from exc
-
-    m = obj.data
-    tris = sum((len(p.vertices) - 2) for p in m.polygons)
+    mode = str(payload.get("mode") or "auto").strip().lower()
     tri_budget = target_faces * 2
-    if tris > tri_budget:
-        # The voxel-remeshed mesh is clean and watertight, so decimate-collapsing IT (not
-        # raw generator garbage) is still a good bake target. This guarantees the tool
-        # never returns a mesh over ~2x target_faces.
-        ratio = tri_budget / tris
-        with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
-            modifier = obj.modifiers.new(name="RETOPO_DECIMATE", type="DECIMATE")
-            modifier.ratio = ratio
-            ctx.check_poll(bpy.ops.object.modifier_apply)
-            bpy.ops.object.modifier_apply(modifier=modifier.name)
-        m = obj.data
-        tris = sum((len(p.vertices) - 2) for p in m.polygons)
+    path = "voxel+decimate"
+    skip_reason = ""
 
-    faces = len(m.polygons)
-    return {"object": obj.name, "faces": faces, "tris": tris}
+    mesh = obj.data
+    if mode == "decimate":
+        path = "decimate_only"
+        skip_reason = "mode=decimate"
+    elif mode == "auto":
+        unsafe, skip_reason = _voxel_unsafe(mesh)
+        if unsafe:
+            path = "decimate_only"
+
+    if path == "voxel+decimate":
+        voxel_size = float(payload.get("voxel_size", 0.0))
+        adaptivity = float(payload.get("adaptivity", 0.0))
+        dims = list(getattr(obj, "dimensions", (0.0, 0.0, 0.0)))
+        if voxel_size <= 0.0:
+            longest = max(dims) if dims and max(dims) > 0 else 1.0
+            voxel_size = longest / 128.0
+        voxel_size = _capped_voxel_size(dims, voxel_size)
+        try:
+            with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
+                mesh = obj.data
+                mesh.remesh_voxel_size = voxel_size
+                if hasattr(mesh, "remesh_voxel_adaptivity"):
+                    mesh.remesh_voxel_adaptivity = adaptivity
+                ctx.check_poll(bpy.ops.object.voxel_remesh)
+                bpy.ops.object.voxel_remesh()
+        except RuntimeError as exc:
+            # Clean failure from Blender ops — fall back to decimate rather than abort.
+            path = "decimate_only"
+            skip_reason = f"voxel_runtime:{exc}"
+
+    tris = _decimate_to_tri_budget(ctx, obj, tri_budget)
+    faces = len(obj.data.polygons)
+    out: dict[str, Any] = {"object": obj.name, "faces": faces, "tris": tris, "path": path}
+    if skip_reason:
+        out["voxel_skipped"] = skip_reason
+    return out
 
 
 def shrinkwrap(ctx: Ctx, payload: dict) -> dict:

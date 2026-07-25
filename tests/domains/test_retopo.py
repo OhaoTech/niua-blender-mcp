@@ -60,3 +60,61 @@ def test_voxel_cap_never_shrinks_the_requested_size():
     # A large voxel_size already keeps the count under the cap -- the cap must not
     # refine (lower) it, only ever coarsen an under-sized request.
     assert _capped_voxel_size([100.0, 100.0, 100.0], 5.0) == 5.0
+
+
+def test_voxel_unsafe_when_multiple_loose_parts():
+    from niua_mcp_bridge.domains.objects import _voxel_unsafe, _VOXEL_UNSAFE_PARTS
+
+    class _Mesh:
+        pass
+
+    class _FakeRisk:
+        @staticmethod
+        def risk(_mesh):
+            return {"parts": _VOXEL_UNSAFE_PARTS, "non_manifold_edges": 0}
+
+    import niua_mcp_bridge.domains.objects as objects_mod
+    original = objects_mod._mesh_topology_risk
+    objects_mod._mesh_topology_risk = lambda mesh: {"parts": 3, "non_manifold_edges": 10}
+    try:
+        unsafe, reason = _voxel_unsafe(_Mesh())
+        assert unsafe is True
+        assert "loose_parts" in reason
+    finally:
+        objects_mod._mesh_topology_risk = original
+
+
+def test_voxel_unsafe_when_high_non_manifold():
+    from niua_mcp_bridge.domains.objects import _voxel_unsafe, _VOXEL_UNSAFE_NON_MANIFOLD
+    import niua_mcp_bridge.domains.objects as objects_mod
+
+    original = objects_mod._mesh_topology_risk
+    objects_mod._mesh_topology_risk = lambda mesh: {
+        "parts": 1, "non_manifold_edges": _VOXEL_UNSAFE_NON_MANIFOLD,
+    }
+    try:
+        unsafe, reason = _voxel_unsafe(object())
+        assert unsafe is True
+        assert "non_manifold" in reason
+    finally:
+        objects_mod._mesh_topology_risk = original
+
+
+def test_voxel_safe_on_clean_single_part():
+    import niua_mcp_bridge.domains.objects as objects_mod
+
+    original = objects_mod._mesh_topology_risk
+    objects_mod._mesh_topology_risk = lambda mesh: {"parts": 1, "non_manifold_edges": 0}
+    try:
+        unsafe, reason = objects_mod._voxel_unsafe(object())
+        assert unsafe is False
+        assert reason == ""
+    finally:
+        objects_mod._mesh_topology_risk = original
+
+
+def test_retopo_spec_includes_mode():
+    from niua_blender_mcp.domains import build_router
+
+    spec = next(s for s in build_router().specs() if s.name == "object.retopo")
+    assert "mode" in spec.params

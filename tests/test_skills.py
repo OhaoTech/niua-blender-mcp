@@ -56,6 +56,16 @@ def test_registry_lists_make_game_ready_with_description():
     assert skills.get_skill("make_game_ready").name == "make_game_ready"
 
 
+def test_registry_default_is_bake_and_finish_first_and_legacy_flagged():
+    listed = skills.list_skills()
+    assert listed[0]["name"] == skills.DEFAULT_SKILL == "bake_and_finish"
+    assert listed[0]["default"] is True and listed[0]["legacy"] is False
+    by_name = {s["name"]: s for s in listed}
+    assert by_name["make_game_ready"]["legacy"] is True
+    assert by_name["make_game_ready"]["default"] is False
+    assert skills.get_default_skill().name == "bake_and_finish"
+
+
 def test_improving_move_is_kept_via_sdk():
     seq = _readiness(0.5, ["uv.has_uvs"])
     after = _readiness(0.7)
@@ -83,32 +93,82 @@ def test_all_tools_used_are_registered():
     assert make_game_ready.TOOLS_USED <= known, sorted(make_game_ready.TOOLS_USED - known)
 
 
-def test_finisher_delegates_to_skill_same_report_shape():
-    # evals.finisher.finish still works and returns the same keys.
-    from niua_blender_mcp.evals import finisher
-    bridge = FakeBridge(before=_readiness(0.5, ["uv.has_uvs"]),
-                        effects={"uv.smart_unwrap": _readiness(0.7)})
-    report = finisher.finish(bridge, "subject", {"id": "t", "asset_class": ITEM_CLASS})
-    assert set(report) == {"readiness_start", "readiness_final", "moves"}
-
-
 def _pres(silhouette=1.0, fidelity=1.0):
     return {"available": True, "preservation": silhouette, "preservation_pass": silhouette >= 0.85,
             "surface_fidelity": {"available": True, "fidelity": fidelity,
+                                 "surface_fidelity_pass": fidelity >= 0.60,
                                  "per_view": {}, "min_view": {"view": "front", "ssim": fidelity}}}
 
 
 class FidelityBridge(FakeBridge):
     """FakeBridge whose feedback.preservation returns a scriptable surface_fidelity."""
-    def __init__(self, *a, fidelity_after=1.0, **k):
+    def __init__(self, *a, fidelity_after=1.0, preservation_response=None, **k):
         super().__init__(*a, **k)
         self.fidelity_after = fidelity_after
+        self.preservation_response = preservation_response
+
     def call(self, tool, payload):
         r = super().call(tool, payload)
         if tool == "feedback.preservation":
+            if self.preservation_response is not None:
+                return self.preservation_response
             fid = self.fidelity_after if self.state is not self.before else 1.0
             return _pres(silhouette=self.preservation, fidelity=fid)
         return r
+
+
+def test_finisher_delegates_to_bake_and_finish_same_report_shape():
+    # Default product finisher is bake_and_finish; report keys stay stable.
+    from niua_blender_mcp.evals import finisher
+    assert "object.bake_transfer" in finisher.TOOLS_USED
+    bridge = FidelityBridge(before=_readiness(0.5, ["scale.transform_applied"]),
+                            effects={"object.transform_apply": _readiness(0.7)},
+                            fidelity_after=0.95)
+    report = finisher.finish(bridge, "subject", {"id": "t", "asset_class": ITEM_CLASS})
+    assert set(report) == {"readiness_start", "readiness_final", "moves"}
+    kept = [m for m in report["moves"] if m["move"] == "apply_transform"]
+    assert kept and kept[0]["kept"] is True
+
+
+def test_bake_and_finish_unmeasured_fidelity_fail_closed():
+    """No GL / headless: surface_fidelity unavailable must REVERT bake_retopo."""
+    from niua_blender_mcp.client import ToolSession
+    from niua_blender_mcp.finishing.skills import bake_and_finish
+    blind = {"available": False, "preservation": None, "reason": "no opengl",
+             "surface_fidelity": {"available": False}}
+    bridge = FidelityBridge(
+        before=_readiness(0.4, ["engine.within_triangle_budget"]),
+        effects={"object.retopo": _readiness(0.9)},
+        preservation_response=blind,
+    )
+    report = bake_and_finish.run(ToolSession(bridge), "subject", {"asset_class": ITEM_CLASS})
+    retopo = next(m for m in report["moves"] if m["move"] == "bake_retopo")
+    assert retopo["kept"] is False
+    assert any(c[0] == "session.revert" for c in bridge.calls)
+
+
+def test_make_game_ready_unmeasured_preservation_fail_closed():
+    """Legacy skill also fail-closed on unmeasured silhouette."""
+    from niua_blender_mcp.client import ToolSession
+
+    class BlindBridge(FakeBridge):
+        def call(self, tool, payload):
+            r = super().call(tool, payload)
+            if tool == "feedback.preservation":
+                return {"available": False, "preservation": None, "reason": "no opengl"}
+            return r
+
+    bridge = BlindBridge(before=_readiness(0.5, ["uv.has_uvs"]),
+                         effects={"uv.smart_unwrap": _readiness(0.9)})
+    report = make_game_ready.run(ToolSession(bridge), "subject", {"asset_class": ITEM_CLASS})
+    move = next(m for m in report["moves"] if m["move"] == "uv_unwrap")
+    assert move["kept"] is False
+    assert any(c[0] == "session.revert" for c in bridge.calls)
+
+
+def test_bake_and_finish_lists_character_class():
+    from niua_blender_mcp.finishing.skills import bake_and_finish
+    assert "character" in bake_and_finish.SKILL.asset_classes
 
 
 def test_bake_and_finish_registered():

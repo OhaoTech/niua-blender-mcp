@@ -526,11 +526,29 @@ def test_material_metrics_expose_missing_maps_and_bad_colorspace(env) -> None:
     material_quality = _quality(env, "Cube", max_texture_size=2048)["material"]
 
     assert material_quality["missing_maps"] == ["AO", "CAVITY"]
-    assert material_quality["bake_maps_present"] is False
+    assert material_quality["bake_maps_present"] is False  # needs NORMAL+AO
     assert material_quality["pbr_maps_present"] is False
-    assert material_quality["data_maps_non_color"] is False
+    assert material_quality["data_maps_non_color"] is False  # NORMAL is sRGB
     assert material_quality["textures_within_size"] is False
     assert material_quality["atlas_ready"] is False
+
+
+def test_bake_maps_present_with_only_normal_and_ao_non_color(env) -> None:
+    """bake_and_finish product bake is NORMAL+AO — cavity not required for bake gate."""
+    material = FakeMaterial(
+        "BakedMat",
+        [
+            ("NORMAL", FakeImage("proof_bake_NORMAL", colorspace="Non-Color")),
+            ("AO", FakeImage("proof_bake_AO", colorspace="Non-Color")),
+        ],
+    )
+    env[1].add(FakeObj("Cube", data=FakeMesh(verts=_SYMMETRIC_VERTS, polys=_SYMMETRIC_POLYS, materials=[material])))
+
+    material_quality = _quality(env, "Cube", max_texture_size=2048)["material"]
+
+    assert material_quality["bake_maps_present"] is True
+    assert material_quality["data_maps_non_color"] is True
+    assert material_quality["pbr_maps_present"] is False  # still missing base/rough/cavity
 
 
 def test_quality_includes_export_profile_metrics(env) -> None:
