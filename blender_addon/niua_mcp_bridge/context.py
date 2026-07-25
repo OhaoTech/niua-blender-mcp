@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .errors import NOT_FOUND, BridgeError, teach
+from .errors import INVALID_PARAMS, NOT_FOUND, BridgeError, teach
 
 
 class Ctx:
@@ -38,6 +38,18 @@ class Ctx:
             )
 
     def get_object(self, name: str) -> Any:
+        # Guard the collection lookup: bpy_prop_collection.get(None) fails at the C level
+        # with the opaque "returned a result with an exception set", which surfaces as a
+        # handler_error instead of a teachable message. The MCP server validates required
+        # params, but the add-on is also reachable directly (scripts, the eval harness),
+        # so it must not trust the payload. Callers that omit `object` land here.
+        if not isinstance(name, str) or not name:
+            raise teach(
+                INVALID_PARAMS,
+                f"object name must be a non-empty string, got: {name!r}",
+                fix="pass the object's exact name, e.g. {\"object\": \"Cube\"}",
+                next_call="scene.info",
+            )
         obj = self.bpy.data.objects.get(name)
         if obj is None:
             raise teach(

@@ -241,6 +241,31 @@ def _apply_frame(cam_obj: Any, frame: dict[str, Any]) -> None:
         cam.type = "PERSP"
 
 
+def _restore_engine_then_shading(
+    render: Any, prev_engine: Any, shading_rna: Any, prev_shading_type: Any
+) -> None:
+    """Undo _configure_engine in the ONLY order that works: engine first, shading second.
+
+    ``space.shading.type`` is a DYNAMIC enum whose members depend on the active render
+    engine: under ``BLENDER_WORKBENCH`` (what _configure_engine selects for SOLID and
+    WIREFRAME) it collapses to (WIREFRAME, SOLID, RENDERED). Restoring a saved
+    ``MATERIAL`` while the engine is still Workbench therefore raises
+    `enum "MATERIAL" not found` -- which made every subsequent capture in the session
+    return ``available: false`` for anyone whose viewport sat in Material Preview.
+    Restoring the engine first makes the full enum legal again.
+    """
+    if prev_engine is not None:
+        try:
+            render.engine = prev_engine
+        except Exception:  # noqa: BLE001 - restore is best-effort
+            pass
+    if shading_rna is not None and prev_shading_type is not None:
+        try:
+            shading_rna.type = prev_shading_type
+        except Exception:  # noqa: BLE001 - never let restore break the capture result
+            pass
+
+
 def _configure_engine(bpy: Any, scene: Any, shading: str) -> None:
     """Pick render engine + workbench/EEVEE shading for the requested look."""
     render = scene.render
@@ -588,13 +613,7 @@ def _render_viewport(
     finally:
         if overlay_rna is not None and prev_overlay is not None:
             overlay_rna.show_overlays = prev_overlay
-        if shading_rna is not None and prev_shading_type is not None:
-            shading_rna.type = prev_shading_type
-        if prev_engine is not None:
-            try:
-                render.engine = prev_engine
-            except Exception:  # noqa: BLE001 - restore best-effort only
-                pass
+        _restore_engine_then_shading(render, prev_engine, shading_rna, prev_shading_type)
         render.resolution_x = prev_render["x"]
         render.resolution_y = prev_render["y"]
         render.resolution_percentage = prev_render["pct"]

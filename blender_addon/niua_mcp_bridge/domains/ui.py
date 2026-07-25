@@ -101,6 +101,15 @@ def _operator(ctx: Ctx, idname: str) -> Any | None:
         return None
 
 
+def _operator_exists(ctx: Ctx, idname: str) -> bool:
+    """True when this Blender build actually declares ``idname``.
+
+    Used to stay compatible across the 5.x screenshot operator split without
+    hard-coding a version check.
+    """
+    return _operator(ctx, idname) is not None
+
+
 def _poll_capability(ctx: Ctx, idname: str) -> dict[str, Any]:
     op = _operator(ctx, idname)
     if op is None:
@@ -322,21 +331,54 @@ def operator_invoke(ctx: Ctx, payload: dict) -> dict:
 
 
 def screenshot(ctx: Ctx, payload: dict) -> dict:
+    """Capture the Blender window (``full``) or just the active editor.
+
+    Blender 5.x SPLIT this operator: ``screen.screenshot`` grabs the whole window and
+    ``screen.screenshot_area`` grabs one editor, and the old ``full`` property is GONE
+    (passing it raises `keyword "full" unrecognized`, which made this tool fail 100% of
+    the time on 5.x). We therefore pick the operator by name and only pass ``full`` on
+    older builds that still declare it.
+    """
     path = _require_string(payload, "path")
-    op = _operator(ctx, "screen.screenshot")
-    capability = _poll_capability(ctx, "screen.screenshot")
+    want_full = bool(payload.get("full", False))
+    # The existence of screen.screenshot_area IS the version signal: Blender 5.x split
+    # the operator in two and dropped `full`; older builds have one operator that takes
+    # `full`. Branching on the operator table beats sniffing a version number.
+    split_api = _operator_exists(ctx, "screen.screenshot_area")
+    idname = "screen.screenshot" if (want_full or not split_api) else "screen.screenshot_area"
+
+    # screen.screenshot_area shoots the area under the CONTEXT. The bridge runs on a
+    # timer where there is no editor context, so calling it bare writes a 1x1 pixel
+    # file and cheerfully reports success. Resolve a real area and override into it;
+    # if we cannot, fall back to the window grab and say so rather than return a lie.
+    override: dict = {}
+    fell_back = None
+    if idname == "screen.screenshot_area":
+        _summary, override, reason = _resolve_target(ctx, payload)
+        if not override:
+            idname, fell_back = "screen.screenshot", reason or "no editor area available"
+
+    capability = _poll_capability(ctx, idname)
     if not capability.get("available"):
         return capability
+    op = _operator(ctx, idname)
+    kwargs = {"filepath": path}
+    if not split_api:  # legacy single-operator build: it still takes the flag
+        kwargs["full"] = want_full
     try:
-        op(filepath=path, full=bool(payload.get("full", False)))
+        with _override_cm(ctx, override):
+            op(**kwargs)
     except Exception as exc:  # noqa: BLE001
-        raise BridgeError(PRECONDITION, f"screen.screenshot failed: {exc}", {"error": str(exc)}) from exc
-    return {
+        raise BridgeError(PRECONDITION, f"{idname} failed: {exc}", {"error": str(exc)}) from exc
+    result = {
         "available": True,
         "path": path,
         "size": os.path.getsize(path) if os.path.exists(path) else 0,
-        "applied": ["screen.screenshot"],
+        "applied": [idname],
     }
+    if fell_back:
+        result["note"] = f"captured the whole window instead of an editor: {fell_back}"
+    return result
 
 
 def redraw(ctx: Ctx, payload: dict) -> dict:
