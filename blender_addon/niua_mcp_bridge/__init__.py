@@ -7,6 +7,11 @@ later Phase 0 chunk; this module stays importable without bpy so the dispatch co
 be unit-tested with a fake bpy.
 """
 
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# This package runs INSIDE Blender and imports bpy, so it is a derivative work of
+# Blender (GPL-2.0-or-later) and must itself be GPL. The MCP server in ../../src is a
+# separate process that never imports bpy and is Apache-2.0. See LICENSING.md.
 from __future__ import annotations
 
 bl_info = {
@@ -17,6 +22,8 @@ bl_info = {
     "location": "View3D > Sidebar > Niua",
     "description": "Agentic Blender bridge for the Niua Blender MCP server",
     "category": "System",
+    "doc_url": "https://github.com/FrankYin/niua-blender-mcp",
+    "license": "SPDX:GPL-3.0-or-later",
 }
 
 from .domains import build_default_registry  # noqa: E402

@@ -67,8 +67,21 @@ python -m pytest -q                      # + smoke if blender is installed
 
 `system.execute_python` is off by default. Localhost-only bridge. Enable Python only for trusted sessions (`NIUA_BLENDER_MCP_ALLOW_PYTHON=1` + N-panel).
 
+## License
+
+Two programs, two licenses, split on a real process boundary:
+
+| Component | License |
+|---|---|
+| MCP server (`src/`) — never imports `bpy` | **Apache-2.0** |
+| Blender add-on (`blender_addon/`) — runs inside Blender | **GPL-3.0-or-later** |
+
+The add-on calls `bpy`, so Blender's GPL applies to it; the server is a separate process
+that talks over a socket and is permissively licensed. See [`LICENSING.md`](LICENSING.md).
+
 ## Deeper docs (optional)
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — interface vs finishing split (short)
+- [`LICENSING.md`](LICENSING.md) — why the server is Apache-2.0 and the add-on is GPL
 - [`docs/DESIGN.md`](docs/DESIGN.md) — original full design (historical)
 - [`docs/reports/`](docs/reports/) — live run evidence

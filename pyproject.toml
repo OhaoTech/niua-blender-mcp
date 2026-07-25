@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Agentic Blender MCP server and Blender add-on bridge"
 requires-python = ">=3.11"
 readme = "README.md"
-license = "GPL-3.0-or-later"
+# The packaged distribution is the MCP SERVER (src/), which never imports bpy and is
+# Apache-2.0. The Blender add-on under blender_addon/ is GPL-3.0-or-later and is NOT
+# part of this wheel -- it is installed into Blender separately. See LICENSING.md.
+license = "Apache-2.0"
 authors = [{ name = "FrankYin" }]
 dependencies = []
 
