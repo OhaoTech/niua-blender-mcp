@@ -41,30 +41,64 @@ The product is strata ③–④: **it measures the result and refuses what it ca
 Default skill: **`bake_and_finish`**. (Legacy `make_game_ready` — raw decimate, no bake —
 is *not* for dense AI meshes.)
 
-## Quick start
+## Install
 
-A **visible** Blender is required for real quality: measurement needs OpenGL.
+### Let your agent do it
 
-1. `python -m pip install -e .`
-2. Blender → install/enable `blender_addon/niua_mcp_bridge` → **Niua** panel → **Start** (`127.0.0.1:8765`)
-3. Finish the benchmark fixtures:
+Paste this into Claude Code, Cursor, or any coding agent with shell access:
+
+```text
+Install the Blender Finisher MCP server here. Follow these steps in order and STOP and
+report if any check fails — do not improvise around a failure.
+
+1. Check prerequisites:  `blender --version` (need 4.0+) and `python --version` (need 3.11+).
+   If Blender is missing, stop and tell me how to install it for this OS.
+
+2. Clone and install the server:
+     git clone https://github.com/FrankYin/niua-blender-mcp && cd niua-blender-mcp
+     python -m pip install -e .
+
+3. Install the Blender add-on (this asks Blender where its add-ons live, so no guessing):
+     python scripts/install_addon.py
+   Expect "add-on symlinked" (or "copied") and "__init__.py present = True".
+
+4. Start the bridge. Blender must be VISIBLE, not headless — quality measurement needs
+   OpenGL, and headless runs will revert finishing moves instead of passing them blind:
+     blender --python scripts/blender_gui.py -- ./blender_addon 8765
+   (Or open Blender normally → Preferences → Add-ons → enable "Niua MCP Bridge" →
+   press N in the viewport → Niua tab → Start.)
+
+5. Verify the bridge is alive:
+     python scripts/bridge_call.py 8765 system.health '{}'
+   Expect {"bridge": "alive", ...}. If not, report the exact error and stop.
+
+6. Register the MCP server in my client config:
+     {"mcpServers": {"blender-finisher": {"command": "python",
+                                          "args": ["-m", "niua_blender_mcp"]}}}
+
+7. Confirm the tool surface loaded — around 305 tools across domains including
+   mesh, object, uv, shading, modifiers, io and feedback.
+
+Then tell me: Blender version, whether the add-on is symlinked or copied, and the
+health-check output.
+```
+
+### Or by hand
+
+```bash
+python -m pip install -e .          # 1. server
+python scripts/install_addon.py     # 2. add-on → Blender's add-ons dir
+                                    # 3. enable "Niua MCP Bridge" in Preferences → Add-ons
+python scripts/bridge_call.py 8765 system.health '{}'   # 4. verify
+```
+
+Then finish the benchmark fixtures:
 
 ```bash
 python scripts/run_skill.py --skill bake_and_finish --port 8765 --outdir /tmp/niua_finish
 ```
 
-Headless works for plumbing tests but **cannot measure** silhouette/fidelity — fail-closed
-mode will revert finishing moves rather than pass them blind.
-
-Drive it from an MCP client:
-
-```json
-{
-  "mcpServers": {
-    "niua-blender": { "command": "python", "args": ["-m", "niua_blender_mcp"] }
-  }
-}
-```
+`install_addon.py` supports `--copy`, `--blender /path/to/blender`, and `--uninstall`.
 
 ## Status — honest
 
