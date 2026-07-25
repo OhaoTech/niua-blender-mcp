@@ -1,6 +1,6 @@
 # Blender Finisher
 
-**Rough mesh → measured game-ready asset → Godot.** An MCP server with a ruler.
+**Rough mesh → measured game-ready asset.** An MCP server with a ruler.
 
 Point an LLM at a dense, generated mesh and get back a budgeted, baked, importable game
 asset — where every step that cannot be *proven* to preserve the form is reverted.
@@ -24,7 +24,7 @@ The product is strata ③–④: **it measures the result and refuses what it ca
 | Measure the result | ✖ | ✅ silhouette IoU · surface-fidelity SSIM · topology |
 | Asset budgets & gates | ✖ | ✅ per asset class (character / prop / hard-surface) |
 | Revert unproven work | ✖ | ✅ **fail-closed** — unmeasured is not passed |
-| Verify downstream | ✖ | ✅ Godot round-trip test |
+| Verify downstream | ✖ | ✅ exported glTF is import-tested in a real engine |
 
 ## The loop
 
@@ -35,7 +35,7 @@ The product is strata ③–④: **it measures the result and refuses what it ca
 4. shrinkwrap → UV → bake normal/AO
 5. PBR / LOD / collision / apply transforms
 6. keep the step ONLY if readiness held and form is measured + preserved
-7. export GLB → Godot imports clean
+7. export GLB → verify it imports clean in a real engine
 ```
 
 Default skill: **`bake_and_finish`**. (Legacy `make_game_ready` — raw decimate, no bake —
@@ -100,6 +100,11 @@ python -m pytest -q                       # + smoke if blender is installed
 
 Three invariants are enforced by the test suite: the interface never imports finishing, the server never
 imports `bpy`, and every server tool has a matching add-on handler.
+
+**Optional:** the export check imports the finished `.glb` into a headless game engine to
+prove it loads outside Blender — it uses a `godot` binary if one is on `PATH` purely as a
+reference importer, and reports *unmeasured* (never a fake pass) when none is found. The
+finisher itself has no engine dependency.
 
 ## Security
 

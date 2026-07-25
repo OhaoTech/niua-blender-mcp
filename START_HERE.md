@@ -5,7 +5,7 @@
 ## What this product is (one sentence)
 
 ```
-NIUA generates a rough mesh  →  THIS TOOL polishes it  →  Godot ships it
+a generator makes a rough mesh  →  THIS TOOL polishes it  →  an engine ships it
 ```
 
 You are not building “all of Blender for agents.” You are building the **middle step**:
@@ -21,7 +21,7 @@ without turning it into a faceted blob.
 4. shrinkwrap onto high-poly → UV → bake normal/AO
 5. PBR / LOD / collision / apply transforms
 6. keep a step only if readiness held AND silhouette + fidelity are measured and pass
-7. export GLB → Godot import clean
+7. export GLB → verify it imports clean in a real engine
 ```
 
 **Default skill:** `bake_and_finish`  
@@ -84,7 +84,7 @@ An asset is shippable only if:
 
 1. Triangle budget for its asset class  
 2. Silhouette + surface fidelity **measured** and pass  
-3. Export imports clean in Godot  
+3. Export imports clean in a headless engine  
 4. No Blender crash  
 
 Not done yet on all fixtures (UV, multipart crash, some organics). That is the work —
@@ -97,7 +97,7 @@ Latest layer proofs: [`docs/reports/layer-proofs-2026-07-14.md`](docs/reports/la
 | Layer | Status (that report + 2026-07-15 re-proof) |
 |-------|----------------------|
 | Loyal Blender interface | **Working** (live 5/5) |
-| Our craft verbs + Godot export | **Working** (retopo budget, bake maps, LOD, Godot) |
+| Our craft verbs + export check | **Working** (retopo budget, bake maps, LOD, import check) |
 | Fail-closed + multipart retopo | **Fixed & re-proven** (no score drift; multi-island uses decimate-only) |
 | Top-tier visual quality (fidelity/UV) | **Not cleared** — needs GUI fidelity run |
 

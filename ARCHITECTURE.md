@@ -5,7 +5,7 @@
 ## Job
 
 ```
-rough mesh → game-ready-enough asset → Godot
+rough mesh → game-ready-enough asset → any engine
 ```
 
 ![the finishing bay](docs/images/pipeline-concept.jpg)
@@ -16,7 +16,7 @@ Read it left to right — every part maps to something real:
 |---|---|
 | Rough mesh on the conveyor | a dense generator mesh arriving from NIUA |
 | **Calipers + scan beam** | `feedback.*` — silhouette IoU, surface-fidelity SSIM, topology |
-| Lit pedestal, refined asset | budgeted, baked, UV'd, Godot-importable output |
+| Lit pedestal, refined asset | budgeted, baked, UV'd, engine-importable glTF |
 | **The reject pile** | the fail-closed rule: *unmeasured or unproven → revert* |
 
 Most Blender integrations build the conveyor. The calipers and the reject pile are the
@@ -53,13 +53,13 @@ Two invariants, both enforced by the test suite:
 |----------------|------------------------------|
 | `bake_and_finish` skill | Extra Blender domains (sequencer, UI chrome, …) |
 | gates + asset classes + fidelity | RNA “list all tools” expansion |
-| objective bench + Godot | Old plans under `docs/superpowers/` |
+| objective bench + import check | Old plans under `docs/superpowers/` |
 
 Default finisher: `evals/finisher.py` → `finishing/skills/bake_and_finish.py`.
 
 ## Keep / freeze
 
-- **Keep improving:** retopo, bake, UV, fail-closed fidelity, multipart stability, Godot export.
+- **Keep improving:** retopo, bake, UV, fail-closed fidelity, multipart stability, export verification.
 - **Freeze:** new domain packs, second finishers, platform chrome — unless the product loop is blocked.
 
 ## Historical

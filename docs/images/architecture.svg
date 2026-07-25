@@ -18,7 +18,7 @@
 
   <!-- ── title ───────────────────────────────────────────────────────────── -->
   <text x="80" y="62" font-size="34" font-weight="700" fill="#14161A">Blender Finisher</text>
-  <text x="80" y="94" font-size="18" fill="#6B7280">rough mesh → measured game-ready asset → Godot &#160;·&#160; an MCP server with a ruler</text>
+  <text x="80" y="94" font-size="18" fill="#6B7280">rough mesh → measured game-ready asset &#160;·&#160; an MCP server with a ruler</text>
 
   <!-- ── MCP client ──────────────────────────────────────────────────────── -->
   <g filter="url(#soft)">
@@ -43,7 +43,7 @@
   <text x="172" y="374" font-size="19" font-weight="700" fill="#5B3A91">FINISHING &#8212; policy</text>
   <text x="132" y="408" font-size="15" fill="#374151">asset classes &#183; triangle budgets &#183; readiness gates</text>
   <text x="132" y="434" font-size="15" fill="#374151">skills: <tspan font-weight="600">bake_and_finish</tspan> (reduce → bake → LOD/collision)</text>
-  <text x="132" y="460" font-size="15" fill="#374151">objective benchmark &#183; Godot round-trip</text>
+  <text x="132" y="460" font-size="15" fill="#374151">objective benchmark &#183; engine import check</text>
   <text x="132" y="484" font-size="13" fill="#6B7280" font-style="italic">“is this a shippable game asset?”</text>
 
   <!-- tools -->
@@ -142,5 +142,5 @@
   <text x="1340" y="898" font-size="14" font-weight="700" fill="#A5302A">≠ passed</text>
 
   <!-- footer -->
-  <text x="80" y="1026" font-size="13" fill="#9AA3AF">Two CI-enforced invariants: interface never imports finishing · the server never imports bpy (which is also what keeps the licenses separable)</text>
+  <text x="80" y="1026" font-size="13" fill="#9AA3AF">Two test-enforced invariants: interface never imports finishing · the server never imports bpy (which is also what keeps the licenses separable)</text>
 </svg>
