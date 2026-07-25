@@ -8,10 +8,19 @@
 rough mesh → game-ready-enough asset → Godot
 ```
 
-![pipeline concept](docs/images/pipeline-concept.jpg)
+![the finishing bay](docs/images/pipeline-concept.jpg)
 
-*Rough mesh → driven over a socket → **measured** → verified asset. The caliper is the
-point: whatever we cannot measure, we revert.*
+Read it left to right — every part maps to something real:
+
+| In the picture | In the system |
+|---|---|
+| Rough mesh on the conveyor | a dense generator mesh arriving from NIUA |
+| **Calipers + scan beam** | `feedback.*` — silhouette IoU, surface-fidelity SSIM, topology |
+| Lit pedestal, refined asset | budgeted, baked, UV'd, Godot-importable output |
+| **The reject pile** | the fail-closed rule: *unmeasured or unproven → revert* |
+
+Most Blender integrations build the conveyor. The calipers and the reject pile are the
+product.
 
 ## The system
 
