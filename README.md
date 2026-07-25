@@ -104,12 +104,25 @@ python scripts/run_skill.py --skill bake_and_finish --port 8765 --outdir /tmp/ni
 
 ## Status — honest
 
-Pre-1.0. On the objective benchmark of real generator meshes, **3 of 5 fixtures finish
-game-ready**; `real_character` still shows surface noise and `real_multipart` has a
-crash-guard that has not yet been re-validated end to end.
+Pre-1.0. Latest acceptance run ([full report](docs/reports/acceptance-2026-07-25.md)),
+objective benchmark against real generator meshes:
 
-That number exists *because the ruler exists* — the interesting claim is not "3/5", it is
-that the tool can tell you at all, and reverts the other two instead of shipping them.
+| | |
+|---|---|
+| Assets measured | 4 of 5 |
+| Reached triangle budget, form preserved, imports clean | **3** |
+| Assets harmed | **0** |
+| Mean surface fidelity | 0.945 |
+| Clear the strict full-readiness bar (0.85) | **0** — mean 0.75 |
+
+Two open issues, stated plainly: `real_character` holds form beautifully (fidelity 0.990)
+but **no current reducer can take it to budget without destroying it** — both paths scored
+~0.3 and were reverted, so it ships 4× over budget or not at all. And `real_prop` timed out
+in `feedback.readiness`, which left it unmeasured and correctly invalidated the run's grade.
+
+Those numbers exist *because the ruler exists*. The claim worth attention is not the score —
+it is that the tool can tell you at all, and reverts what it cannot prove instead of
+shipping it.
 
 ## Layout
 

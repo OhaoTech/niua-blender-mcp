@@ -1,0 +1,128 @@
+{
+  "meta": {
+    "grade": "INVALID",
+    "runner": "objective",
+    "judge": null,
+    "mode": "agent",
+    "finisher": "niua_blender_mcp.evals.finisher:finish",
+    "godot_bin": "godot",
+    "finisher_turns": {
+      "real_character": 62,
+      "real_character_light": 43,
+      "real_creature": 43,
+      "real_multipart": 48,
+      "real_prop": 45
+    },
+    "finisher_turns_mean": 48.2,
+    "timestamp": "2026-07-25T17:56:56.597085+00:00"
+  },
+  "items": [
+    {
+      "id": "real_character",
+      "asset_class": "character",
+      "readiness": 0.76,
+      "readiness_measured": true,
+      "stage_pass_fraction": 0.6984126984126984,
+      "preservation": 0.9264983856014242,
+      "preservation_measured": true,
+      "preservation_pass": true,
+      "harm_flagged": false,
+      "fully_ready": false,
+      "godot_import_ok": true,
+      "godot_import_measured": true,
+      "surface_fidelity": 0.9902580979951988,
+      "surface_fidelity_measured": true
+    },
+    {
+      "id": "real_character_light",
+      "asset_class": "character",
+      "readiness": 0.84,
+      "readiness_measured": true,
+      "stage_pass_fraction": 0.7619047619047619,
+      "preservation": 0.9988503773846866,
+      "preservation_measured": true,
+      "preservation_pass": true,
+      "harm_flagged": false,
+      "fully_ready": false,
+      "godot_import_ok": true,
+      "godot_import_measured": true,
+      "surface_fidelity": 0.9239224246153239,
+      "surface_fidelity_measured": true
+    },
+    {
+      "id": "real_creature",
+      "asset_class": "character",
+      "readiness": 0.76,
+      "readiness_measured": true,
+      "stage_pass_fraction": 0.6984126984126984,
+      "preservation": 0.9937597566686572,
+      "preservation_measured": true,
+      "preservation_pass": true,
+      "harm_flagged": false,
+      "fully_ready": false,
+      "godot_import_ok": true,
+      "godot_import_measured": true,
+      "surface_fidelity": 0.9249231633991691,
+      "surface_fidelity_measured": true
+    },
+    {
+      "id": "real_multipart",
+      "asset_class": "character",
+      "readiness": 0.64,
+      "readiness_measured": true,
+      "stage_pass_fraction": 0.619047619047619,
+      "preservation": 0.9813302097051991,
+      "preservation_measured": true,
+      "preservation_pass": true,
+      "harm_flagged": false,
+      "fully_ready": false,
+      "godot_import_ok": true,
+      "godot_import_measured": true,
+      "surface_fidelity": 0.9392042419674415,
+      "surface_fidelity_measured": true
+    },
+    {
+      "id": "real_prop",
+      "asset_class": "character",
+      "readiness": null,
+      "readiness_measured": false,
+      "stage_pass_fraction": null,
+      "preservation": null,
+      "preservation_measured": false,
+      "preservation_pass": false,
+      "harm_flagged": false,
+      "fully_ready": false,
+      "godot_import_ok": null,
+      "godot_import_measured": false,
+      "surface_fidelity": null,
+      "surface_fidelity_measured": false
+    }
+  ],
+  "reading": {
+    "n_items": 5,
+    "n_measured": 4,
+    "n_unmeasured": 1,
+    "n_readiness_measured": 4,
+    "n_readiness_unmeasured": 1,
+    "n_harm_flagged": 0,
+    "n_preservation_pass": 4,
+    "n_fully_ready": 0,
+    "mean_readiness": 0.75,
+    "mean_stage_pass_fraction": 0.6944444444444444,
+    "mean_preservation": 0.9751096823399918,
+    "floor": 0.85,
+    "per_class": {
+      "character": {
+        "n": 5,
+        "n_harm": 0,
+        "mean_readiness": 0.75,
+        "mean_preservation": 0.9751096823399918
+      }
+    },
+    "valid": false,
+    "n_godot_measured": 4,
+    "n_godot_import_ok": 4,
+    "mean_surface_fidelity": 0.9445769819942833,
+    "n_fidelity_measured": 4
+  }
+}
