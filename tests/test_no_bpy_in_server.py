@@ -56,13 +56,16 @@ def test_server_package_never_imports_bpy() -> None:
 def test_server_declares_no_runtime_dependencies() -> None:
     """A dependency-free server is part of the 'separate program' argument.
 
-    Adding a dependency is allowed, but it should be a deliberate decision -- this test
-    exists so that it cannot happen silently.
+    Only RUNTIME deps matter here: `[project.optional-dependencies]` (pytest, pillow)
+    are test-only and never installed for users. Adding a runtime dependency is allowed,
+    but it should be a deliberate decision -- this test exists so it cannot happen
+    silently and unlicensed code cannot ride along into the Apache-2.0 distribution.
     """
     pyproject = (SERVER_ROOT.parent.parent / "pyproject.toml").read_text(encoding="utf-8")
-    assert "dependencies = []" in pyproject, (
-        "the server's dependency list changed; confirm the new dependency's license is "
-        "compatible with Apache-2.0 redistribution, then update this test"
+    runtime = pyproject.split("[project.optional-dependencies]", 1)[0]
+    assert "dependencies = []" in runtime, (
+        "the server's RUNTIME dependency list changed; confirm the new dependency's "
+        "license is compatible with Apache-2.0 redistribution, then update this test"
     )
 
 
