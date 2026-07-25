@@ -1,0 +1,82 @@
+name: tests
+
+# The invariants this repo relies on (no bpy in the server, interface never imports
+# finishing, server/add-on command parity) are only real if something runs them.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the floor declared in pyproject; test it so the claim stays true.
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest
+
+      # Blender is absent on the runner: the suite is offline by design and the
+      # Blender-dependent smoke test skips itself.
+      - name: Test
+        run: python -m pytest
+
+  invariants:
+    # Called out separately so a break here is unmistakable in the checks list:
+    # the bpy guard is what keeps the Apache server separable from the GPL add-on.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+      - name: Architecture and licensing invariants
+        run: |
+          python -m pytest -v \
+            tests/test_no_bpy_in_server.py \
+            tests/test_layer_boundary.py \
+            tests/test_parity.py
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip build
+      - name: Build wheel
+        run: python -m build --wheel
+      - name: Wheel must not contain the GPL add-on
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+          wheel = sorted(glob.glob("dist/*.whl"))[-1]
+          names = zipfile.ZipFile(wheel).namelist()
+          leaked = [n for n in names if "niua_mcp_bridge" in n]
+          print(f"{wheel}: {len(names)} entries, {len(leaked)} add-on files")
+          if leaked:
+              sys.exit(f"GPL add-on leaked into the Apache wheel: {leaked[:5]}")
+          PY
