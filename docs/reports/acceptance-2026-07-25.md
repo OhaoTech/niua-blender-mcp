@@ -116,3 +116,44 @@ million-poly mesh; post-revert mesh state differing from intake.
 **Deliberately not done:** raising the timeout. That converts a diagnosable performance
 defect into a silent one. The likely real fix — one bmesh instead of two, `foreach_get` for
 UV bounds — is cheap, but it should follow the explanation, not replace it.
+
+### Resolved (2026-07-26): the multiplier was an O(n²) broad-phase
+
+The missing ~6× was found by timing the one pairing the earlier profiling had skipped —
+`uv.report` **after** `mesh.tris_to_quads`:
+
+| | before conversion | after conversion |
+|---|---:|---:|
+| `uv.report` (pre-fix) | 12.7s | **>142s** |
+
+`_uv_overlap_detected` bucketed each face into every grid cell its UV bbox touched:
+
+```python
+for cx in range(cx0, cx1 + 1):
+    for cy in range(cy0, cy1 + 1):
+        grid.setdefault((cx, cy), []).append(i)
+```
+
+Grid resolution is `cells = sqrt(n)`, so a face spanning the UV range registers in
+`cells × cells == n` buckets — one face costing O(n) insertions. `mesh.tris_to_quads`
+manufactures exactly those faces: it merges triangle pairs that sat on *different UV
+islands*, and the merged quad's bbox spans both. Enough of them and the broad-phase — a
+uniform grid, which only behaves for similarly-sized objects — collapses to O(n²).
+
+**Fix.** Per-face insertion is capped (`_MAX_CELLS_PER_FACE = 64`). A face spanning more is
+pulled out as *oversized* and compared directly against every other face with a bbox reject
+first, preserving the "no overlap is ever missed" guarantee: an overlapping pair is still
+always compared, via a shared cell or via the oversized pass. Oversized faces are tested
+first, because a face covering much of the UV space usually hits something and the first hit
+returns immediately.
+
+**Verified live on `real_prop`, same sequence that failed:**
+
+| operation | before | after |
+|---|---:|---:|
+| `uv.report` after `tris_to_quads` | >142s (hung) | **10.5s** |
+| `feedback.readiness` after it | timed out (120s budget) | **17.4s** |
+
+Regression test: `tests/core/test_uv_overlap_scaling.py`. It pins correctness both ways
+(an oversized face must still register an overlap, and must not invent one) and the cost —
+measured 0.02s with the cap versus 6.72s without, so it fails loudly if the cap is removed.

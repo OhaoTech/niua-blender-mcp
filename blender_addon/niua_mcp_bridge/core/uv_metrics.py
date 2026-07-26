@@ -94,13 +94,34 @@ def polygons_overlap_2d(a: list[tuple[float, float]], b: list[tuple[float, float
     )
 
 
+#: A face may register in at most this many grid cells. Beyond it the face is "oversized"
+#: and handled separately -- see _uv_overlap_detected.
+_MAX_CELLS_PER_FACE = 64
+
+
 def _uv_overlap_detected(uv_polygons: list[list[tuple[float, float]]]) -> bool:
     """Whether any two UV faces share positive area.
 
-    Equivalent to the all-pairs ``polygons_overlap_2d`` scan, but a uniform spatial-grid broad-phase
-    makes it O(n) for typical (spread-out) UVs instead of O(n^2): faces are bucketed by their bbox
-    into ~n grid cells, and only faces sharing a cell are tested. Two overlapping faces necessarily
-    have overlapping bboxes and therefore share at least one cell, so no overlap is ever missed.
+    Equivalent to the all-pairs ``polygons_overlap_2d`` scan, but a uniform spatial-grid
+    broad-phase makes it ~O(n) for spread-out UVs: faces are bucketed by their bbox into ~n
+    cells and only faces sharing a cell are tested. Two overlapping faces necessarily have
+    overlapping bboxes and therefore share a cell, so no overlap is missed.
+
+    A uniform grid is only near-linear when faces are of *similar* size, and that assumption
+    is not free. A face whose bbox spans the whole UV range registers in ``cells x cells``
+    buckets -- with n=489k faces that is ~488,000 insertions for ONE face, so a handful of
+    them turns insertion alone into O(n^2). This is not hypothetical: ``mesh.tris_to_quads``
+    merges triangle pairs that sat on different UV islands, and the resulting quad's UV bbox
+    spans both. Measured on the real_prop fixture (978k tris), that took uv.report from 12.7s
+    to over 142s and blew the finisher's 120s measurement budget, which left the asset
+    unmeasured and invalidated a whole benchmark run.
+
+    So per-face insertion is capped: a face spanning more than ``_MAX_CELLS_PER_FACE`` cells
+    is pulled out as *oversized* and tested directly against every other face (with a bbox
+    reject first). Correctness is unchanged -- an overlapping pair is still always compared,
+    either through a shared cell or through the oversized pass. Oversized faces are tested
+    FIRST because a face covering much of the UV space is very likely to hit something, and
+    the first hit returns immediately.
     """
     n = len(uv_polygons)
     if n < 2:
@@ -123,15 +144,41 @@ def _uv_overlap_detected(uv_polygons: list[list[tuple[float, float]]]) -> bool:
     inv_x = cells / span_x
     inv_y = cells / span_y
 
+    def _bbox_disjoint(a: tuple[float, float, float, float],
+                       b: tuple[float, float, float, float]) -> bool:
+        return (a[1] <= b[0] + EPSILON or b[1] <= a[0] + EPSILON
+                or a[3] <= b[2] + EPSILON or b[3] <= a[2] + EPSILON)
+
     grid: dict[tuple[int, int], list[int]] = {}
+    oversized: list[int] = []
     for i, (bx0, bx1, by0, by1) in enumerate(boxes):
         cx0 = int((bx0 - min_x) * inv_x)
         cx1 = int((bx1 - min_x) * inv_x)
         cy0 = int((by0 - min_y) * inv_y)
         cy1 = int((by1 - min_y) * inv_y)
+        # Cap the work one face can create. Without this a single UV-space-spanning face
+        # inserts into cells*cells buckets and the broad-phase degenerates to O(n^2).
+        if (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > _MAX_CELLS_PER_FACE:
+            oversized.append(i)
+            continue
         for cx in range(cx0, cx1 + 1):
             for cy in range(cy0, cy1 + 1):
                 grid.setdefault((cx, cy), []).append(i)
+
+    # Oversized faces first: they cover a lot of UV space, so a hit is likely and returns
+    # immediately. Each is compared against every other face, bbox-rejected before the
+    # O(edges) polygon test, which preserves the "no overlap is ever missed" guarantee.
+    done_oversized: set[int] = set()
+    for i in oversized:
+        bi = boxes[i]
+        for j in range(n):
+            if j == i or j in done_oversized:   # that pair was already compared
+                continue
+            if _bbox_disjoint(bi, boxes[j]):
+                continue
+            if polygons_overlap_2d(uv_polygons[i], uv_polygons[j]):
+                return True
+        done_oversized.add(i)
 
     checked: set[tuple[int, int]] = set()
     for bucket in grid.values():
