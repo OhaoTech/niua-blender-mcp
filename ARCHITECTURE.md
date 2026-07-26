@@ -49,27 +49,48 @@ Two invariants, both enforced by the test suite:
 
 ## What is and isn't the MCP
 
-Three kinds of content live in this repo. Only the first is the product; the other two
-exist to prove the first one works and to record that it did.
+Four kinds of content live in this repo. Only the first ships.
 
-| | What it is | Where | Ships to users |
+| | What it is | Where | Ships |
 |---|---|---|---|
-| **The MCP** | the server + the add-on: transport, tool surface, perception, finishing policy | `src/niua_blender_mcp/` (minus `evals/`), `blender_addon/niua_mcp_bridge/` | ✅ wheel (Apache) + add-on (GPL) |
-| **The harness** | how we prove it works: benchmark items, reference finisher, unit tests, dev/ops scripts | `src/niua_blender_mcp/evals/`, `tests/`, `scripts/` | ❌ |
-| **The evidence** | what we proved and when: live run reports, plans, specs, design notes | `docs/reports/`, `docs/superpowers/`, `docs/DESIGN.md` | ❌ |
+| **The MCP** | transport, the tool surface, the eyes — neutral Blender translation plus measurement that reports without judging | `src/niua_blender_mcp/`, `blender_addon/niua_mcp_bridge/` (both minus the rows below) | ✅ wheel (Apache) + add-on zip (GPL) |
+| **The policy** | budgets, gates, asset classes, the finisher skills, and the `retopo`/LOD/collision recipes | `finishing/`, `domains/policy/` — **both sides** | ❌ held back |
+| **The harness** | benchmark items, reference finisher, unit tests, dev/ops scripts | `evals/`, `tests/`, `scripts/` | ❌ |
+| **The evidence** | live run reports, plans, specs, design notes | `docs/reports/`, `docs/superpowers/`, `docs/DESIGN.md` | ❌ |
+
+**Why policy is held back.** Not because opinions are wrong to have, but because these
+ones are not good enough to stand behind. The reducer reaches its triangle budget on
+simple props and cannot take a dense character there without destroying it. Shipping a
+`retopo` tool that fails on the hard case makes the whole MCP look broken when the Blender
+surface underneath is fine — so it waits in the repo, under benchmark, until it earns the
+release. Nothing is lost meanwhile: `modifiers.add` with a `DECIMATE` modifier is still
+there, unopinionated, and the agent decides how far to take it.
+
+**How the exclusion is guaranteed.** By *absence*, not by a flag. `domains/__init__.py`
+discovers a domain by the presence of its module, so an artifact without `domains/policy/`
+is one where those tools do not exist — nothing to disable, nothing to re-enable by
+accident. Measured on the real artifacts: 304 tools become **292**, and the 12 that
+disappear are exactly `feedback.quality/readiness/critique/preservation/capture_intake`,
+`io.profile_validate`, `asset_class.list/describe`, and
+`object.retopo/lod_create/collision_hulls_create/collision_proxy_create`.
 
 Three things that surprise people:
 
-- **`evals/` sits inside the server package but is not part of it.** It is there for import
-  convenience only. It is a strict leaf — nothing in the server imports it, only `tests/`
-  and `scripts/` do — and `pyproject.toml` excludes it from the wheel. Developers still get
-  it because pytest puts `src` on the path directly.
-- **The benchmark fixtures are not in the repo.** `evals/benchmark/assets/*.glb` is ~72 MB
-  of real generator output, deliberately untracked; only `MANIFEST.json` is committed.
-  Without them `list_items()` returns `[]` and `load_item()` raises `KeyError` — that is
-  why the harness must not ship.
+- **The eyes stay, the verdicts go.** `feedback.capture`, `silhouette`, `topology`, `uv`,
+  `wire_shaded`, `turntable` all ship: they look at the mesh and report. `feedback.quality`
+  and `readiness` do not: they fold budgets and gates in and return a verdict.
+  `wire_shaded`/`lookdev` will still garnish their output with quality analytics *if* the
+  policy layer happens to be installed, and degrade quietly when it is not.
+- **`evals/` sits inside the server package but is not part of it.** Import convenience
+  only. It is a strict leaf — nothing in the server imports it — and its fixtures
+  (`evals/benchmark/assets/*.glb`, ~72 MB) are deliberately untracked, so a shipped harness
+  could only fail: `list_items()` returns `[]`, `load_item()` raises `KeyError`.
 - **The add-on is not in the wheel.** That is the license boundary, not an oversight — see
-  [`LICENSING.md`](LICENSING.md). CI asserts the wheel contains zero add-on files.
+  [`LICENSING.md`](LICENSING.md).
+
+CI builds both artifacts and fails if an add-on, harness, or policy file appears in either.
+`tests/test_product_surface.py` fails if a policy tool is ever registered from a module
+that ships — which is the property the whole arrangement rests on.
 
 ## Whose name goes on what
 
@@ -89,16 +110,20 @@ Blender automation should carry no opinion, and no ownership, that isn't yours.
 
 | You care about | Frozen library (do not grow) |
 |----------------|------------------------------|
-| `bake_and_finish` skill | Extra Blender domains (sequencer, UI chrome, …) |
-| gates + asset classes + fidelity | RNA “list all tools” expansion |
-| objective bench + import check | Old plans under `docs/superpowers/` |
+| the shipped tool surface staying honest | Extra Blender domains (sequencer, UI chrome, …) |
+| the eyes: capture, silhouette, topology, UV | RNA “list all tools” expansion |
+| the reducer earning its way back into the release | Old plans under `docs/superpowers/` |
 
-Default finisher: `evals/finisher.py` → `finishing/skills/bake_and_finish.py`.
+Held-back finisher (repo only): `evals/finisher.py` → `finishing/skills/bake_and_finish.py`.
+Run it with `scripts/run_skill.py`; measure it with `scripts/run_objective_benchmark.py`.
 
 ## Keep / freeze
 
-- **Keep improving:** retopo, bake, UV, fail-closed fidelity, multipart stability, export verification.
-- **Freeze:** new domain packs, second finishers, platform chrome — unless the product loop is blocked.
+- **Keep improving:** the reducer (this is what gates the policy layer's release), bake,
+  UV, multipart stability, export verification.
+- **Freeze:** new domain packs, second finishers, platform chrome — and do not add
+  opinions to the shipped surface. If a tool decides what "good" means, it belongs in
+  `domains/policy/`.
 
 ## Historical
 

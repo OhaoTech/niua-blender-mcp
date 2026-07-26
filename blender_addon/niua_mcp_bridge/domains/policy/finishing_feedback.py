@@ -33,22 +33,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..context import Ctx
-from ..core import fidelity_metrics as _fm
-from ..core import session as _session
-from ..core import silhouette as _sil
-from ..core import silhouette_metrics as _sm
-from ..core.orientation_metrics import orientation_quality
-from ..dispatch import Command
-from ..errors import INVALID_PARAMS, PRECONDITION, BridgeError
-from ..finishing import asset_classes
-from ..finishing import preservation_ledger as _ledger
-from ..finishing.engine_metrics import engine_quality
-from ..finishing.export_profiles import export_profile_quality
-from ..finishing.gates import check_gates, gate_profile, stage_gates
-from ..finishing.material_metrics import material_quality
-from .feedback import _proportion, _symmetry
-from .mesh import (
+from ...context import Ctx
+from ...core import fidelity_metrics as _fm
+from ...core import session as _session
+from ...core import silhouette as _sil
+from ...core import silhouette_metrics as _sm
+from ...core.orientation_metrics import orientation_quality
+from ...dispatch import Command
+from ...errors import INVALID_PARAMS, PRECONDITION, BridgeError
+from ...finishing import asset_classes
+from ...finishing import preservation_ledger as _ledger
+from ...finishing.engine_metrics import engine_quality
+from ...finishing.export_profiles import export_profile_quality
+from ...finishing.gates import check_gates, gate_profile, stage_gates
+from ...finishing.material_metrics import material_quality
+from ..feedback import _proportion, _symmetry
+from ..mesh import (
     _bmesh_for,
     _resolve_mesh,
     bbox_dimensions,
@@ -56,7 +56,7 @@ from .mesh import (
     topology_counts,
     transform_applied,
 )
-from .uv import report as uv_report
+from ..uv import report as uv_report
 
 
 def capture_intake(ctx: Ctx, payload: dict) -> dict:
@@ -360,7 +360,7 @@ def critique(ctx: Ctx, payload: dict) -> dict:
     ``available: false`` images on a headless/no-GPU box while the analytic half still comes
     back.
     """
-    from ..core import capture as cap
+    from ...core import capture as cap
 
     obj = payload.get("object")
     preset = str(payload.get("preset", "ortho4"))

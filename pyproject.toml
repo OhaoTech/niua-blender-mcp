@@ -29,12 +29,24 @@ niua-blender-mcp = "niua_blender_mcp.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-# `evals` is the BENCHMARK HARNESS, not the product -- see ARCHITECTURE.md "What is and
-# isn't the MCP". It is a leaf (nothing in the server imports it; only tests/ and
-# scripts/ do) and its fixtures are large local .glb files that are deliberately not in
-# the repo, so shipping the modules put a harness in users' wheels that could never load
-# an item. Developers still get it: pytest puts `src` on the path directly.
-exclude = ["niua_blender_mcp.evals", "niua_blender_mcp.evals.*"]
+# What ships is the MCP: neutral Blender translation plus the measurement eyes. Three
+# things stay in the repo and out of the wheel -- see ARCHITECTURE.md "What is and isn't
+# the MCP". Developers still get all of it: pytest puts `src` on the path directly.
+#
+#   evals            the BENCHMARK HARNESS. A leaf (nothing in the server imports it),
+#                    and its fixtures are large .glb files deliberately not in the repo,
+#                    so a shipped harness could only ever fail to load an item.
+#   finishing        budgets, gates, asset classes, the finisher skills.
+#   domains.policy   the tools those opinions drive: feedback.quality/readiness/critique/
+#                    preservation/capture_intake, io.profile_validate, asset_class.*, and
+#                    the object.retopo/lod_create/collision_* recipes. They are not good
+#                    enough to ship -- retopo cannot take a dense character to budget --
+#                    and a tool that fails on the hard case reads as a broken MCP.
+exclude = [
+  "niua_blender_mcp.evals", "niua_blender_mcp.evals.*",
+  "niua_blender_mcp.finishing", "niua_blender_mcp.finishing.*",
+  "niua_blender_mcp.domains.policy", "niua_blender_mcp.domains.policy.*",
+]
 
 [tool.setuptools.package-data]
 "niua_blender_mcp.manifest" = ["*.json"]

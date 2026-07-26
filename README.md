@@ -14,34 +14,32 @@ asset — where every step that cannot be *proven* to preserve the form is rever
 
 ## What makes it different
 
-Most Blender integrations answer *“can an LLM drive Blender?”* — that is strata ①–② above,
-and this repo has one of the larger ones (~305 curated, schema-validated tools).
+Most Blender integrations answer *“can an LLM drive Blender?”* — that is strata ①–②, and
+this repo has one of the larger ones. What it adds is stratum ③: **eyes**. The agent can
+look at what it just did — silhouette, wireframe density, UV stretch, a lit turntable —
+instead of driving blind and hoping.
 
-The product is strata ③–④: **it measures the result and refuses what it cannot prove.**
-
-| | Typical Blender MCP | Blender Finisher |
+| | Typical Blender MCP | This one |
 |---|---|---|
-| Drive Blender from an LLM | ✅ | ✅ ~305 tools, 48 domains |
+| Drive Blender from an LLM | ✅ | ✅ **292 tools, 48 domains**, schema-validated |
 | Run arbitrary `bpy` | ✅ (usually ungated) | ✅ **off by default** |
-| Measure the result | ✖ | ✅ silhouette IoU · surface-fidelity SSIM · topology |
-| Asset budgets & gates | ✖ | ✅ per asset class (character / prop / hard-surface) |
-| Revert unproven work | ✖ | ✅ **fail-closed** — unmeasured is not passed |
-| Verify downstream | ✖ | ✅ exported glTF is import-tested in a real engine |
+| See the result | ✖ | ✅ silhouette · topology · UV checker · wire-shaded · turntable |
+| Decide what "good" means | — | **you do.** No budgets, no gates, no house style |
 
-## The loop
+That last row is deliberate. An earlier version shipped an opinionated finisher — triangle
+budgets per asset class, readiness gates, a `retopo` recipe. It is still in this repo and
+still runs under `scripts/`, but it is **not in the release**, because it is not good
+enough to stand behind: the reducer hits budget on simple props and cannot take a dense
+character there without wrecking it. A tool that fails on the hard case makes the whole
+MCP look broken when the Blender surface underneath is fine.
 
-```
-1. import mesh
-2. capture intake            ← the "do no harm" baseline
-3. reduce to triangle budget (retopo, or decimate fallback)
-4. shrinkwrap → UV → bake normal/AO
-5. PBR / LOD / collision / apply transforms
-6. keep the step ONLY if readiness held and form is measured + preserved
-7. export GLB → verify it imports clean in a real engine
-```
+So the released MCP does not decide anything for you. `modifiers.add` with a `DECIMATE`
+modifier does exactly what it does in Blender; how far to take it is the agent's call, and
+the eyes are there to check the answer.
 
-Default skill: **`bake_and_finish`**. (Legacy `make_game_ready` — raw decimate, no bake —
-is *not* for dense AI meshes.)
+**Status of the held-back layer:** `src/niua_blender_mcp/finishing/`,
+`domains/policy/`, and the benchmark under `evals/`. It ships when a dense character
+survives the round trip. See [ARCHITECTURE.md](ARCHITECTURE.md#what-is-and-isnt-the-mcp).
 
 ## Install
 
@@ -126,28 +124,35 @@ shipping it.
 
 ## Layout
 
-`▪` ships to users as the MCP · `▫` harness and evidence, never shipped
+`▪` ships · `▫` stays in the repo (policy, harness, evidence)
 
 ```
 START_HERE.md                 ← read this first
 ▪ src/niua_blender_mcp/       ← MCP server (Apache-2.0, never imports bpy)
-▪   finishing/skills/           PRODUCT: bake_and_finish (default)
 ▪   bridge.py / server.py       MCP ↔ Blender socket
-▫   evals/                      benchmark HARNESS — excluded from the wheel
-▫     finisher.py                 reference finisher the benchmark scores
-▫     benchmark/assets/*.glb      real fixtures, ~72 MB, deliberately untracked
+▪   domains/                    the tool surface, minus policy/
+▫   domains/policy/             budgets, gates, retopo/LOD/collision recipes
+▫   finishing/                  asset classes + the finisher skills
+▫   evals/                      benchmark harness (fixtures ~72 MB, untracked)
 ▪ blender_addon/niua_mcp_bridge/ ← Blender add-on (GPL-3.0, imports bpy)
-▪   finishing/                    gates, budgets, fidelity floors
-▪   domains/objects.py            retopo, bake, shrinkwrap
-▫ tests/ · scripts/           ← how we prove it works (run_skill.py runs the finisher)
+▪   domains/eyes.py               the eyes: topology, UV checker, wire-shaded
+▪   domains/objects.py            create, transform, shrinkwrap, bake_transfer
+▫   domains/policy/ · finishing/  same held-back layer, add-on side
+▫ tests/ · scripts/           ← how we prove it works
 ▫ docs/reports/               ← what we proved, and when
 ▫ docs/superpowers/           ← ARCHIVE (old plans) — do not start here
 ```
 
-Why the split is enforced rather than described: `evals/` sits inside the server package
-for import convenience, but it is a strict leaf and never ships — the ruler must not
-become part of the thing it measures. See
-[ARCHITECTURE.md](ARCHITECTURE.md#what-is-and-isnt-the-mcp).
+The split is enforced, not just described. Domains are discovered by module *presence*, so
+an artifact without `domains/policy/` is one where those tools do not exist — there is no
+flag to forget. CI builds both artifacts and fails if a policy file appears in either;
+`tests/test_product_surface.py` fails if a policy tool is ever registered from a module
+that ships. Build the release add-on yourself with:
+
+```bash
+python scripts/build_addon_zip.py                 # the pure MCP (62 files)
+python scripts/build_addon_zip.py --include-policy # dev build, everything
+```
 
 ## Develop
 

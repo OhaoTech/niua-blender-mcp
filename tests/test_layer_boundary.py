@@ -33,21 +33,20 @@ SERVER_ROOT = REPO_ROOT / "src" / "niua_blender_mcp"
 #: Directories end with "/" and match any file below them; bare names match one file.
 ADDON_POLICY_AREA = {
     "finishing/",  # the whole finishing/ package
-    "domains/finishing_feedback.py",
-    "domains/asset_class.py",
-    # POLICY DOMAIN (controller decision, Task C): wire_shaded/lookdev fold
-    # feedback.quality analytics into their capture bundle -- the same "capture +
-    # policy quality snapshot" shape as feedback.critique. Not in the plan's known
-    # move list; declared here + documented in ARCHITECTURE.md as a known exception
-    # to resolve if/when the layers physically split.
+    "domains/policy/",  # every policy domain, now a real package the artifact omits
+    # INTERFACE, with an optional policy garnish: wire_shaded/lookdev fold
+    # feedback.quality analytics into their capture bundle when the policy layer happens
+    # to be installed. The import is guarded (see eyes._policy_analytics) precisely so
+    # these tools keep working in a pure-MCP install -- the render is the product, the
+    # analytics are a bonus. Declared here because the edge is real, not because the
+    # module needs policy to function.
     "domains/eyes.py",
 }
 
 SERVER_POLICY_AREA = {
     "finishing/",
     "evals/",
-    "domains/finishing_feedback.py",
-    "domains/asset_class.py",
+    "domains/policy/",
 }
 
 FORBIDDEN_TOKENS = {"finishing", "evals"}
@@ -147,21 +146,21 @@ EXPECTED_ASSET_CLASS_NAMES = {
 
 
 def test_addon_finishing_feedback_registers_exactly_six_tools() -> None:
-    from niua_mcp_bridge.domains import finishing_feedback
+    from niua_mcp_bridge.domains.policy import finishing_feedback
 
     names = {command.name for command in finishing_feedback.COMMANDS}
     assert names == EXPECTED_FINISHING_FEEDBACK_NAMES
 
 
 def test_server_finishing_feedback_registers_exactly_six_tools() -> None:
-    from niua_blender_mcp.domains import finishing_feedback
+    from niua_blender_mcp.domains.policy import finishing_feedback
 
     names = {spec.name for spec in finishing_feedback.SPECS}
     assert names == EXPECTED_FINISHING_FEEDBACK_NAMES
 
 
 def test_addon_asset_class_registers_exactly_its_current_names() -> None:
-    from niua_mcp_bridge.domains import asset_class
+    from niua_mcp_bridge.domains.policy import asset_class
 
     names = {command.name for command in asset_class.COMMANDS}
     assert names == EXPECTED_ASSET_CLASS_NAMES

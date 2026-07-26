@@ -56,6 +56,7 @@ jobs:
           python -m pytest -v \
             tests/test_no_bpy_in_server.py \
             tests/test_layer_boundary.py \
+            tests/test_product_surface.py \
             tests/test_evals_is_not_the_product.py \
             tests/test_no_vendor_brand_in_user_data.py \
             tests/test_parity.py
@@ -80,10 +81,30 @@ jobs:
           addon = [n for n in names if "niua_mcp_bridge" in n]
           # The benchmark harness is not the product, and its fixtures are untracked --
           # shipping it would ship something that can only fail (ARCHITECTURE.md).
-          harness = [n for n in names if "/evals/" in n or n.endswith("/evals")]
-          print(f"{wheel}: {len(names)} entries, {len(addon)} add-on, {len(harness)} harness")
+          harness = [n for n in names if "/evals/" in n]
+          # The policy layer is held back until its judgments are good enough to stand
+          # behind; what ships is the pure MCP (ARCHITECTURE.md "What is and isn't").
+          policy = [n for n in names if "/finishing/" in n or "/domains/policy/" in n]
+          print(f"{wheel}: {len(names)} entries | {len(addon)} add-on, "
+                f"{len(harness)} harness, {len(policy)} policy")
           if addon:
               sys.exit(f"GPL add-on leaked into the Apache wheel: {addon[:5]}")
           if harness:
               sys.exit(f"benchmark harness leaked into the wheel: {harness[:5]}")
+          if policy:
+              sys.exit(f"policy layer leaked into the wheel: {policy[:5]}")
+          PY
+
+      - name: Add-on artifact must be the pure MCP
+        run: |
+          python scripts/build_addon_zip.py --out dist/addon.zip
+          python - <<'PY'
+          import sys, zipfile
+          names = zipfile.ZipFile("dist/addon.zip").namelist()
+          policy = [n for n in names if "/domains/policy/" in n or "/finishing/" in n]
+          print(f"dist/addon.zip: {len(names)} entries, {len(policy)} policy")
+          if policy:
+              sys.exit(f"policy layer leaked into the add-on artifact: {policy[:5]}")
+          if not any(n.endswith("domains/objects.py") for n in names):
+              sys.exit("add-on artifact is missing interface modules -- build is wrong")
           PY

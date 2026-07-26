@@ -20,12 +20,26 @@ from ..dispatch import Command, Registry
 DOMAIN_ATTR = "COMMANDS"
 
 
+def _iter_domain_modules(package: str, search_path: list[str]):
+    """Every module under ``package``, descending into subpackages.
+
+    Subpackages are how an optional group of domains is made *removable*: ``policy/``
+    holds the opinionated tools and is not copied into the released add-on, so those
+    tools cease to exist rather than existing-but-disabled. Discovery therefore has to
+    walk into subpackages that are present, and must not care that one is missing.
+    """
+    for info in pkgutil.iter_modules(search_path):
+        qualified = f"{package}.{info.name}"
+        module = importlib.import_module(qualified)
+        if info.ispkg:
+            yield from _iter_domain_modules(qualified, list(module.__path__))
+        else:
+            yield module
+
+
 def _discover_commands() -> list[Command]:
     commands: list[Command] = []
-    for info in pkgutil.iter_modules(__path__):
-        if info.ispkg:
-            continue
-        module = importlib.import_module(f"{__name__}.{info.name}")
+    for module in _iter_domain_modules(__name__, list(__path__)):
         domain = getattr(module, DOMAIN_ATTR, None)
         if domain:
             commands.extend(domain)

@@ -37,14 +37,14 @@ def test_sdk_exposes_retopo_after_regen():
 
 
 def test_voxel_cap_leaves_small_bbox_untouched():
-    from niua_mcp_bridge.domains.objects import _capped_voxel_size
+    from niua_mcp_bridge.domains.policy.finishing_recipes import _capped_voxel_size
 
     # 1x1x1 bbox / (0.05**3 voxel_size) ~= 8000 voxels -- far under the 5M cap.
     assert _capped_voxel_size([1.0, 1.0, 1.0], 0.05) == 0.05
 
 
 def test_voxel_cap_raises_voxel_size_for_a_huge_bbox():
-    from niua_mcp_bridge.domains.objects import _VOXEL_COUNT_CAP, _capped_voxel_size
+    from niua_mcp_bridge.domains.policy.finishing_recipes import _VOXEL_COUNT_CAP, _capped_voxel_size
 
     dims = [100.0, 100.0, 100.0]
     requested = 0.05  # bbox_volume / requested**3 = 1e6 / 1.25e-4 = 8e9, way over the cap
@@ -55,7 +55,7 @@ def test_voxel_cap_raises_voxel_size_for_a_huge_bbox():
 
 
 def test_voxel_cap_never_shrinks_the_requested_size():
-    from niua_mcp_bridge.domains.objects import _capped_voxel_size
+    from niua_mcp_bridge.domains.policy.finishing_recipes import _capped_voxel_size
 
     # A large voxel_size already keeps the count under the cap -- the cap must not
     # refine (lower) it, only ever coarsen an under-sized request.
@@ -63,7 +63,7 @@ def test_voxel_cap_never_shrinks_the_requested_size():
 
 
 def test_voxel_unsafe_when_multiple_loose_parts():
-    from niua_mcp_bridge.domains.objects import _voxel_unsafe, _VOXEL_UNSAFE_PARTS
+    from niua_mcp_bridge.domains.policy.finishing_recipes import _voxel_unsafe, _VOXEL_UNSAFE_PARTS
 
     class _Mesh:
         pass
@@ -73,7 +73,7 @@ def test_voxel_unsafe_when_multiple_loose_parts():
         def risk(_mesh):
             return {"parts": _VOXEL_UNSAFE_PARTS, "non_manifold_edges": 0}
 
-    import niua_mcp_bridge.domains.objects as objects_mod
+    import niua_mcp_bridge.domains.policy.finishing_recipes as objects_mod
     original = objects_mod._mesh_topology_risk
     objects_mod._mesh_topology_risk = lambda mesh: {"parts": 3, "non_manifold_edges": 10}
     try:
@@ -85,8 +85,8 @@ def test_voxel_unsafe_when_multiple_loose_parts():
 
 
 def test_voxel_unsafe_when_high_non_manifold():
-    from niua_mcp_bridge.domains.objects import _voxel_unsafe, _VOXEL_UNSAFE_NON_MANIFOLD
-    import niua_mcp_bridge.domains.objects as objects_mod
+    from niua_mcp_bridge.domains.policy.finishing_recipes import _voxel_unsafe, _VOXEL_UNSAFE_NON_MANIFOLD
+    import niua_mcp_bridge.domains.policy.finishing_recipes as objects_mod
 
     original = objects_mod._mesh_topology_risk
     objects_mod._mesh_topology_risk = lambda mesh: {
@@ -101,7 +101,7 @@ def test_voxel_unsafe_when_high_non_manifold():
 
 
 def test_voxel_safe_on_clean_single_part():
-    import niua_mcp_bridge.domains.objects as objects_mod
+    import niua_mcp_bridge.domains.policy.finishing_recipes as objects_mod
 
     original = objects_mod._mesh_topology_risk
     objects_mod._mesh_topology_risk = lambda mesh: {"parts": 1, "non_manifold_edges": 0}

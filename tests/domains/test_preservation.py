@@ -6,7 +6,8 @@ import io
 import pytest
 
 from niua_mcp_bridge.core import silhouette as sil
-from niua_mcp_bridge.domains import build_default_registry, finishing_feedback as fb
+from niua_mcp_bridge.domains import build_default_registry
+from niua_mcp_bridge.domains.policy import finishing_feedback as fb
 from niua_mcp_bridge.finishing import preservation_ledger as ledger
 
 # Reuse the shared fake-bpy env + cube fixtures. (Note: "tests" has no __init__.py --

@@ -1,13 +1,15 @@
 """Deeper eyes (addon): topology and UV overlay renders.
 
-NOTE (two-layer split, discovered outside the plan's known move list):
-``wire_shaded``/``lookdev`` fold ``feedback.quality`` (finishing-layer policy: asset-class
-budgets, engine/material/export-profile readiness) into their ``analytics`` field, the
-same "capture + policy quality snapshot" shape as ``feedback.critique``. That makes this
-module's import of ``finishing_feedback.quality`` a genuine interface->finishing edge not
-covered by the plan's known classification list; Task C (boundary enforcement) needs to
-either declare this module a policy domain or otherwise resolve the dependency before the
-AST import-direction test can pass.
+These are interface, not policy: they show what the mesh looks like -- wireframe density,
+UV checker stretch, orientation, a lit turntable -- and never say whether it is good
+enough. An agent decides that.
+
+``wire_shaded`` and ``lookdev`` will *also* fold ``feedback.quality`` into their
+``analytics`` field when the policy layer happens to be installed, which is a real
+interface->finishing edge (hence this module's entry in the boundary test's policy area).
+It is an optional garnish, resolved through ``_policy_analytics`` below: in a pure-MCP
+install there is no ``domains/policy/``, the import fails, and the render -- the actual
+point of these tools -- is returned regardless.
 """
 
 from __future__ import annotations
@@ -213,18 +215,30 @@ def orientation(ctx: Ctx, payload: dict) -> dict:
         return {"available": False, "reason": str(exc), "analytics": locals().get("analytics", {})}
 
 
+def _policy_analytics(ctx: Ctx, obj_name: str | None) -> dict:
+    """``feedback.quality`` folded in when the policy layer is installed, else a reason.
+
+    The verdict tools ship separately (``domains/policy/``), so this import failing is a
+    normal state in a pure-MCP install, not an error. Degrade to a reason string and let
+    the caller return its render: a missing garnish must never cost you the picture.
+    """
+    try:
+        from .policy.finishing_feedback import quality
+    except ImportError:
+        return {"available": False, "reason": "policy layer not installed"}
+    try:
+        return quality(ctx, {"object": obj_name} if obj_name else {})
+    except Exception as exc:  # noqa: BLE001 - analytics are a bonus, never fatal
+        return {"available": False, "reason": str(exc)}
+
+
 def wire_shaded(ctx: Ctx, payload: dict) -> dict:
     from ..core import capture as cap
-    from .finishing_feedback import quality
 
     obj_name = payload.get("object")
     view = str(payload.get("view", "persp"))
     res = int(payload.get("res", 768))
-    analytics: dict
-    try:
-        analytics = quality(ctx, {"object": obj_name} if obj_name else {})
-    except Exception as exc:  # noqa: BLE001
-        analytics = {"available": False, "reason": str(exc)}
+    analytics = _policy_analytics(ctx, obj_name)
 
     try:
         obj = _resolve_mesh(ctx, obj_name)
@@ -283,15 +297,11 @@ def wire_shaded(ctx: Ctx, payload: dict) -> dict:
 
 def lookdev(ctx: Ctx, payload: dict) -> dict:
     from ..core import capture as cap
-    from .finishing_feedback import quality
 
     obj_name = payload.get("object")
     count = int(payload.get("count", 6))
     res = int(payload.get("res", 768))
-    try:
-        analytics = quality(ctx, {"object": obj_name} if obj_name else {})
-    except Exception as exc:  # noqa: BLE001
-        analytics = {"available": False, "reason": str(exc)}
+    analytics = _policy_analytics(ctx, obj_name)
     out = cap.turntable(ctx.bpy, count=count, shading="MATERIAL", res=res, obj_name=obj_name)
     out["analytics"] = analytics
     return out

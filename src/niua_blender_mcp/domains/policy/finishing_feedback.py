@@ -14,10 +14,10 @@ pure module reorganization, not a surface change (``tests/test_parity.py`` guard
 
 from __future__ import annotations
 
-from ..finishing.asset_classes import ASSET_CLASS_IDS
-from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec
-from .feedback import _SHADING
-from .io import EXPORT_FORMATS
+from ...finishing.asset_classes import ASSET_CLASS_IDS
+from ...kernel import Bool, Enum, Float, Int, Str, ToolSpec
+from ..feedback import _SHADING
+from ..io import EXPORT_FORMATS
 
 #: Export-profile conventions for io.profile_validate (moved out of domains/io.py).
 EXPORT_PROFILES = ["GENERIC", "GODOT", "UNREAL", "CUSTOM"]

@@ -23,12 +23,26 @@ from ..kernel import Router, ToolSpec
 DOMAIN_ATTR = "SPECS"
 
 
+def _iter_domain_modules(package: str, search_path: list[str]):
+    """Every module under ``package``, descending into subpackages.
+
+    Mirrors the add-on's discovery. Subpackages are how an optional group of domains is
+    made *removable*: ``policy/`` is excluded from the wheel, so its tools cease to exist
+    rather than existing-but-disabled. Discovery walks into subpackages that are present
+    and must not care that one is missing.
+    """
+    for info in pkgutil.iter_modules(search_path):
+        qualified = f"{package}.{info.name}"
+        module = importlib.import_module(qualified)
+        if info.ispkg:
+            yield from _iter_domain_modules(qualified, list(module.__path__))
+        else:
+            yield module
+
+
 def _discover_specs() -> list[ToolSpec]:
     specs: list[ToolSpec] = []
-    for info in pkgutil.iter_modules(__path__):
-        if info.ispkg:
-            continue
-        module = importlib.import_module(f"{__name__}.{info.name}")
+    for module in _iter_domain_modules(__name__, list(__path__)):
         domain = getattr(module, DOMAIN_ATTR, None)
         if domain:
             specs.extend(domain)

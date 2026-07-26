@@ -6,10 +6,10 @@ game-asset policy, so this module is allowed to import from ``..finishing``.
 
 from __future__ import annotations
 
-from ..context import Ctx
-from ..dispatch import Command
-from ..errors import INVALID_PARAMS, BridgeError
-from ..finishing import asset_classes
+from ...context import Ctx
+from ...dispatch import Command
+from ...errors import INVALID_PARAMS, BridgeError
+from ...finishing import asset_classes
 
 
 def list_profiles(ctx: Ctx, payload: dict) -> dict:

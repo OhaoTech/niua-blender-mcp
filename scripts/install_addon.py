@@ -66,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--blender", default=None, help="path to the blender binary (default: from PATH)")
     ap.add_argument("--copy", action="store_true", help="copy files instead of symlinking")
     ap.add_argument("--uninstall", action="store_true", help="remove a previous install")
+    ap.add_argument("--product", action="store_true",
+                    help="install exactly what users get: the pure MCP, without the "
+                         "policy layer (implies --copy, since a symlink would drag it in)")
     args = ap.parse_args(argv)
 
     if not os.path.isdir(SOURCE):
@@ -100,7 +103,19 @@ def main(argv: list[str] | None = None) -> int:
     elif os.path.isdir(target):
         shutil.rmtree(target)
 
-    if args.copy:
+    if args.product:
+        # Copy only the files the release artifact contains, so what runs in Blender is
+        # the same surface a user installs -- the point being to catch a policy import
+        # that the repo tree would silently satisfy.
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from build_addon_zip import product_files  # noqa: PLC0415
+
+        for relative in product_files():
+            dest = os.path.join(target, str(relative))
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy2(os.path.join(SOURCE, str(relative)), dest)
+        how = "copied WITHOUT the policy layer (product install)"
+    elif args.copy:
         shutil.copytree(SOURCE, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         how = "copied"
     else:
