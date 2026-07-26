@@ -78,3 +78,41 @@ timeout. Zero assets were harmed. Zero clear the strict full-readiness bar.
 
 The headline change since the last run is that the crash is gone — the pipeline now
 completes on every asset it measures.
+
+---
+
+## Follow-up: root-causing the `real_prop` timeout (2026-07-26)
+
+Investigated the one issue that invalidated the run. Partial result — recorded rather than
+patched, because the fix is not yet justified by the evidence.
+
+**Established.** `real_prop` is a 978,232-triangle / 812,341-vertex mesh with 561,900
+non-manifold edges. `feedback.readiness` on it costs **~20–21s**, reproducibly. Profiling
+the components:
+
+| component | time |
+|---|---:|
+| `uv.report` | **13.0s** |
+| `_symmetry` | 4.0s |
+| `_topology_quality` | 1.5s |
+| `topology_counts` | 0.4s |
+| `engine_quality`, `material_quality`, `export_profile_quality` | ~0.0s |
+
+`uv.report` dominates because it builds a **full bmesh twice** on a million-poly mesh —
+once in `_island_count`, again in `uv_quality` — then walks faces and loops in Python.
+
+**Eliminated.** Two plausible causes were tested and ruled out:
+
+- *`mesh.tris_to_quads` degrades later measurement* — no: component timings are flat before
+  (978k polys) and after (738k polys).
+- *A leftover `__high` duplicate doubles the work* — no: readiness with the duplicate in the
+  scene is **0.95×**. Readiness measures the subject, not the scene.
+
+**Still open.** The ~6× multiplier. A 20s baseline has ample headroom under the 120s budget,
+yet the live run blew through it. Untested: accumulated 2048px bake textures / memory
+pressure after ~25 minutes of running; UV island-count explosion after `smart_unwrap` on a
+million-poly mesh; post-revert mesh state differing from intake.
+
+**Deliberately not done:** raising the timeout. That converts a diagnosable performance
+defect into a silent one. The likely real fix — one bmesh instead of two, `foreach_get` for
+UV bounds — is cheap, but it should follow the explanation, not replace it.
