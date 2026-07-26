@@ -61,18 +61,50 @@ retested by hand with correct arguments:
 id. Cancellation is cooperative — it lands at the operation's next check — so a turntable
 already mid-render finishes. That is the documented contract, not a defect.
 
-## Coverage gaps, stated plainly
+## Coverage: no gaps left
 
-- **`volume.import`** — refuses a missing path correctly, but the happy path is unproven:
-  there is no `.vdb` fixture in the repo to import.
-- **`app.preferences_save`** — deliberately not run. It writes to the user's real Blender
-  preferences on disk, which is not something an audit should do uninvited.
+The first pass left two tools unproven. Both are now closed.
 
-Everything else in the `manual` bucket was exercised: `app.file_new/open/save/save_as/
+**`volume.import`** — needed a real `.vdb`, and one cannot be synthesized: `pyopenvdb` is
+absent from this Blender and `bpy` exposes no VDB writer. Blender *can* write one as a
+side effect, though — a fluid cache. Baking a 24-resolution smoke sim for three frames
+with `cache_data_format='OPENVDB'` produces `fluid_data_0001.vdb`, and importing that:
+
+```
+volume.import {"path": ".../fluid_data_0001.vdb"}  ->  {'object': 'AUD_imported_volume',
+                                                        'type': 'VOLUME', ...}
+volume.report {"name_or_object": "AUD_imported_volume"}  ->  reads the grid back
+```
+
+**`app.preferences_save`** — genuinely writes to the user's Blender install, so it was
+tested against a backup: copy `config/userpref.blend` aside, call the tool, confirm the
+file's mtime changed (proving it really saved), restore the backup. Result `{'ok': True,
+'applied': ['wm.save_userpref']}`, and the user's preferences are byte-for-byte unchanged.
+Destructive tools are testable; they just need the blast radius handled first.
+
+Everything else in the `manual` bucket was exercised too: `app.file_new/open/save/save_as/
 revert` through a temp `.blend`, `app.addon_disable`/`addon_enable` on a non-critical
 add-on (restored immediately), `script.run_file`, `script.reload`, `session.checkpoint/
 list_checkpoints/revert`, and `ui.operator_invoke`. The bridge survived every one,
 including `script.reload` under a live add-on.
+
+**Every one of the 291 shipped tools has now been exercised against live Blender.**
+
+## The shipped surface, confirmed on the artifacts
+
+Not on the repo tree — on the built wheel and the built add-on zip, each imported with no
+repo fallback on the path:
+
+```
+add-on artifact  291 tools   policy present: NONE   lattice.convert_to_mesh: absent
+wheel            309 specs   policy present: NONE
+```
+
+The twelve policy tools (`feedback.quality/readiness/critique/preservation/capture_intake`,
+`io.profile_validate`, `asset_class.list/describe`, `object.retopo/lod_create/
+collision_hulls_create/collision_proxy_create`) and the two finisher skills
+(`bake_and_finish`, `make_game_ready`) are all absent from both artifacts. They remain in
+the repo under benchmark — see ARCHITECTURE.md, "What is and isn't the MCP".
 
 ## Reproducing
 
