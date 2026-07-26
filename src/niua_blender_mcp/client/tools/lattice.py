@@ -5,17 +5,6 @@
 from ..session import _drop_none
 
 
-def convert_to_mesh(_session, *, object=None, name=None):
-    """Convert a lattice to a mesh when Blender supports conversion
-
-    Parameters (omit to use the server default):
-    object: Lattice object to convert
-    name: Optional converted object name; server default: ''
-    """
-    _payload = {"object": object, "name": name}
-    return _session.call("lattice.convert_to_mesh", _drop_none(_payload))
-
-
 def create(_session, *, name=None, location=None):
     """Create a lattice object
 

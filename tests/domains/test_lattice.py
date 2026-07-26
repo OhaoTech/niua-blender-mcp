@@ -12,7 +12,7 @@ from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import PRECONDITION, UNKNOWN_TOOL, BridgeError
 
 
 class FakeEnumItem:
@@ -244,8 +244,20 @@ def test_router_contains_lattice_gui_tools() -> None:
         "lattice.report",
         "lattice.set",
         "lattice.point_set",
-        "lattice.convert_to_mesh",
     } <= names
+
+
+def test_no_lattice_to_mesh_conversion_tool_is_offered() -> None:
+    """Blender cannot convert a lattice to a mesh, so we must not pretend to.
+
+    `bpy.ops.object.convert(target='MESH')` returns FINISHED on a lattice and leaves the
+    object a LATTICE; `to_mesh()` raises "Object does not have geometry data". Verified
+    live on an operator-created 8-point lattice -- see
+    docs/reports/tool-audit-2026-07-26.md. A tool that can only ever fail is worse than a
+    missing one: it sends an agent down a dead end and reads as a broken MCP.
+    """
+    names = {spec.name for spec in build_router().specs()}
+    assert "lattice.convert_to_mesh" not in names
 
 
 def test_create_report_set_and_point_set_lattice(env) -> None:
@@ -308,14 +320,12 @@ def test_point_index_out_of_range_fails_without_extra_undo(env) -> None:
     assert bpy.undo_pushes == []
 
 
-def test_convert_to_mesh_unsupported_fails_without_undo(env) -> None:
-    ctx, bpy = env
-    bpy.add(FakeObj("Cage"))
+def test_removed_lattice_conversion_is_rejected_by_the_registry(env) -> None:
+    """The add-on must not answer the removed command either -- no half-cut tools."""
+    ctx, _bpy = env
     reg = build_default_registry()
 
     with pytest.raises(BridgeError) as exc:
-        dispatch_on_main(reg, "lattice.convert_to_mesh", {"object": "Cage", "name": "CageMesh"}, ctx)
+        dispatch_on_main(reg, "lattice.convert_to_mesh", {"object": "Cage"}, ctx)
 
-    assert exc.value.code == PRECONDITION
-    assert "object.convert" in _op_names(bpy)
-    assert bpy.undo_pushes == []
+    assert exc.value.code == UNKNOWN_TOOL

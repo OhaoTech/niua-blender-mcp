@@ -50,16 +50,8 @@ SPECS = [
         mutates=True,
         feedback="viewport",
     ),
-    ToolSpec(
-        name="lattice.convert_to_mesh",
-        category="lattice",
-        summary="Convert a lattice to a mesh when Blender supports conversion",
-        command="lattice.convert_to_mesh",
-        params={
-            "object": Str(required=True, summary="Lattice object to convert"),
-            "name": Str(default="", summary="Optional converted object name"),
-        },
-        mutates=True,
-        feedback="viewport",
-    ),
 ]
+
+# No `lattice.convert_to_mesh`: Blender cannot convert a lattice to a mesh. The operator
+# reports FINISHED and leaves the object a LATTICE. See the add-on module for the live
+# evidence, and docs/reports/tool-audit-2026-07-26.md for the audit that caught it.

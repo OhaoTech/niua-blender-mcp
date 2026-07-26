@@ -1364,9 +1364,12 @@ def test_lattice_gui_parity_workflow(bridge: BlenderBridge) -> None:
     point = bridge.call("lattice.point_set", {"object": "LatticeCage", "index": 0, "co_deform": [0.2, 0.3, 0.4]})
     assert point["point"]["co_deform"] == pytest.approx([0.2, 0.3, 0.4])
 
+    # No lattice->mesh conversion is offered: Blender reports FINISHED and leaves the
+    # object a LATTICE (docs/reports/tool-audit-2026-07-26.md). Assert against a live
+    # Blender that the command is genuinely gone, not merely failing politely.
     with pytest.raises(BridgeError) as exc:
         bridge.call("lattice.convert_to_mesh", {"object": "LatticeCage", "name": "LatticeMesh"})
-    assert exc.value.code == "precondition_failed"
+    assert exc.value.code == "unknown_tool"
 
 
 def test_lightprobe_gui_parity_workflow(bridge: BlenderBridge) -> None:

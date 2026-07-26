@@ -282,30 +282,16 @@ def point_set(ctx: Ctx, payload: dict) -> dict:
     return {"object": obj.name, "point": _point_report(point, index)}
 
 
-def convert_to_mesh(ctx: Ctx, payload: dict) -> dict:
-    obj = _require_lattice(ctx, payload.get("object"))
-    with ctx.ensure(active=obj, mode="OBJECT", select=[obj]):
-        op = ctx.bpy.ops.object.convert
-        ctx.check_poll(op)
-        result = op(target="MESH", keep_original=False)
-        converted = getattr(ctx.bpy.context, "object", None)
-    result_names = _op_result_names(result)
-    if "FINISHED" not in result_names or getattr(converted, "type", None) != "MESH":
-        raise BridgeError(
-            PRECONDITION,
-            "Blender did not convert this lattice object to a mesh",
-            {"operator_result": sorted(result_names), "type": getattr(converted, "type", None)},
-        )
-    name = payload.get("name")
-    if isinstance(name, str) and name:
-        converted.name = name
-    return ctx.object_summary(converted)
-
+# NOTE: there is deliberately no `lattice.convert_to_mesh`. Blender cannot do it: on a
+# lattice, `bpy.ops.object.convert(target='MESH')` returns FINISHED and leaves the object
+# a LATTICE, and `to_mesh()` raises "Object does not have geometry data" -- verified live
+# on an operator-created 8-point lattice (docs/reports/tool-audit-2026-07-26.md). The tool
+# existed and could never succeed, so it was removed rather than left to fail politely.
+# A lattice is a deformer cage, not geometry; to get a mesh, convert what it deforms.
 
 COMMANDS = [
     Command("lattice.create", create, mutates=True, feedback="viewport"),
     Command("lattice.report", report, mutates=False),
     Command("lattice.set", set_property, mutates=True, feedback="viewport"),
     Command("lattice.point_set", point_set, mutates=True, feedback="viewport"),
-    Command("lattice.convert_to_mesh", convert_to_mesh, mutates=True, feedback="viewport"),
 ]
