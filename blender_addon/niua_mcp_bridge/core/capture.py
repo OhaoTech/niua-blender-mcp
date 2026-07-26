@@ -43,7 +43,7 @@ import os
 import tempfile
 from typing import Any, Iterable
 
-CAPTURE_CAM = "__niua_capture_cam"
+CAPTURE_CAM = "__mcp_capture_cam"
 
 #: Engines/shading the renderer understands. SOLID/WIREFRAME -> Workbench, the rest EEVEE.
 WORKBENCH_SHADING = {"SOLID", "WIREFRAME"}
@@ -294,7 +294,7 @@ def _render_to_b64(bpy: Any, cam_obj: Any, shading: str, res: int) -> str:
     setting its transform first, so it never hits the stale-``matrix_world`` bug
     documented in docs/reports/capture-multiangle-bug.md; and the hidden-capture-camera
     eyes in ``domains/eyes.py`` (``feedback.uv``/``feedback.orientation``/
-    ``feedback.wire_shaded``), which position ``__niua_capture_cam`` via
+    ``feedback.wire_shaded``), which position ``__mcp_capture_cam`` via
     ``_apply_frame``/``view_camera`` and are out of scope for the viewport-driven
     rewrite -- see ``_render_viewport`` below for the render path used by ``render``/
     ``capture_views``/``turntable`` and the topology/silhouette eyes.
@@ -318,7 +318,7 @@ def _render_to_b64(bpy: Any, cam_obj: Any, shading: str, res: int) -> str:
         "sh_cavity": getattr(sh, "show_cavity", None),
         "sh_outline": getattr(sh, "show_object_outline", None),
     }
-    path = os.path.join(tempfile.gettempdir(), "niua_capture.png")
+    path = os.path.join(tempfile.gettempdir(), "mcp_capture.png")
     try:
         scene.camera = cam_obj
         render.resolution_x = int(res)
@@ -553,7 +553,7 @@ def _render_viewport(
         "fmt": render.image_settings.file_format,
     }
 
-    path = os.path.join(tempfile.gettempdir(), "niua_viewport_capture.png")
+    path = os.path.join(tempfile.gettempdir(), "mcp_viewport_capture.png")
     try:
         # Select ONLY the subject + make it active (or clear selection for a
         # whole-scene shot) before framing -- scene-level state, not viewport state.

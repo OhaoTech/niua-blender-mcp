@@ -229,12 +229,12 @@ def test_add_and_list_particle_system(env) -> None:
     assert added["particle_system"]["settings"]["name"] == "ParticleSettings"
     assert "object.particle_system_add" in _op_names(bpy)
     assert bpy.mode_calls == ["OBJECT", "EDIT"]
-    assert bpy.undo_pushes == ["niua:particles.add"]
+    assert bpy.undo_pushes == ["mcp:particles.add"]
 
     listed = dispatch_on_main(reg, "particles.systems", {"object": "Emitter"}, ctx)
     assert listed["system_count"] == 1
     assert listed["systems"][0]["name"] == "Dust"
-    assert bpy.undo_pushes == ["niua:particles.add"]
+    assert bpy.undo_pushes == ["mcp:particles.add"]
 
 
 def test_report_uses_particle_system_and_settings_rna(env) -> None:
@@ -278,7 +278,7 @@ def test_set_particle_settings_property_from_json_value(env) -> None:
     )
     assert psys.settings.frame_start == 12.0
     assert changed["value"] == 12.0
-    assert bpy.undo_pushes == ["niua:particles.set", "niua:particles.set"]
+    assert bpy.undo_pushes == ["mcp:particles.set", "mcp:particles.set"]
 
 
 def test_remove_particle_system_pushes_undo(env) -> None:
@@ -293,7 +293,7 @@ def test_remove_particle_system_pushes_undo(env) -> None:
     assert removed["system_count"] == 0
     assert list(obj.particle_systems) == []
     assert "object.particle_system_remove" in _op_names(bpy)
-    assert bpy.undo_pushes == ["niua:particles.remove"]
+    assert bpy.undo_pushes == ["mcp:particles.remove"]
 
 
 def test_missing_particle_system_fails_without_undo(env) -> None:

@@ -253,7 +253,7 @@ def test_create_list_report_and_set_speaker(env) -> None:
     assert created["speaker"]["data"] == "Announcer"
     assert created["location"] == [1.0, 2.0, 3.0]
     assert "object.add" in _op_names(bpy)
-    assert bpy.undo_pushes == ["niua:speaker.create"]
+    assert bpy.undo_pushes == ["mcp:speaker.create"]
 
     listed = dispatch_on_main(reg, "speaker.list", {}, ctx)
     assert listed["speaker_count"] == 1

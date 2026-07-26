@@ -18,7 +18,7 @@ FILL_RGBA = (0.86, 0.86, 0.88, 1.0)
 
 
 def _ensure_fill_material(bpy: Any) -> Any:
-    name = "__niua_silhouette_fill"
+    name = "__mcp_silhouette_fill"
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
@@ -117,7 +117,7 @@ def render_preservation_views(
             "film_transparent": getattr(render, "film_transparent", None),
         }
         hidden = [(o, o.hide_render) for o in scene.objects]
-        path = os.path.join(tempfile.gettempdir(), "niua_preservation.png")
+        path = os.path.join(tempfile.gettempdir(), "mcp_preservation.png")
         images: list[dict] = []
         try:
             for o in scene.objects:
@@ -207,7 +207,7 @@ def render_fidelity_views(
         hidden = [(o, o.hide_render) for o in scene.objects]
         prev_smooth = [p.use_smooth for p in subject.data.polygons]
         prev_materials = None
-        path = os.path.join(tempfile.gettempdir(), "niua_fidelity.png")
+        path = os.path.join(tempfile.gettempdir(), "mcp_fidelity.png")
         images: list[dict] = []
         # Datablock handles must be defined before the inner try so the finally block can
         # always test them -- creating them (or setting their properties) can itself raise,
@@ -239,16 +239,16 @@ def render_fidelity_views(
                     except Exception:  # noqa: BLE001 - best-effort pin, never fatal
                         pass
         try:
-            clay = bpy.data.materials.new("niua_fidelity_clay")
+            clay = bpy.data.materials.new("mcp_fidelity_clay")
             clay.use_nodes = True
             bsdf = clay.node_tree.nodes.get("Principled BSDF")
             if bsdf is not None:
                 bsdf.inputs["Base Color"].default_value = (0.6, 0.6, 0.6, 1.0)
                 if "Roughness" in bsdf.inputs:
                     bsdf.inputs["Roughness"].default_value = 0.7
-            sun_data = bpy.data.lights.new("niua_fidelity_sun", type="SUN")
+            sun_data = bpy.data.lights.new("mcp_fidelity_sun", type="SUN")
             sun_data.energy = 3.0
-            sun_obj = bpy.data.objects.new("niua_fidelity_sun", sun_data)
+            sun_obj = bpy.data.objects.new("mcp_fidelity_sun", sun_data)
             sun_obj.rotation_euler = (0.9, 0.2, 0.5)
             scene.collection.objects.link(sun_obj)
             for o in scene.objects:

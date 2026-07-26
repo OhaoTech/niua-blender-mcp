@@ -71,5 +71,5 @@ def dispatch_on_main(registry: Registry, command_name: str, payload: dict | None
 
     if command.mutates:
         # One named undo step per successful agent action (clean Ctrl+Z).
-        ctx.bpy.ops.ed.undo_push(message=f"niua:{command_name}")
+        ctx.bpy.ops.ed.undo_push(message=f"mcp:{command_name}")
     return result

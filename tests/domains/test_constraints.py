@@ -223,7 +223,7 @@ def test_add_object_constraint_uses_object_mode_and_pushes_undo(env) -> None:
     assert result["constraint"]["type"] == "COPY_LOCATION"
     assert [constraint.name for constraint in obj.constraints] == ["CopyLoc"]
     assert bpy.mode_calls == ["OBJECT", "EDIT"]
-    assert bpy.undo_pushes == ["niua:constraints.add"]
+    assert bpy.undo_pushes == ["mcp:constraints.add"]
 
 
 def test_list_object_constraints_is_read_only(env) -> None:
@@ -289,7 +289,7 @@ def test_set_constraint_property_from_json_value(env) -> None:
     assert result["property"] == "influence"
     assert result["value"] == 0.25
     assert result["constraint"]["properties"]["influence"]["value"] == 0.25
-    assert bpy.undo_pushes == ["niua:constraints.set"]
+    assert bpy.undo_pushes == ["mcp:constraints.set"]
 
 
 def test_set_constraint_object_pointer_from_json_ref(env) -> None:
@@ -310,7 +310,7 @@ def test_set_constraint_object_pointer_from_json_ref(env) -> None:
     assert constraint.target is target
     assert result["value"] == {"name": "Target", "type": "MESH"}
     assert result["constraint"]["properties"]["target"]["value"] == {"name": "Target", "type": "MESH"}
-    assert bpy.undo_pushes == ["niua:constraints.set"]
+    assert bpy.undo_pushes == ["mcp:constraints.set"]
 
 
 def test_remove_object_constraint_pushes_undo(env) -> None:
@@ -324,7 +324,7 @@ def test_remove_object_constraint_pushes_undo(env) -> None:
 
     assert result["constraint_count"] == 0
     assert list(obj.constraints) == []
-    assert bpy.undo_pushes == ["niua:constraints.remove"]
+    assert bpy.undo_pushes == ["mcp:constraints.remove"]
 
 
 def test_add_pose_bone_constraint_uses_pose_owner(env) -> None:
@@ -346,7 +346,7 @@ def test_add_pose_bone_constraint_uses_pose_owner(env) -> None:
     assert result["constraint"]["name"] == "ArmIK"
     assert [constraint.name for constraint in armature.pose.bones.get("Spine").constraints] == ["ArmIK"]
     assert bpy.mode_calls == ["POSE", "OBJECT"]
-    assert bpy.undo_pushes == ["niua:constraints.add"]
+    assert bpy.undo_pushes == ["mcp:constraints.add"]
 
 
 def test_bone_owner_requires_bone_name(env) -> None:

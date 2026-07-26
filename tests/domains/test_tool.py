@@ -276,7 +276,7 @@ def test_set_switches_workspace_tool_with_operator_and_undo(env) -> None:
     assert result["available"] is True
     assert result["active_tool"]["idname"] == "builtin.move"
     assert ("wm.tool_set_by_id", {"name": "builtin.move", "space_type": "VIEW_3D"}) in bpy.op_calls
-    assert bpy.undo_pushes == ["niua:tool.set"]
+    assert bpy.undo_pushes == ["mcp:tool.set"]
 
 
 def test_settings_reports_active_tool_and_tool_settings_rna(env) -> None:

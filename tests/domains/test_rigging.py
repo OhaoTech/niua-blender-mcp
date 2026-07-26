@@ -330,7 +330,7 @@ def test_add_armature_creates_and_renames(env) -> None:
     assert result["armature"] == "Rig"
     assert result["location"] == [1.0, 2.0, 3.0]
     assert "object.armature_add" in _names(bpy.op_calls)
-    assert bpy.undo_pushes == ["niua:rig.add_armature"]
+    assert bpy.undo_pushes == ["mcp:rig.add_armature"]
     # The created object was renamed to "Rig" (dict still keyed by its add-time name).
     assert any(o.name == "Rig" for o in bpy.scene.objects)
 
@@ -361,7 +361,7 @@ def test_add_bone_creates_edit_bone_in_edit_mode(env) -> None:
     assert result["tail"] == [0.0, 0.0, 2.0]
     # entered EDIT, restored to OBJECT
     assert bpy.mode_calls == ["EDIT", "OBJECT"]
-    assert bpy.undo_pushes == ["niua:rig.add_bone"]
+    assert bpy.undo_pushes == ["mcp:rig.add_bone"]
     bone = bpy.objects_by_name["Rig"].data.edit_bones.get("Spine")
     assert bone is not None
     assert bone.tail == [0.0, 0.0, 2.0]
@@ -423,7 +423,7 @@ def test_set_bone_transform_updates_head_and_tail(env) -> None:
     assert result["tail"] == [1.0, 1.0, 5.0]
     assert bone.head == [1.0, 1.0, 1.0]
     assert bone.tail == [1.0, 1.0, 5.0]
-    assert bpy.undo_pushes == ["niua:rig.set_bone_transform"]
+    assert bpy.undo_pushes == ["mcp:rig.set_bone_transform"]
 
 
 def test_set_bone_transform_head_only(env) -> None:
@@ -464,7 +464,7 @@ def test_parent_with_auto_weights_runs_parent_set(env) -> None:
     assert result == {"mesh": "Body", "armature": "Rig", "parented": True}
     _, kwargs = next(c for c in bpy.op_calls if c[0] == "object.parent_set")
     assert kwargs == {"type": "ARMATURE_AUTO"}
-    assert bpy.undo_pushes == ["niua:rig.parent_with_auto_weights"]
+    assert bpy.undo_pushes == ["mcp:rig.parent_with_auto_weights"]
 
 
 def test_parent_with_auto_weights_wrong_mesh_type_raises_precondition(env) -> None:
@@ -591,7 +591,7 @@ def test_set_pose_bone_updates_transform_in_pose_mode(env) -> None:
     assert result["pose_bone"]["name"] == "Tip"
     assert result["pose_bone"]["location"] == [1.0, 2.0, 3.0]
     assert bpy.mode_calls == ["POSE", "OBJECT"]
-    assert bpy.undo_pushes == ["niua:rig.set_pose_bone"]
+    assert bpy.undo_pushes == ["mcp:rig.set_pose_bone"]
 
 
 def test_clear_pose_resets_all_pose_bones(env) -> None:
@@ -614,7 +614,7 @@ def test_clear_pose_resets_all_pose_bones(env) -> None:
         assert pose_bone.rotation_euler == [0.0, 0.0, 0.0]
         assert pose_bone.scale == [1.0, 1.0, 1.0]
     assert bpy.mode_calls == ["POSE", "OBJECT"]
-    assert bpy.undo_pushes == ["niua:rig.clear_pose"]
+    assert bpy.undo_pushes == ["mcp:rig.clear_pose"]
 
 
 def test_rig_report_includes_rest_pose_and_child_meshes(env) -> None:
@@ -713,7 +713,7 @@ def test_constraint_add_sets_name_influence_target_and_subtarget(env) -> None:
     assert constraint.influence == 0.75
     assert result["constraint"]["name"] == "CopyTarget"
     assert result["constraint"]["target"] == "Target"
-    assert bpy.undo_pushes == ["niua:rig.constraint_add"]
+    assert bpy.undo_pushes == ["mcp:rig.constraint_add"]
 
 
 def test_constraint_remove_by_name(env) -> None:
@@ -730,7 +730,7 @@ def test_constraint_remove_by_name(env) -> None:
 
     assert result["constraint_count"] == 0
     assert rig.pose.bones.get("Tip").constraints == []
-    assert bpy.undo_pushes == ["niua:rig.constraint_remove"]
+    assert bpy.undo_pushes == ["mcp:rig.constraint_remove"]
 
 
 def test_constraint_add_unsupported_type_raises_invalid_params(env) -> None:
@@ -790,7 +790,7 @@ def test_vertex_group_create_returns_report(env) -> None:
 
     assert [group.name for group in body.vertex_groups] == ["Arm"]
     assert result["groups"][0]["name"] == "Arm"
-    assert bpy.undo_pushes == ["niua:rig.vertex_group_create"]
+    assert bpy.undo_pushes == ["mcp:rig.vertex_group_create"]
 
 
 def test_assign_weights_parses_vertices_and_calls_group_add(env) -> None:
@@ -810,7 +810,7 @@ def test_assign_weights_parses_vertices_and_calls_group_add(env) -> None:
     assert group.add_calls == [([1, 3, 4], 0.75, "REPLACE")]
     assigned = result["groups"][0]["vertices"]
     assert assigned == [{"index": 1, "weight": 0.75}, {"index": 3, "weight": 0.75}, {"index": 4, "weight": 0.75}]
-    assert bpy.undo_pushes == ["niua:rig.assign_weights"]
+    assert bpy.undo_pushes == ["mcp:rig.assign_weights"]
 
 
 def test_assign_weights_invalid_vertex_index(env) -> None:

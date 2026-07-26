@@ -44,7 +44,7 @@ def _ensure_marker_materials(bpy: Any) -> list:
     shading would show plain gray clay instead of the actual material colour, so the
     topology eye renders under ``MATERIAL`` viewport shading (EEVEE) specifically.
     """
-    names = ["__niua_topo_quad", "__niua_topo_tri", "__niua_topo_ngon", "__niua_topo_wire"]
+    names = ["__mcp_topo_quad", "__mcp_topo_tri", "__mcp_topo_ngon", "__mcp_topo_wire"]
     rgbas = [QUAD_RGBA, TRI_RGBA, NGON_RGBA, WIRE_RGBA]
     mats = []
     for name, rgba in zip(names, rgbas):
@@ -109,7 +109,7 @@ def topology_overlay(bpy: Any, obj_name: str | None, view: str = "persp", res: i
             # (Workbench WIREFRAME shading is a viewport-overlay look, not real geometry,
             # so we materialise the edges instead of relying on a shading mode).
             try:
-                wire_mod = obj.modifiers.new(name="__niua_topo_wire", type="WIREFRAME")
+                wire_mod = obj.modifiers.new(name="__mcp_topo_wire", type="WIREFRAME")
                 wire_mod.thickness = max(max(size) * 0.012, 1e-4)
                 wire_mod.use_replace = False  # keep the filled faces AND add wire edges on top
                 wire_mod.use_even_offset = True

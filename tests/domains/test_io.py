@@ -195,7 +195,7 @@ def test_import_infers_glb_and_reports_new_objects(env, tmp_path) -> None:
     assert result["imported"] == ["Imported_1"]  # the diffed new object, not "Existing"
     assert "import_scene.gltf" in _names(bpy.op_calls)
     assert _kwargs(bpy.op_calls, "import_scene.gltf")["filepath"] == path
-    assert bpy.undo_pushes == ["niua:io.import"]  # mutating -> one undo step
+    assert bpy.undo_pushes == ["mcp:io.import"]  # mutating -> one undo step
 
 
 @pytest.mark.parametrize(
@@ -391,7 +391,7 @@ def test_prepare_asset_applies_transform_then_exports(env, tmp_path) -> None:
     assert ta == {"location": True, "rotation": True, "scale": True}
     k = _kwargs(bpy.op_calls, "export_scene.gltf")
     assert k["use_selection"] is True and k["export_yup"] is True
-    assert bpy.undo_pushes == ["niua:io.prepare_asset"]  # mutating -> one undo step
+    assert bpy.undo_pushes == ["mcp:io.prepare_asset"]  # mutating -> one undo step
 
 
 def test_prepare_asset_can_skip_transform_apply(env, tmp_path) -> None:

@@ -266,7 +266,7 @@ def test_add_creates_modifier_and_pushes_one_undo(env) -> None:
     result = dispatch_on_main(reg, "modifiers.add", {"object": "Cube", "type": "SUBSURF"}, ctx)
     assert result == {"object": "Cube", "modifier": "SUBSURF", "type": "SUBSURF"}
     assert len(bpy.objects_by_name["Cube"].modifiers) == 1
-    assert bpy.undo_pushes == ["niua:modifiers.add"]
+    assert bpy.undo_pushes == ["mcp:modifiers.add"]
 
 
 def test_add_uses_custom_name(env) -> None:
@@ -316,7 +316,7 @@ def test_set_int_property_coerces_from_string(env) -> None:
     )
     assert result["value"] == 3
     assert obj.modifiers.get("Subsurf").levels == 3
-    assert bpy.undo_pushes == ["niua:modifiers.set"]
+    assert bpy.undo_pushes == ["mcp:modifiers.set"]
 
 
 def test_set_float_property_coerces(env) -> None:
@@ -423,7 +423,7 @@ def test_set_visibility_writes_only_provided_flags(env) -> None:
     assert mod.show_expanded is False
     assert result["modifier"]["show_viewport"] is False
     assert result["modifier"]["show_render"] is True
-    assert bpy.undo_pushes == ["niua:modifiers.set_visibility"]
+    assert bpy.undo_pushes == ["mcp:modifiers.set_visibility"]
 
 
 def test_move_runs_operator_and_reorders_stack(env) -> None:
@@ -443,7 +443,7 @@ def test_move_runs_operator_and_reorders_stack(env) -> None:
     assert result["modifier"]["index"] == 0
     assert ("object.modifier_move_to_index", {"modifier": "C", "index": 0}) in bpy.op_calls
     assert bpy.mode_calls == ["OBJECT", "EDIT"]
-    assert bpy.undo_pushes == ["niua:modifiers.move"]
+    assert bpy.undo_pushes == ["mcp:modifiers.move"]
 
 
 def test_copy_runs_operator_and_renames_copy(env) -> None:
@@ -464,7 +464,7 @@ def test_copy_runs_operator_and_renames_copy(env) -> None:
     assert result["modifier"]["name"] == "BevCopy"
     assert result["modifier"]["type"] == "BEVEL"
     assert ("object.modifier_copy", {"modifier": "Bev"}) in bpy.op_calls
-    assert bpy.undo_pushes == ["niua:modifiers.copy"]
+    assert bpy.undo_pushes == ["mcp:modifiers.copy"]
 
 
 # -- apply -------------------------------------------------------------------------
@@ -484,7 +484,7 @@ def test_apply_runs_object_op_and_object_mode(env) -> None:
     _, kwargs = next(c for c in bpy.op_calls if c[0] == "object.modifier_apply")
     assert kwargs == {"modifier": "Subsurf"}
     assert bpy.mode_calls[0] == "OBJECT"  # ensured OBJECT mode
-    assert bpy.undo_pushes == ["niua:modifiers.apply"]
+    assert bpy.undo_pushes == ["mcp:modifiers.apply"]
     assert len(obj.modifiers) == 0  # op consumed the modifier
 
 
@@ -525,7 +525,7 @@ def test_remove_runs_object_op(env) -> None:
     assert result == {"object": "Cube", "modifier": "Bev", "removed": True}
     assert "object.modifier_remove" in _names(bpy.op_calls)
     assert len(obj.modifiers) == 0
-    assert bpy.undo_pushes == ["niua:modifiers.remove"]
+    assert bpy.undo_pushes == ["mcp:modifiers.remove"]
 
 
 def test_remove_missing_modifier_raises_not_found(env) -> None:

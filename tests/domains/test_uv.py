@@ -212,7 +212,7 @@ def test_smart_unwrap_runs_and_pushes_one_undo(env) -> None:
     names = _names(bpy.op_calls)
     assert "mesh.select_all" in names and "uv.smart_project" in names
     assert bpy.mode_calls == ["EDIT", "OBJECT"]  # entered EDIT, restored to OBJECT
-    assert bpy.undo_pushes == ["niua:uv.smart_unwrap"]
+    assert bpy.undo_pushes == ["mcp:uv.smart_unwrap"]
     assert _kwargs(bpy.op_calls, "uv.smart_project") == {
         "angle_limit": 45.0,
         "island_margin": 0.02,
@@ -401,7 +401,7 @@ def test_layer_create_uses_mesh_uv_layers_new(env) -> None:
     assert mesh.uv_layers.new_calls == [{"name": "Lightmap", "do_init": False}]
     assert out["layers"] == ["UVMap", "Lightmap"]
     assert out["active"] == "UVMap"
-    assert bpy.undo_pushes == ["niua:uv.layer_create"]
+    assert bpy.undo_pushes == ["mcp:uv.layer_create"]
 
 
 def test_layer_set_active_by_name(env) -> None:
@@ -465,10 +465,10 @@ def test_set_seams_set_add_remove_clear(env) -> None:
     clear_out = dispatch_on_main(reg, "uv.set_seams", {"object": "Cube", "action": "CLEAR"}, ctx)
     assert clear_out["seam_edges"] == []
     assert bpy.undo_pushes == [
-        "niua:uv.set_seams",
-        "niua:uv.set_seams",
-        "niua:uv.set_seams",
-        "niua:uv.set_seams",
+        "mcp:uv.set_seams",
+        "mcp:uv.set_seams",
+        "mcp:uv.set_seams",
+        "mcp:uv.set_seams",
     ]
 
 
@@ -531,7 +531,7 @@ def test_export_layout_selects_all_and_calls_operator(env, tmp_path) -> None:
         "mode": "PNG",
     }
     assert bpy.mode_calls == ["EDIT", "OBJECT"]
-    assert bpy.undo_pushes == ["niua:uv.export_layout"]
+    assert bpy.undo_pushes == ["mcp:uv.export_layout"]
 
 
 def test_export_layout_requires_path(env) -> None:

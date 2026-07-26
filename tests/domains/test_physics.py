@@ -284,7 +284,7 @@ def test_add_report_set_and_remove_rigid_body(env) -> None:
     assert added["physics"]["type"] == "ACTIVE"
     assert "rigidbody.object_add" in _op_names(bpy)
     assert bpy.mode_calls == ["OBJECT", "EDIT"]
-    assert bpy.undo_pushes == ["niua:physics.add"]
+    assert bpy.undo_pushes == ["mcp:physics.add"]
 
     report = dispatch_on_main(reg, "physics.report", {"object": "Cube"}, ctx)
     assert report["physics"]["RIGID_BODY"]["properties"]["mass"]["value"] == 1.0
@@ -297,12 +297,12 @@ def test_add_report_set_and_remove_rigid_body(env) -> None:
     )
     assert obj.rigid_body.mass == 2.5
     assert changed["value"] == 2.5
-    assert bpy.undo_pushes[-1] == "niua:physics.set"
+    assert bpy.undo_pushes[-1] == "mcp:physics.set"
 
     removed = dispatch_on_main(reg, "physics.remove", {"object": "Cube", "type": "RIGID_BODY"}, ctx)
     assert removed["physics"] is None
     assert obj.rigid_body is None
-    assert bpy.undo_pushes[-1] == "niua:physics.remove"
+    assert bpy.undo_pushes[-1] == "mcp:physics.remove"
 
 
 def test_force_field_workflow_uses_field_report(env) -> None:

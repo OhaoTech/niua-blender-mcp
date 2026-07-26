@@ -29,10 +29,15 @@ niua-blender-mcp = "niua_blender_mcp.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+# `evals` is the BENCHMARK HARNESS, not the product -- see ARCHITECTURE.md "What is and
+# isn't the MCP". It is a leaf (nothing in the server imports it; only tests/ and
+# scripts/ do) and its fixtures are large local .glb files that are deliberately not in
+# the repo, so shipping the modules put a harness in users' wheels that could never load
+# an item. Developers still get it: pytest puts `src` on the path directly.
+exclude = ["niua_blender_mcp.evals", "niua_blender_mcp.evals.*"]
 
 [tool.setuptools.package-data]
 "niua_blender_mcp.manifest" = ["*.json"]
-"niua_blender_mcp.evals.battery.modeling_prop" = ["*.json", "*.md"]
 "niua_blender_mcp.playbooks" = ["*.md"]
 
 [tool.pytest.ini_options]

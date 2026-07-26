@@ -275,7 +275,7 @@ def test_add_list_report_set_and_remove_shaderfx(env) -> None:
     assert added["shaderfx"]["type"] == "FX_BLUR"
     assert "object.shaderfx_add" in _op_names(bpy)
     assert bpy.mode_calls == ["OBJECT", "EDIT"]
-    assert bpy.undo_pushes == ["niua:shaderfx.add"]
+    assert bpy.undo_pushes == ["mcp:shaderfx.add"]
 
     listed = dispatch_on_main(reg, "shaderfx.list", {"object": "Sketch"}, ctx)
     assert listed["shaderfx_count"] == 1
@@ -306,7 +306,7 @@ def test_add_list_report_set_and_remove_shaderfx(env) -> None:
     removed = dispatch_on_main(reg, "shaderfx.remove", {"object": "Sketch", "name": "LensBlur"}, ctx)
     assert removed["shaderfx_count"] == 0
     assert "object.shaderfx_remove" in _op_names(bpy)
-    assert bpy.undo_pushes[-1] == "niua:shaderfx.remove"
+    assert bpy.undo_pushes[-1] == "mcp:shaderfx.remove"
 
 
 def test_missing_shaderfx_fails_without_undo(env) -> None:

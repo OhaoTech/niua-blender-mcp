@@ -203,7 +203,7 @@ def test_clip_load_clips_and_report(env, tmp_path) -> None:
 
     assert loaded["clip"]["name"] == "Plate"
     assert loaded["clip"]["filepath"] == str(path)
-    assert bpy.undo_pushes == ["niua:tracking.clip_load"]
+    assert bpy.undo_pushes == ["mcp:tracking.clip_load"]
 
     clips = dispatch_on_main(reg, "tracking.clips", {}, ctx)
     assert clips["clip_count"] == 1

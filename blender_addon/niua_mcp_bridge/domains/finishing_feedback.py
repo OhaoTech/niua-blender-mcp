@@ -106,14 +106,14 @@ def capture_intake(ctx: Ctx, payload: dict) -> dict:
     except Exception:  # noqa: BLE001 - fidelity is additive; never break the silhouette baseline
         shaded = None
 
-    _session.checkpoint(obj, label="niua:intake")
+    _session.checkpoint(obj, label="mcp:intake")
     _ledger.set_intake(obj.name, {
         "available": True, "res": out["res"], "frame": out["frame"],
         "size": out["measured"]["size"], "masks": masks, "shape": shape,
-        "coverage": coverage, "checkpoint_label": "niua:intake", "shaded": shaded,
+        "coverage": coverage, "checkpoint_label": "mcp:intake", "shaded": shaded,
     })
     return {"object": obj.name, "available": True, "views": sorted(masks),
-            "coverage": coverage, "checkpoint_label": "niua:intake"}
+            "coverage": coverage, "checkpoint_label": "mcp:intake"}
 
 
 def preservation(ctx: Ctx, payload: dict) -> dict:

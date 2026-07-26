@@ -300,7 +300,7 @@ def test_operator_invoke_runs_with_args_context_and_undo(env):
     assert out["ui_context"]["override"] is True
     assert bpy.ops.mesh.bevel.calls == [{"offset": 0.2, "segments": 3}]
     assert bpy.mode_calls == ["EDIT", "OBJECT"]
-    assert bpy.undo_pushes == ["niua:ui.operator_invoke"]
+    assert bpy.undo_pushes == ["mcp:ui.operator_invoke"]
 
 
 def test_operator_invoke_unknown_operator_and_bad_json_are_clean_errors(env):

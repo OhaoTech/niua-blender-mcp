@@ -199,7 +199,7 @@ def test_extrude_runs_edit_op_and_pushes_one_undo(env) -> None:
     assert result["object"] == "Cube"
     assert "mesh.extrude_region_move" in _names(bpy.op_calls)
     assert bpy.mode_calls == ["EDIT", "OBJECT"]  # entered EDIT, restored to OBJECT
-    assert bpy.undo_pushes == ["niua:mesh.extrude"]
+    assert bpy.undo_pushes == ["mcp:mesh.extrude"]
 
 
 def test_extrude_passes_translation_value(env) -> None:
@@ -287,7 +287,7 @@ def test_select_all_runs_edit_operator_and_pushes_undo(env) -> None:
     assert out == {"object": "Cube", "action": "DESELECT"}
     assert ("mesh.select_all", {"action": "DESELECT"}) in bpy.op_calls
     assert bpy.mode_calls == ["EDIT", "OBJECT"]
-    assert bpy.undo_pushes == ["niua:mesh.select_all"]
+    assert bpy.undo_pushes == ["mcp:mesh.select_all"]
 
 
 def test_mesh_selection_tools_are_exposed_in_router() -> None:
@@ -392,7 +392,7 @@ def test_delete_runs_mesh_delete_operator(env) -> None:
 
     assert out == {"object": "Cube", "deleted": "FACE"}
     assert ("mesh.delete", {"type": "FACE"}) in bpy.op_calls
-    assert bpy.undo_pushes == ["niua:mesh.delete"]
+    assert bpy.undo_pushes == ["mcp:mesh.delete"]
 
 
 def test_dissolve_dispatches_to_matching_operator(env) -> None:

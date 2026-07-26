@@ -356,7 +356,7 @@ def test_camera_create_sets_data_and_active_scene_camera(env) -> None:
     assert out["lens"] == 35.0
     assert out["clip_end"] == 500.0
     assert bpy.scene.camera.name == "ShotCam"
-    assert bpy.undo_pushes == ["niua:camera.create"]
+    assert bpy.undo_pushes == ["mcp:camera.create"]
 
 
 def test_camera_list_report_set_and_set_active(env) -> None:
@@ -426,7 +426,7 @@ def test_light_create_and_set(env) -> None:
     listed = dispatch_on_main(reg, "light.list", {}, ctx)
     assert listed["count"] == 1
     assert listed["lights"][0]["light"] == "Key"
-    assert bpy.undo_pushes == ["niua:light.create", "niua:light.set"]
+    assert bpy.undo_pushes == ["mcp:light.create", "mcp:light.set"]
 
 
 def test_router_contains_render_world_tools() -> None:
@@ -464,7 +464,7 @@ def test_render_settings_reports_and_set(env) -> None:
     assert after["resolution"] == [640, 360]
     assert after["image_format"] == "OPEN_EXR"
     assert after["transparent"] is True
-    assert bpy.undo_pushes == ["niua:render.set_settings"]
+    assert bpy.undo_pushes == ["mcp:render.set_settings"]
 
 
 def test_render_still_writes_file_and_restores_settings(env, tmp_path) -> None:
@@ -511,7 +511,7 @@ def test_world_report_and_set_color_strength(env) -> None:
     assert after["use_nodes"] is True
     assert after["strength"] == 2.5
     assert bpy.scene.world.node_tree.nodes.get("Background").inputs["Strength"].default_value == 2.5
-    assert bpy.undo_pushes == ["niua:world.set"]
+    assert bpy.undo_pushes == ["mcp:world.set"]
 
 
 def test_router_contains_compositor_tools() -> None:
@@ -528,7 +528,7 @@ def test_compositor_enable_and_report(env) -> None:
     assert enabled["use_nodes"] is True
     assert {node["name"] for node in enabled["nodes"]} == {"Render Layers", "Composite"}
     assert bpy.scene.use_nodes is True
-    assert bpy.undo_pushes == ["niua:compositor.enable"]
+    assert bpy.undo_pushes == ["mcp:compositor.enable"]
 
     reported = dispatch_on_main(reg, "compositor.report", {}, ctx)
     assert reported["use_nodes"] is True
@@ -545,7 +545,7 @@ def test_compositor_add_node(env) -> None:
     assert out["node"]["name"] == "SoftBlur"
     assert out["node"]["bl_idname"] == "CompositorNodeBlur"
     assert bpy.scene.node_tree.nodes.get("SoftBlur") is not None
-    assert bpy.undo_pushes == ["niua:compositor.add_node"]
+    assert bpy.undo_pushes == ["mcp:compositor.add_node"]
 
 
 def test_compositor_link(env) -> None:
@@ -572,7 +572,7 @@ def test_compositor_link(env) -> None:
         "to_socket": "Image",
     }
     assert len(bpy.scene.node_tree.links) == 1
-    assert bpy.undo_pushes == ["niua:compositor.link"]
+    assert bpy.undo_pushes == ["mcp:compositor.link"]
 
 
 def test_compositor_link_missing_socket_is_invalid_params(env) -> None:

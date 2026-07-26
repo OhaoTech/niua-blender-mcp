@@ -164,7 +164,7 @@ def test_revert_swaps_a_fresh_copy_back_and_restores_transform(env) -> None:
     assert obj.data is not stored
     assert obj.location == [0.0, 0.0, 0.0]
     # revert mutates -> exactly one undo step.
-    assert bpy.undo_pushes == ["niua:session.revert"]
+    assert bpy.undo_pushes == ["mcp:session.revert"]
 
 
 def test_revert_can_be_repeated_from_the_same_checkpoint(env) -> None:

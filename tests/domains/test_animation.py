@@ -258,7 +258,7 @@ def test_set_timeline_updates_provided_fields(env) -> None:
     assert result["frame_current"] == 42
     assert result["fps"] == 60
     assert bpy.frame_set_calls == [42]
-    assert bpy.undo_pushes == ["niua:anim.set_timeline"]
+    assert bpy.undo_pushes == ["mcp:anim.set_timeline"]
 
 
 def test_set_frame_sets_scene_frame_and_pushes_undo(env) -> None:
@@ -268,7 +268,7 @@ def test_set_frame_sets_scene_frame_and_pushes_undo(env) -> None:
     assert result["frame"] == 24
     assert bpy.frame_set_calls == [24]
     assert bpy.scene.frame_current == 24
-    assert bpy.undo_pushes == ["niua:anim.set_frame"]
+    assert bpy.undo_pushes == ["mcp:anim.set_frame"]
 
 
 # -- insert_keyframe ---------------------------------------------------------------
@@ -286,7 +286,7 @@ def test_insert_keyframe_calls_object_method(env) -> None:
     assert cube.insert_calls == [("location", 5, -1)]
     # Already in OBJECT mode, so the resolver issues no mode switch.
     assert bpy.mode_calls == []
-    assert bpy.undo_pushes == ["niua:anim.insert_keyframe"]
+    assert bpy.undo_pushes == ["mcp:anim.insert_keyframe"]
 
 
 def test_insert_keyframe_defaults_to_current_frame(env) -> None:
@@ -348,7 +348,7 @@ def test_delete_keyframe_calls_object_method(env) -> None:
     )
     assert result["frame"] == 5
     assert bpy.objects_by_name["Cube"].delete_calls == [("location", 5, -1)]
-    assert bpy.undo_pushes == ["niua:anim.delete_keyframe"]
+    assert bpy.undo_pushes == ["mcp:anim.delete_keyframe"]
 
 
 def test_delete_keyframe_missing_raises_precondition_no_undo(env) -> None:
@@ -383,7 +383,7 @@ def test_set_interpolation_rewrites_all_keyframe_points(env) -> None:
     assert all(p.interpolation == "LINEAR" for p in fc1.keyframe_points)
     assert all(p.interpolation == "LINEAR" for p in fc2.keyframe_points)
     assert fc1.updated and fc2.updated
-    assert bpy.undo_pushes == ["niua:anim.set_interpolation"]
+    assert bpy.undo_pushes == ["mcp:anim.set_interpolation"]
 
 
 def test_set_interpolation_no_fcurves_raises_precondition(env) -> None:

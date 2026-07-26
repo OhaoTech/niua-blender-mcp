@@ -15,7 +15,7 @@ import shutil
 import subprocess
 import tempfile
 
-_PROJECT_GODOT = 'config_version=5\n\n[application]\nconfig/name="niua_roundtrip"\n'
+_PROJECT_GODOT = 'config_version=5\n\n[application]\nconfig/name="gltf_roundtrip"\n'
 
 
 def verify_gltf_import(glb_path: str, godot_bin: str = "godot", timeout: float = 240.0) -> dict:
@@ -23,7 +23,7 @@ def verify_gltf_import(glb_path: str, godot_bin: str = "godot", timeout: float =
         return {"available": False, "reason": f"godot binary not found: {godot_bin}"}
     if not os.path.isfile(glb_path):
         return {"available": False, "reason": f"export file missing: {glb_path}"}
-    with tempfile.TemporaryDirectory(prefix="niua_godot_rt_") as proj:
+    with tempfile.TemporaryDirectory(prefix="gltf_godot_rt_") as proj:
         with open(os.path.join(proj, "project.godot"), "w", encoding="utf-8") as fh:
             fh.write(_PROJECT_GODOT)
         asset = os.path.join(proj, "asset.glb")

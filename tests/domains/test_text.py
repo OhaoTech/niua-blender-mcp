@@ -107,7 +107,7 @@ def test_create_list_read_write_append_save_and_remove(env, tmp_path) -> None:
     created = dispatch_on_main(reg, "text.create", {"name": "Script", "body": "print(1)\\n"}, ctx)
     assert created["name"] == "Script"
     assert created["line_count"] == 1
-    assert bpy.undo_pushes == ["niua:text.create"]
+    assert bpy.undo_pushes == ["mcp:text.create"]
 
     listed = dispatch_on_main(reg, "text.list", {}, ctx)
     assert listed["text_count"] == 1

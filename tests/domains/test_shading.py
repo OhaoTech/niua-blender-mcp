@@ -264,7 +264,7 @@ def test_create_material_makes_node_based_material(env) -> None:
     assert result["material"] == "Steel"
     mat = bpy.materials["Steel"]
     assert mat.use_nodes is True
-    assert bpy.undo_pushes == ["niua:shading.create_material"]
+    assert bpy.undo_pushes == ["mcp:shading.create_material"]
 
 
 def test_create_material_defaults_name(env) -> None:
@@ -355,7 +355,7 @@ def test_assign_material_creates_and_appends_slot(env) -> None:
     assert result["slot"] == 0
     assert obj.data.materials[0].name == "Gold"
     assert obj.active_material_index == 0
-    assert bpy.undo_pushes == ["niua:shading.assign_material"]
+    assert bpy.undo_pushes == ["mcp:shading.assign_material"]
 
 
 def test_assign_material_reuses_existing_material(env) -> None:
@@ -529,7 +529,7 @@ def test_prepare_pbr_maps_creates_material_images_and_shader_nodes(env) -> None:
     assert principled.inputs["Roughness"].is_linked is True
     assert normal_map.inputs["Color"].is_linked is True
     assert principled.inputs["Normal"].is_linked is True
-    assert bpy.undo_pushes == ["niua:shading.prepare_pbr_maps"]
+    assert bpy.undo_pushes == ["mcp:shading.prepare_pbr_maps"]
 
 
 def test_prepare_pbr_maps_is_exposed_in_router() -> None:

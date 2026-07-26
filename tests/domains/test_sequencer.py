@@ -213,7 +213,7 @@ def test_strip_add_report_set_and_remove(env) -> None:
     assert added["strip"]["name"] == "ColorHero"
     assert added["strip"]["type"] == "COLOR"
     assert added["strip"]["channel"] == 2
-    assert bpy.undo_pushes == ["niua:sequencer.strip_add"]
+    assert bpy.undo_pushes == ["mcp:sequencer.strip_add"]
 
     report = dispatch_on_main(reg, "sequencer.report", {}, ctx)
     assert report["strip_count"] == 1
@@ -230,7 +230,7 @@ def test_strip_add_report_set_and_remove(env) -> None:
 
     removed = dispatch_on_main(reg, "sequencer.strip_remove", {"name": "ColorHero"}, ctx)
     assert removed["strip_count"] == 0
-    assert bpy.undo_pushes[-1] == "niua:sequencer.strip_remove"
+    assert bpy.undo_pushes[-1] == "mcp:sequencer.strip_remove"
 
 
 def test_strip_modifier_add_set_list_and_remove(env) -> None:

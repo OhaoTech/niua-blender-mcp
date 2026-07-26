@@ -269,7 +269,7 @@ def test_set_pointcloud_data_property_pushes_undo(env) -> None:
     assert changed["property"] == "use_fake_user"
     assert changed["value"] is True
     assert obj.data.use_fake_user is True
-    assert bpy.undo_pushes == ["niua:pointcloud.set"]
+    assert bpy.undo_pushes == ["mcp:pointcloud.set"]
 
 
 def test_non_pointcloud_object_fails_without_undo(env) -> None:

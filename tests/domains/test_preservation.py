@@ -58,7 +58,7 @@ def test_capture_intake_writes_ledger(env, monkeypatch) -> None:
     assert out["available"] is True
     rec = ledger.get_intake("Cube")
     assert set(rec["masks"]) == {"front", "right", "top"}
-    assert rec["checkpoint_label"] == "niua:intake"
+    assert rec["checkpoint_label"] == "mcp:intake"
     assert rec["size"] == (2.0, 2.0, 2.0)
 
 

@@ -210,7 +210,7 @@ def test_call_operator_runs_and_coerces_args(env) -> None:
     _, kwargs = next(c for c in bpy.op_calls if c[0] == "mesh.bevel")
     assert kwargs["offset"] == 0.2 and isinstance(kwargs["offset"], float)
     assert kwargs["segments"] == 3 and isinstance(kwargs["segments"], int)
-    assert bpy.undo_pushes == ["niua:rna.call_operator"]
+    assert bpy.undo_pushes == ["mcp:rna.call_operator"]
 
 
 def test_call_operator_drops_unknown_args(env) -> None:
@@ -346,7 +346,7 @@ def test_set_property_assigns_and_pushes_undo(env) -> None:
     )
     assert obj.location == [4, 5, 6]
     assert result["value"] == [4, 5, 6]
-    assert bpy.undo_pushes == ["niua:rna.set_property"]
+    assert bpy.undo_pushes == ["mcp:rna.set_property"]
 
 
 def test_set_property_coerces_scalar_to_existing_type(env) -> None:

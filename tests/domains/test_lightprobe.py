@@ -253,7 +253,7 @@ def test_create_list_report_and_set_light_probe(env) -> None:
     assert created["lightprobe"]["type"] == "SPHERE"
     assert created["location"] == [1.0, 2.0, 3.0]
     assert "object.lightprobe_add" in _op_names(bpy)
-    assert bpy.undo_pushes == ["niua:lightprobe.create"]
+    assert bpy.undo_pushes == ["mcp:lightprobe.create"]
 
     listed = dispatch_on_main(reg, "lightprobe.list", {}, ctx)
     assert listed["lightprobe_count"] == 1

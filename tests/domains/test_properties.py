@@ -225,7 +225,7 @@ def test_get_and_set_support_stable_object_paths_with_dotted_names(env) -> None:
         2,
         3,
     ]
-    assert bpy.undo_pushes == ["niua:properties.set"]
+    assert bpy.undo_pushes == ["mcp:properties.set"]
 
 
 def test_generic_report_get_and_set_support_data_collection_paths(env) -> None:
@@ -276,7 +276,7 @@ def test_custom_properties_round_trip_and_unset(env) -> None:
 
     assert result == {"path": "object:Cube/idprops/notes", "removed": True}
     assert "notes" not in obj.keys()
-    assert bpy.undo_pushes == ["niua:properties.set", "niua:properties.unset"]
+    assert bpy.undo_pushes == ["mcp:properties.set", "mcp:properties.unset"]
 
 
 def test_get_missing_path_raises_not_found(env) -> None:

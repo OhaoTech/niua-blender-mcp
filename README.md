@@ -126,19 +126,28 @@ shipping it.
 
 ## Layout
 
+`▪` ships to users as the MCP · `▫` harness and evidence, never shipped
+
 ```
 START_HERE.md                 ← read this first
-src/niua_blender_mcp/         ← MCP server (Apache-2.0, never imports bpy)
-  finishing/skills/             PRODUCT: bake_and_finish (default)
-  evals/finisher.py             benchmark entry → the default skill
-  evals/benchmark/              real generator fixtures
-  bridge.py / server.py         MCP ↔ Blender socket
-blender_addon/niua_mcp_bridge/ ← Blender add-on (GPL-3.0, imports bpy)
-  finishing/                    gates, budgets, fidelity floors
-  domains/objects.py            retopo, bake, shrinkwrap
-scripts/run_skill.py          ← run the finisher on fixtures
-docs/superpowers/             ← ARCHIVE (old plans) — do not start here
+▪ src/niua_blender_mcp/       ← MCP server (Apache-2.0, never imports bpy)
+▪   finishing/skills/           PRODUCT: bake_and_finish (default)
+▪   bridge.py / server.py       MCP ↔ Blender socket
+▫   evals/                      benchmark HARNESS — excluded from the wheel
+▫     finisher.py                 reference finisher the benchmark scores
+▫     benchmark/assets/*.glb      real fixtures, ~72 MB, deliberately untracked
+▪ blender_addon/niua_mcp_bridge/ ← Blender add-on (GPL-3.0, imports bpy)
+▪   finishing/                    gates, budgets, fidelity floors
+▪   domains/objects.py            retopo, bake, shrinkwrap
+▫ tests/ · scripts/           ← how we prove it works (run_skill.py runs the finisher)
+▫ docs/reports/               ← what we proved, and when
+▫ docs/superpowers/           ← ARCHIVE (old plans) — do not start here
 ```
+
+Why the split is enforced rather than described: `evals/` sits inside the server package
+for import convenience, but it is a strict leaf and never ships — the ruler must not
+become part of the thing it measures. See
+[ARCHITECTURE.md](ARCHITECTURE.md#what-is-and-isnt-the-mcp).
 
 ## Develop
 

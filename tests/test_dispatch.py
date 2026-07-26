@@ -107,7 +107,7 @@ def test_create_object_creates_and_pushes_one_undo_step() -> None:
     result = dispatch_on_main(reg, "scene.create_object", {"type": "CUBE", "name": "Hero"}, c)
     assert result["name"] == "Hero"
     assert bpy.data.objects["Hero"].location == [0.0, 0.0, 0.0]
-    assert bpy.undo_pushes == ["niua:scene.create_object"]
+    assert bpy.undo_pushes == ["mcp:scene.create_object"]
     assert bpy.undo_calls == 0
 
 

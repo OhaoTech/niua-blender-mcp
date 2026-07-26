@@ -44,9 +44,9 @@ def _resolve_mesh(ctx: Ctx, raw_name: Any) -> Any:
 
 
 def _ensure_checker_material(bpy: Any) -> Any:
-    mat = bpy.data.materials.get("__niua_uv_checker")
+    mat = bpy.data.materials.get("__mcp_uv_checker")
     if mat is None:
-        mat = bpy.data.materials.new("__niua_uv_checker")
+        mat = bpy.data.materials.new("__mcp_uv_checker")
     mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.clear()
@@ -64,9 +64,9 @@ def _ensure_checker_material(bpy: Any) -> Any:
 
 
 def _ensure_orientation_material(bpy: Any) -> Any:
-    mat = bpy.data.materials.get("__niua_orientation_backface")
+    mat = bpy.data.materials.get("__mcp_orientation_backface")
     if mat is None:
-        mat = bpy.data.materials.new("__niua_orientation_backface")
+        mat = bpy.data.materials.new("__mcp_orientation_backface")
     mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.clear()
@@ -240,12 +240,12 @@ def wire_shaded(ctx: Ctx, payload: dict) -> dict:
 
         try:
             if not orig_mats:
-                mesh.materials.append(_ensure_flat_material(ctx.bpy, "__niua_wire_base", (0.56, 0.60, 0.62, 1.0)))
+                mesh.materials.append(_ensure_flat_material(ctx.bpy, "__mcp_wire_base", (0.56, 0.60, 0.62, 1.0)))
                 for poly in getattr(mesh, "polygons", []):
                     poly.material_index = 0
             wire_slot = len(mesh.materials)
-            mesh.materials.append(_ensure_flat_material(ctx.bpy, "__niua_wire_line", (0.01, 0.01, 0.012, 1.0)))
-            wire_mod = obj.modifiers.new(name="__niua_wire_shaded", type="WIREFRAME")
+            mesh.materials.append(_ensure_flat_material(ctx.bpy, "__mcp_wire_line", (0.01, 0.01, 0.012, 1.0)))
+            wire_mod = obj.modifiers.new(name="__mcp_wire_shaded", type="WIREFRAME")
             wire_mod.thickness = max(max(size) * 0.008, 1e-4)
             wire_mod.use_replace = False
             wire_mod.use_even_offset = True

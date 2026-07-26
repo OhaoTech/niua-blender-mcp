@@ -259,7 +259,7 @@ def test_create_report_set_and_point_set_lattice(env) -> None:
     assert created["lattice"]["points_u"] == 2
     assert created["location"] == [1.0, 2.0, 3.0]
     assert "object.add" in _op_names(bpy)
-    assert bpy.undo_pushes == ["niua:lattice.create"]
+    assert bpy.undo_pushes == ["mcp:lattice.create"]
 
     report = dispatch_on_main(reg, "lattice.report", {"object": "Cage"}, ctx)
     assert report["lattice"]["point_count"] == 8
@@ -281,7 +281,7 @@ def test_create_report_set_and_point_set_lattice(env) -> None:
     point = dispatch_on_main(reg, "lattice.point_set", {"object": "Cage", "index": 0, "co_deform": [0.2, 0.3, 0.4]}, ctx)
     assert point["point"]["co_deform"] == [0.2, 0.3, 0.4]
     assert bpy.objects.get("Cage").data.points[0].co_deform == [0.2, 0.3, 0.4]
-    assert bpy.undo_pushes[-1] == "niua:lattice.point_set"
+    assert bpy.undo_pushes[-1] == "mcp:lattice.point_set"
 
 
 def test_non_lattice_object_fails_without_undo(env) -> None:

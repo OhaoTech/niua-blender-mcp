@@ -77,9 +77,9 @@ def _decimate_to_budget(session, subject, info):
     if tris <= 0 or budget <= 0 or budget >= tris:
         return
     ratio = max(0.01, min(1.0, budget / tris))
-    session.modifiers.add(object=subject, type="DECIMATE", name="niua_decimate")
-    session.modifiers.set(object=subject, name="niua_decimate", property="ratio", value=str(ratio))
-    session.modifiers.apply(object=subject, name="niua_decimate")
+    session.modifiers.add(object=subject, type="DECIMATE", name="mcp_decimate")
+    session.modifiers.set(object=subject, name="mcp_decimate", property="ratio", value=str(ratio))
+    session.modifiers.apply(object=subject, name="mcp_decimate")
 
 
 def _tris_to_quads(session, subject, info):

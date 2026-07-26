@@ -70,7 +70,7 @@ def test_load_image_datablock_with_optional_name(monkeypatch) -> None:
     assert out["name"] == "Albedo"
     assert out["filepath"] == "/tmp/albedo.png"
     assert bpy.images.loaded == ["/tmp/albedo.png"]
-    assert bpy.undo_pushes == ["niua:textures.load"]
+    assert bpy.undo_pushes == ["mcp:textures.load"]
 
 
 def test_list_and_report_images(monkeypatch) -> None:

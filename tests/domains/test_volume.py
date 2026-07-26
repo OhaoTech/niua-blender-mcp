@@ -358,7 +358,7 @@ def test_create_list_report_and_set_volume(env) -> None:
     assert created["volume"]["data"] == "Fog"
     assert created["location"] == [1.0, 2.0, 3.0]
     assert "object.volume_add" in _op_names(bpy)
-    assert bpy.undo_pushes == ["niua:volume.create_empty"]
+    assert bpy.undo_pushes == ["mcp:volume.create_empty"]
 
     listed = dispatch_on_main(reg, "volume.list", {}, ctx)
     assert listed["volume_count"] == 1

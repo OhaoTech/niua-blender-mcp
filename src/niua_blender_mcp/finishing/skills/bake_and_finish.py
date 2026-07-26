@@ -144,9 +144,9 @@ def _reduce_decimate(session, subject, budget, tris):
     as the fallback reducer for meshes where retopo's voxel step hurts fidelity."""
     if tris > 0 and budget > 0 and budget < tris:
         ratio = max(0.01, min(1.0, budget / tris))
-        session.modifiers.add(object=subject, type="DECIMATE", name="niua_decimate")
-        session.modifiers.set(object=subject, name="niua_decimate", property="ratio", value=str(ratio))
-        session.modifiers.apply(object=subject, name="niua_decimate")
+        session.modifiers.add(object=subject, type="DECIMATE", name="mcp_decimate")
+        session.modifiers.set(object=subject, name="mcp_decimate", property="ratio", value=str(ratio))
+        session.modifiers.apply(object=subject, name="mcp_decimate")
 
 
 def _bake_with(session, subject, info, reduce_fn):
