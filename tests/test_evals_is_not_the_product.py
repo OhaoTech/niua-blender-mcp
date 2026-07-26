@@ -88,13 +88,24 @@ def test_the_harness_is_excluded_from_the_wheel() -> None:
     )
 
 
-def test_package_data_does_not_reference_missing_packages() -> None:
-    """A stale package-data key is a silent no-op that hides what actually ships."""
+def test_package_data_patterns_actually_match_files() -> None:
+    """A stale package-data key is a silent no-op that hides what actually ships.
+
+    Checking that the directory *exists* is not enough -- a leftover ``__pycache__`` keeps
+    an otherwise-empty package looking alive, which is exactly how a dead
+    ``niua_blender_mcp.playbooks`` entry survived until CI ran it on a clean checkout.
+    So assert the declared globs match real files.
+    """
     config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     package_data = config["tool"]["setuptools"].get("package-data", {})
-    stale = []
-    for dotted in package_data:
-        relative = pathlib.Path(*dotted.split(".")[1:])  # strip the top-level package name
-        if not (SERVER_ROOT / relative).is_dir():
-            stale.append(dotted)
-    assert not stale, f"package-data names directories that do not exist: {stale}"
+    assert package_data, "no package-data declared; if that is deliberate, drop this test"
+
+    stale: dict[str, str] = {}
+    for dotted, patterns in package_data.items():
+        directory = SERVER_ROOT / pathlib.Path(*dotted.split(".")[1:])
+        if not directory.is_dir():
+            stale[dotted] = "directory does not exist"
+            continue
+        if not any(match.is_file() for pattern in patterns for match in directory.glob(pattern)):
+            stale[dotted] = f"no file matches {patterns}"
+    assert not stale, f"package-data entries that ship nothing: {stale}"
