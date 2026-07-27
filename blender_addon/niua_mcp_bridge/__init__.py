@@ -17,7 +17,7 @@ from __future__ import annotations
 bl_info = {
     "name": "Niua MCP Bridge",
     "author": "FrankYin",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Niua",
     "description": "Agentic Blender bridge for the Niua Blender MCP server",
