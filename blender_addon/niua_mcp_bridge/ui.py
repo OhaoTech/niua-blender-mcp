@@ -14,29 +14,29 @@ DEFAULT_PORT = 8765
 
 class NIUA_OT_start_server(bpy.types.Operator):
     bl_idname = "niua.start_server"
-    bl_label = "Start Niua MCP Bridge"
-    bl_description = "Start the localhost bridge so the MCP server can drive this Blender"
+    bl_label = "Start Finisher"
+    bl_description = "Start the localhost server so Niua Blender Finisher can drive this Blender"
 
     def execute(self, context):
         allow = bool(getattr(context.scene, "niua_allow_python", False))
         bridge_server.start(port=DEFAULT_PORT, allow_python=allow)
-        self.report({"INFO"}, f"Niua MCP bridge listening on 127.0.0.1:{DEFAULT_PORT}")
+        self.report({"INFO"}, f"Niua Blender Finisher listening on 127.0.0.1:{DEFAULT_PORT}")
         return {"FINISHED"}
 
 
 class NIUA_OT_stop_server(bpy.types.Operator):
     bl_idname = "niua.stop_server"
-    bl_label = "Stop Niua MCP Bridge"
-    bl_description = "Stop the localhost bridge"
+    bl_label = "Stop Finisher"
+    bl_description = "Stop the Niua Blender Finisher localhost server"
 
     def execute(self, context):
         bridge_server.stop()
-        self.report({"INFO"}, "Niua MCP bridge stopped")
+        self.report({"INFO"}, "Niua Blender Finisher stopped")
         return {"FINISHED"}
 
 
 class NIUA_PT_panel(bpy.types.Panel):
-    bl_label = "Niua MCP"
+    bl_label = "Niua Blender Finisher"
     bl_idname = "NIUA_PT_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"

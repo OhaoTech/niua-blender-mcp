@@ -1,10 +1,12 @@
-"""Niua MCP Bridge add-on.
+"""Niua Blender Finisher (in-Blender extension).
 
-The in-Blender half of the agentic Blender MCP. A background socket server enqueues
-requests; a bpy.app.timers callback drains them on the main thread and dispatches to
-domain handlers (see dispatch.py). The N-panel + socket server + timer are wired in a
-later Phase 0 chunk; this module stays importable without bpy so the dispatch core can
-be unit-tested with a fake bpy.
+The in-Blender half of the agentic Niua Blender Finisher. A background socket server
+enqueues requests; a bpy.app.timers callback drains them on the main thread and
+dispatches to domain handlers (see dispatch.py). This module stays importable without
+bpy so the dispatch core can be unit-tested with a fake bpy.
+
+Internal Python package path remains ``niua_mcp_bridge`` for import stability; product
+name and extension id are **Niua Blender Finisher** / ``niua_blender_finisher``.
 """
 
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -15,12 +17,12 @@ be unit-tested with a fake bpy.
 from __future__ import annotations
 
 bl_info = {
-    "name": "Niua MCP Bridge",
+    "name": "Niua Blender Finisher",
     "author": "FrankYin",
-    "version": (0, 2, 0),
+    "version": (0, 2, 1),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Niua",
-    "description": "Agentic Blender bridge for the Niua Blender MCP server",
+    "description": "Agentic finishing tools for Blender (Niua)",
     "category": "System",
     "doc_url": "https://github.com/OhaoTech/niua-blender-mcp",
     "license": "SPDX:GPL-3.0-or-later",

@@ -32,8 +32,8 @@ from .protocol import (
 from .session_log import from_env, summarize_result
 
 SUPPORTED_PROTOCOL_VERSION = "2025-06-18"
-SERVER_NAME = "niua-blender-mcp"
-SERVER_VERSION = "0.1.0"
+SERVER_NAME = "niua-blender-finisher"
+SERVER_VERSION = "0.2.1"
 
 #: Tools the server answers itself from the router -- no bridge round-trip, usable with
 #: Blender down. tests/test_parity.py exempts these from the add-on-handler mirror.
@@ -94,8 +94,8 @@ class NiuaBlenderMCP:
         return {
             "protocolVersion": SUPPORTED_PROTOCOL_VERSION,
             "capabilities": {"tools": {"listChanged": True}, "prompts": {}, "logging": {}},
-            "serverInfo": {"name": SERVER_NAME, "title": "Niua Blender MCP", "version": SERVER_VERSION},
-            "instructions": "Drive a live Blender: scene.*, rna.describe, feedback.capture.",
+            "serverInfo": {"name": SERVER_NAME, "title": "Niua Blender Finisher", "version": SERVER_VERSION},
+            "instructions": "Niua Blender Finisher: scene.*, rna.describe, feedback.capture, bake_and_finish.",
         }
 
     # -- tools -------------------------------------------------------------

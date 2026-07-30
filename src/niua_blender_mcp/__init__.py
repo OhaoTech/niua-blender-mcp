@@ -6,4 +6,4 @@
 # invariant, enforced by tests/test_no_bpy_in_server.py. See LICENSING.md.
 """Agentic Blender MCP server package."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"

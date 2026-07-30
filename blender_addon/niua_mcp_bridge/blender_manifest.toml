@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+
+id = "niua_blender_finisher"
+version = "0.2.1"
+name = "Niua Blender Finisher"
+tagline = "Agentic finishing tools for Blender (Niua)"
+maintainer = "FrankYin"
+type = "add-on"
+website = "https://github.com/OhaoTech/niua-blender-mcp"
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+
+tags = ["Development", "System"]
+
+[permissions]
+network = "Local TCP for Niua Blender Finisher host"

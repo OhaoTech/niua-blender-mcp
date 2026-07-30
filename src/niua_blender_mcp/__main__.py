@@ -12,7 +12,7 @@ from .server import create_server
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the Niua Blender MCP stdio server.")
+    parser = argparse.ArgumentParser(description="Run the Niua Blender Finisher stdio server.")
     parser.add_argument("--host", default="127.0.0.1", help="Blender bridge host")
     parser.add_argument("--port", default=8765, type=int, help="Blender bridge port")
     parser.add_argument("--timeout", default=30.0, type=float, help="Bridge timeout (seconds)")

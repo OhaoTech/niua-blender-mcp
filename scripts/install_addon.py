@@ -136,8 +136,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print()
     print("Next:")
-    print("  1. Open Blender → Edit → Preferences → Add-ons → search 'Niua' → enable it")
-    print("  2. In the 3D viewport press N → 'Niua' tab → Start (127.0.0.1:8765)")
+    print("  NOTE: legacy add-on install is outdated. Prefer:")
+    print("    python scripts/install_extension.py --include-policy")
+    print("  1. Preferences → Extensions → enable 'Niua Blender Finisher'")
+    print("  2. N-panel → Niua → Start Finisher (127.0.0.1:8765)")
     print("  3. Verify:  python scripts/bridge_call.py 8765 system.health '{}'")
     return 0
 
