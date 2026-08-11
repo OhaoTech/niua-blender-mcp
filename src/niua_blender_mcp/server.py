@@ -115,7 +115,7 @@ class NiuaBlenderMCP:
         ]
 
     def _resolve_tool_name(self, name: str | None) -> str | None:
-        """Accept MCP-safe ``domain__action`` or legacy dotted ``domain.action``."""
+        """Accept MCP-safe ``domain-action`` / legacy ``domain__action`` / dotted ``domain.action``."""
         if not isinstance(name, str) or not name:
             return None
         if self.router.get(name) is not None:

@@ -79,9 +79,11 @@ report if any check fails — do not improvise around a failure.
 7. Confirm the tool surface loaded — around 305 tools across domains including
    mesh, object, uv, shading, modifiers, io and feedback.
 
-Wire tool names use ``domain__action`` (e.g. ``system__health``, ``object__create``),
-not dots. Hosts such as Grok reject ``.`` in tool names; the bridge still speaks the
-dotted command form internally.
+Wire tool names use ``domain-action`` (e.g. ``system-health``, ``object-create``),
+not dots and not ``domain__action``. Hosts such as Grok reject ``.`` in tool names
+and also namespace tools as ``server__tool``, so a double-underscore separator
+collides and the host keeps zero tools. The bridge still speaks the dotted
+command form internally.
 
 Then tell me: Blender version, whether the add-on is symlinked or copied, and the
 health-check output.
