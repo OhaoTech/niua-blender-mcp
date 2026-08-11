@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
+from typing import TextIO
 
 from .bridge import BlenderBridge
 from .protocol import PARSE_ERROR, error_response
@@ -20,18 +22,55 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _utf8_stdio() -> tuple[TextIO, TextIO]:
+    """Re-wrap stdio as UTF-8 text over the binary buffers.
+
+    Windows text-mode encoding for redirected pipes is host-dependent (often
+    cp1252) and can corrupt JSON-RPC. The official MCP Python SDK does the same
+    re-wrap; we stay dependency-free but match that behavior.
+    """
+    stdin: TextIO
+    stdout: TextIO
+    if hasattr(sys.stdin, "buffer"):
+        stdin = io.TextIOWrapper(
+            sys.stdin.buffer,
+            encoding="utf-8",
+            errors="replace",
+            newline="\n",
+            line_buffering=True,
+        )
+    else:  # pragma: no cover
+        stdin = sys.stdin
+    if hasattr(sys.stdout, "buffer"):
+        stdout = io.TextIOWrapper(
+            sys.stdout.buffer,
+            encoding="utf-8",
+            errors="replace",
+            newline="\n",
+            write_through=True,
+        )
+    else:  # pragma: no cover
+        stdout = sys.stdout
+    return stdin, stdout
+
+
 def run_stdio(server) -> int:
-    for line in sys.stdin:
+    stdin, stdout = _utf8_stdio()
+    for line in stdin:
         line = line.strip()
         if not line:
+            continue
+        # Some hosts (or proxies) may still prefix an LSP-style header line; skip
+        # non-JSON frames so Windows/Linux clients both survive.
+        if not line.startswith("{"):
             continue
         try:
             response = server.handle(json.loads(line))
         except json.JSONDecodeError as exc:
             response = error_response(None, PARSE_ERROR, f"Invalid JSON: {exc}")
         if response is not None:
-            sys.stdout.write(json.dumps(response, separators=(",", ":")) + "\n")
-            sys.stdout.flush()
+            stdout.write(json.dumps(response, separators=(",", ":"), ensure_ascii=False) + "\n")
+            stdout.flush()
     return 0
 
 

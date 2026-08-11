@@ -28,8 +28,16 @@ def rpc(method: str, params: dict | None = None) -> dict:
 def test_tools_list_exposes_the_manifest() -> None:
     server = create_server(bridge=RecordingBridge())
     names = {t["name"] for t in server.handle(rpc("tools/list"))["result"]["tools"]}
-    assert {"scene.info", "scene.create_object", "scene.set_transform", "rna.describe",
-            "feedback.capture", "system.execute_python"} <= names
+    # Wire names are MCP-safe (domain__action); hosts like Grok reject dotted names.
+    assert {
+        "scene__info",
+        "scene__create_object",
+        "scene__set_transform",
+        "rna__describe",
+        "feedback__capture",
+        "system__execute_python",
+    } <= names
+    assert not any("." in n for n in names)
 
 
 def test_tools_call_validates_and_dispatches() -> None:
@@ -37,6 +45,19 @@ def test_tools_call_validates_and_dispatches() -> None:
     server = create_server(bridge=bridge)
     resp = server.handle(
         rpc("tools/call", {"name": "scene.create_object", "arguments": {"type": "CUBE", "location": [1, 2, 3]}})
+    )
+    assert resp["result"]["isError"] is False
+    assert bridge.calls[-1] == ("scene.create_object", {"type": "CUBE", "location": [1.0, 2.0, 3.0]})
+
+
+def test_tools_call_accepts_mcp_safe_names() -> None:
+    bridge = RecordingBridge(result={"name": "Cube", "type": "MESH"})
+    server = create_server(bridge=bridge)
+    resp = server.handle(
+        rpc(
+            "tools/call",
+            {"name": "scene__create_object", "arguments": {"type": "CUBE", "location": [1, 2, 3]}},
+        )
     )
     assert resp["result"]["isError"] is False
     assert bridge.calls[-1] == ("scene.create_object", {"type": "CUBE", "location": [1.0, 2.0, 3.0]})
@@ -107,8 +128,8 @@ def test_generated_tools_hidden_from_list_by_default(monkeypatch) -> None:
     monkeypatch.delenv("NIUA_BLENDER_MCP_LIST_ALL", raising=False)
     server = create_server(bridge=RecordingBridge())
     listed = {t["name"] for t in server._tool_defs()}
-    assert not any(t.startswith("modeling.") for t in listed)
-    assert "capabilities.search" in listed
+    assert not any(t.startswith("modeling.") or t.startswith("modeling__") for t in listed)
+    assert "capabilities__search" in listed
 
 
 def test_generated_tool_routes_through_invoke() -> None:

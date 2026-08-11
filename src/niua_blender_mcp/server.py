@@ -25,9 +25,11 @@ from .protocol import (
     METHOD_NOT_FOUND,
     JsonRpcError,
     error_response,
+    from_mcp_tool_name,
     image_content,
     json_text_content,
     success_response,
+    to_mcp_tool_name,
 )
 from .session_log import from_env, summarize_result
 
@@ -101,29 +103,51 @@ class NiuaBlenderMCP:
     # -- tools -------------------------------------------------------------
     def _tool_defs(self) -> list[JSON]:
         list_all = os.environ.get("NIUA_BLENDER_MCP_LIST_ALL") == "1"
+        # Wire names must be MCP-safe (no dots). See protocol.to_mcp_tool_name.
         return [
-            {"name": s.name, "description": s.summary, "inputSchema": s.input_schema()}
+            {
+                "name": to_mcp_tool_name(s.name),
+                "description": s.summary,
+                "inputSchema": s.input_schema(),
+            }
             for s in self.router.specs()
             if list_all or s.tier != "generated"
         ]
 
+    def _resolve_tool_name(self, name: str | None) -> str | None:
+        """Accept MCP-safe ``domain__action`` or legacy dotted ``domain.action``."""
+        if not isinstance(name, str) or not name:
+            return None
+        if self.router.get(name) is not None:
+            return name
+        internal = from_mcp_tool_name(name)
+        if internal != name and self.router.get(internal) is not None:
+            return internal
+        return name
+
     def _describe_tools(self, args: JSON) -> JSON:
         """capabilities.tools: no args -> domain map; {domain} -> its tools; {name} -> one schema."""
-        name = args.get("name") or ""
+        raw_name = args.get("name") or ""
+        name = self._resolve_tool_name(raw_name) if raw_name else ""
         domain = args.get("domain") or ""
         specs = self.router.specs()
         if name:
             spec = self.router.get(name)
             if spec is None:
-                close = sorted(s.name for s in specs if name.lower() in s.name.lower())[:10]
+                close = sorted(
+                    to_mcp_tool_name(s.name)
+                    for s in specs
+                    if raw_name.lower() in s.name.lower() or raw_name.lower() in to_mcp_tool_name(s.name).lower()
+                )[:10]
                 return self._tool_error(
                     UNKNOWN_TOOL,
-                    f"unknown tool: {name}",
+                    f"unknown tool: {raw_name}",
                     {"close_matches": close, "fix": "browse the domain map first", "next_call": "capabilities.tools"},
                 )
             return self._tool_result(
                 {
-                    "name": spec.name,
+                    "name": to_mcp_tool_name(spec.name),
+                    "command": spec.name,
                     "summary": spec.summary,
                     "domain": spec.category,
                     "tier": spec.tier,
@@ -170,13 +194,14 @@ class NiuaBlenderMCP:
         )
 
     def _tools_call(self, params: JSON) -> JSON:
-        name = params.get("name")
+        raw_name = params.get("name")
+        name = self._resolve_tool_name(raw_name if isinstance(raw_name, str) else None)
         arguments = params.get("arguments") or {}
         spec = self.router.get(name) if isinstance(name, str) else None
         if spec is None:
             return self._tool_error(
                 UNKNOWN_TOOL,
-                f"unknown tool: {name}",
+                f"unknown tool: {raw_name}",
                 {"fix": "navigate the tool surface first", "next_call": "capabilities.tools"},
             )
 
