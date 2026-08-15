@@ -149,8 +149,17 @@ def info(ctx: Ctx, payload: dict) -> dict:
 
 
 def file_new(ctx: Ctx, payload: dict) -> dict:
+    """Empty the current session without loading a new .blend.
+
+    ``wm.read_factory_settings`` / ``read_homefile`` unload the add-on and kill
+    the TCP bridge. Clearing datablocks in-place keeps the agent connected.
+    """
     _require_clean_or_force(ctx, payload, "file_new")
-    ctx.bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy = ctx.bpy
+    objects = getattr(getattr(bpy, "data", None), "objects", None)
+    if objects is not None:
+        for obj in list(objects):
+            objects.remove(obj, do_unlink=True)
     return _state(ctx)
 
 

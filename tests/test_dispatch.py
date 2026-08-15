@@ -183,5 +183,49 @@ def test_execute_python_runs_when_enabled() -> None:
     result = dispatch_on_main(
         reg, "system.execute_python", {"code": "bpy.ops.mesh.primitive_cube_add(location=(0,0,0))"}, c
     )
-    assert result == {"ok": True}
+    assert result["ok"] is True
     assert len(bpy.scene.objects) == 1
+
+
+def test_execute_python_returns_captured_stdout() -> None:
+    """The hatch has to answer questions, not just perform mutations."""
+    c, _ = ctx(allow_python=True)
+    reg = build_default_registry()
+    result = dispatch_on_main(reg, "system.execute_python", {"code": "print('hello', 40 + 2)"}, c)
+    assert result["stdout"].strip() == "hello 42"
+
+
+def test_execute_python_returns_the_result_variable() -> None:
+    c, _ = ctx(allow_python=True)
+    reg = build_default_registry()
+    result = dispatch_on_main(
+        reg, "system.execute_python", {"code": "result = {'faces': 6, 'names': ['a', 'b']}"}, c
+    )
+    assert result["result"] == {"faces": 6, "names": ["a", "b"]}
+
+
+def test_execute_python_omits_result_when_unset() -> None:
+    c, _ = ctx(allow_python=True)
+    reg = build_default_registry()
+    result = dispatch_on_main(reg, "system.execute_python", {"code": "x = 1"}, c)
+    assert "result" not in result
+
+
+def test_execute_python_keeps_partial_stdout_on_failure() -> None:
+    """Output printed before the exception is usually where the clue is."""
+    c, _ = ctx(allow_python=True)
+    reg = build_default_registry()
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg, "system.execute_python", {"code": "print('got here')\nraise ValueError('boom')"}, c
+        )
+    assert "ValueError: boom" in exc.value.message
+    assert "got here" in exc.value.detail["stdout"]
+
+
+def test_execute_python_truncates_runaway_output() -> None:
+    c, _ = ctx(allow_python=True)
+    reg = build_default_registry()
+    result = dispatch_on_main(reg, "system.execute_python", {"code": "print('x' * 40000)"}, c)
+    assert len(result["stdout"]) < 20000
+    assert "truncated" in result["stdout"]

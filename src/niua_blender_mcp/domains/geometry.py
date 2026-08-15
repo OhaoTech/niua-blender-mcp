@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec, Vec3
+from ..kernel import Bool, Enum, Float, Int, NumList, Str, ToolSpec, Vec3
 
 CURVE_TYPES = ["BEZIER", "BEZIER_CIRCLE", "NURBS_CURVE", "NURBS_CIRCLE", "NURBS_PATH"]
 SURFACE_TYPES = ["CURVE", "CIRCLE", "SURFACE", "CYLINDER", "SPHERE", "TORUS"]
@@ -26,6 +26,29 @@ SPECS = [
             "location": Vec3(default=[0.0, 0.0, 0.0], summary="World location [x, y, z]"),
             "rotation": Vec3(default=[0.0, 0.0, 0.0], summary="Euler rotation in radians [x, y, z]"),
             "scale": Vec3(default=[1.0, 1.0, 1.0], summary="Scale [x, y, z]"),
+        },
+        mutates=True,
+        feedback="viewport",
+    ),
+    ToolSpec(
+        name="geometry.set_bezier_spline",
+        category="geometry",
+        summary="Replace a curve's spline with bezier control points; the modeling curve",
+        command="geometry.set_bezier_spline",
+        params={
+            "object": Str(required=True, summary="Curve object to edit"),
+            "points": NumList(
+                required=True,
+                summary="Flat control points [x,y,z, x,y,z, ...]; length must be a multiple of 3",
+            ),
+            "handles": Str(
+                default="AUTO",
+                summary=(
+                    "Handle type per point as a comma-separated list "
+                    "(AUTO/VECTOR/ALIGNED/FREE); a single value applies to every point"
+                ),
+            ),
+            "closed": Bool(default=True, summary="Close the spline (filled 2D profile)"),
         },
         mutates=True,
         feedback="viewport",

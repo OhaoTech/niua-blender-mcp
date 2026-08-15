@@ -5,7 +5,19 @@ the main-thread queue, undo, context resolution, feedback, and introspection
 build on top of these primitives.
 """
 
-from .contract import TIMEOUT_SECONDS, Bool, Enum, Float, Int, Param, Str, ToolSpec, Vec3, validate
+from .contract import (
+    TIMEOUT_SECONDS,
+    Bool,
+    Enum,
+    Float,
+    Int,
+    NumList,
+    Param,
+    Str,
+    ToolSpec,
+    Vec3,
+    validate,
+)
 from .errors import (
     HANDLER_ERROR,
     INVALID_PARAMS,
@@ -24,6 +36,7 @@ __all__ = [
     "Bool",
     "Enum",
     "Vec3",
+    "NumList",
     "ToolSpec",
     "validate",
     "TIMEOUT_SECONDS",

@@ -26,12 +26,37 @@ _REQUESTS: "queue.Queue" = queue.Queue()
 _SERVER: socketserver.ThreadingTCPServer | None = None
 _THREAD: threading.Thread | None = None
 _REGISTRY = None
-_ALLOW_PYTHON = False
+#: ``None`` means "ask the add-on preference on every request" (the GUI path, so a
+#: toggle takes effect immediately instead of at the next Start). Headless callers
+#: pin a real bool through ``serve_blocking``/``start``.
+_ALLOW_PYTHON: bool | None = None
 _LAST_ACTIVITY = 0.0
 
 #: Last-error ring buffer: the most recent N failures crossing the bridge, surfaced by
 #: system.health so an agent (or the supervisor) can see what has been going wrong.
 _ERRORS: "collections.deque[dict]" = collections.deque(maxlen=20)
+
+
+def _resolve_allow_python() -> bool:
+    """Answer 'may execute_python run?' per request, not once per Start.
+
+    ``execute_python`` is on by default: an agent driving Blender through the tool
+    surface still needs an escape hatch for the verb nobody wrapped yet, and making
+    a human tick a box first breaks unattended runs. The preference remains so it
+    can be turned *off*, and it lives in add-on preferences rather than the Scene so
+    the answer belongs to this machine instead of riding inside a shared .blend.
+    """
+    if _ALLOW_PYTHON is not None:
+        return _ALLOW_PYTHON
+    try:
+        import bpy  # noqa: PLC0415
+
+        addon = bpy.context.preferences.addons.get(__package__)
+        if addon is None:
+            return True
+        return bool(getattr(addon.preferences, "allow_python", True))
+    except Exception:  # noqa: BLE001 - never let a preference lookup break dispatch
+        return True
 
 
 def _record_error(command: str, error: dict) -> None:
@@ -201,7 +226,7 @@ def _drain() -> float:
         except queue.Empty:
             break
         try:
-            ctx = Ctx(bpy, allow_python=_ALLOW_PYTHON, op=op)
+            ctx = Ctx(bpy, allow_python=_resolve_allow_python(), op=op)
             box.value = dispatch_on_main(_REGISTRY, command, payload, ctx)
         except BridgeError as exc:
             box.error = exc.to_dict()
@@ -215,7 +240,7 @@ def _drain() -> float:
     return 0.02  # reschedule interval for the GUI timer
 
 
-def _start_socket(port: int, allow_python: bool) -> None:
+def _start_socket(port: int, allow_python: bool | None) -> None:
     global _SERVER, _THREAD, _REGISTRY, _ALLOW_PYTHON, _LAST_ACTIVITY
     from .domains import build_default_registry
 
@@ -232,8 +257,12 @@ def _start_socket(port: int, allow_python: bool) -> None:
     _THREAD.start()
 
 
-def start(port: int = 8765, allow_python: bool = False) -> None:
-    """GUI start: socket server + bpy.app.timers drain."""
+def start(port: int = 8765, allow_python: bool | None = None) -> None:
+    """GUI start: socket server + bpy.app.timers drain.
+
+    ``allow_python=None`` (the default) defers to the add-on preference on every
+    request, so toggling it does not require a Stop/Start cycle.
+    """
     import bpy  # noqa: PLC0415
 
     _start_socket(port, allow_python)
@@ -263,7 +292,7 @@ def is_running() -> bool:
     return _SERVER is not None
 
 
-def serve_blocking(port: int = 8765, allow_python: bool = False, idle_timeout: float = 30.0) -> None:
+def serve_blocking(port: int = 8765, allow_python: bool | None = None, idle_timeout: float = 30.0) -> None:
     """Headless driver: drain on the main thread until idle_timeout of no requests."""
     _start_socket(port, allow_python)
     try:

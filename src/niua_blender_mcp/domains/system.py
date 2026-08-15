@@ -8,9 +8,14 @@ SPECS = [
     ToolSpec(
         name="system.execute_python",
         category="system",
-        summary="Run Python inside Blender (disabled unless explicitly enabled)",
+        summary="Run Python inside Blender; returns captured stdout and a 'result' variable if set",
         command="system.execute_python",
-        params={"code": Str(required=True, summary="Python source to exec")},
+        params={
+            "code": Str(
+                required=True,
+                summary="Python source to exec; print() is captured, and assigning `result` returns it",
+            )
+        },
         mutates=True,
     ),
     ToolSpec(

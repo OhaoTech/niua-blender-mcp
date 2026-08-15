@@ -117,3 +117,27 @@ def generate_all() -> dict[str, str]:
         body.append("\n\n".join(_function_source(s) for s in specs))
         out[domain] = "\n".join(body).rstrip("\n") + "\n"
     return out
+
+
+def write_all() -> list[str]:
+    """Write every generated module to ``client/tools/``; return the paths that changed.
+
+    ``tests/test_client_sdk.py`` fails on any drift between a spec and its committed
+    module, so editing a ToolSpec means re-running this. Without a writer that check
+    could only be satisfied by hand-editing a file stamped "do not edit by hand".
+    """
+    from pathlib import Path  # noqa: PLC0415 - keep the import cost off the SDK path
+
+    tools_dir = Path(__file__).resolve().parent / "tools"
+    changed: list[str] = []
+    for domain, source in generate_all().items():
+        path = tools_dir / f"{domain}.py"
+        if not path.exists() or path.read_text(encoding="utf-8") != source:
+            path.write_text(source, encoding="utf-8")
+            changed.append(str(path))
+    return changed
+
+
+if __name__ == "__main__":  # pragma: no cover - developer entry point
+    for _path in write_all():
+        print(f"regenerated {_path}")

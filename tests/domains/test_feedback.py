@@ -575,12 +575,15 @@ def test_render_viewport_restores_region_3d_view_state(monkeypatch) -> None:
     assert after == before
 
 
-def test_render_viewport_uses_view_all_when_no_object_name(monkeypatch) -> None:
+def test_render_viewport_frames_drawable_geometry_not_view_all(monkeypatch) -> None:
     bpy = _make_bpy()
+    light = FakeObj("KeyLight", type="LIGHT")
+    bpy._objects["KeyLight"] = light
+    bpy.context.scene.objects.append(light)
     _install_bpy(bpy, monkeypatch)
     cap._render_viewport(bpy, "SOLID", 64, None, axis="TOP")
-    assert ("view_all",) in bpy._view3d_calls
-    assert ("view_selected",) not in bpy._view3d_calls
+    assert ("view_all",) not in bpy._view3d_calls
+    assert ("view_selected",) in bpy._view3d_calls
 
 
 def test_render_viewport_restores_state_even_when_render_raises(monkeypatch) -> None:

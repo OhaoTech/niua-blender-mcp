@@ -42,7 +42,10 @@ def test_domain_arg_lists_that_domains_tools() -> None:
 def test_name_arg_returns_one_full_schema() -> None:
     server = create_server(bridge=ExplodingBridge())
     body = call(server, {"name": "scene.create_object"})["structuredContent"]
-    assert body["name"] == "scene.create_object"
+    # ca22ebf made `name` the MCP-safe wire name (hosts reject dots); the dotted
+    # command id moved to `command`. Both spellings are accepted on the way in.
+    assert body["name"] == "scene-create_object"
+    assert body["command"] == "scene.create_object"
     assert body["mutates"] is True
     assert body["timeout_tier"] == "normal"
     assert "type" in body["inputSchema"]["properties"]

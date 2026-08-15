@@ -9,7 +9,7 @@ from niua_blender_mcp.domains import build_router
 from niua_mcp_bridge.context import Ctx
 from niua_mcp_bridge.dispatch import dispatch_on_main
 from niua_mcp_bridge.domains import build_default_registry
-from niua_mcp_bridge.errors import PRECONDITION, BridgeError
+from niua_mcp_bridge.errors import INVALID_PARAMS, PRECONDITION, BridgeError
 
 
 class _NamedList(list):
@@ -20,11 +20,37 @@ class _NamedList(list):
         return None
 
 
+class FakeBezierPoint:
+    def __init__(self) -> None:
+        self.co = [0.0, 0.0, 0.0]
+        self.handle_left = [0.0, 0.0, 0.0]
+        self.handle_right = [0.0, 0.0, 0.0]
+        self.handle_left_type = "AUTO"
+        self.handle_right_type = "AUTO"
+
+
+class FakeBezierPoints(list):
+    def add(self, count: int = 1) -> None:
+        for _ in range(int(count)):
+            self.append(FakeBezierPoint())
+
+
 class FakeSpline:
     def __init__(self, spline_type: str, bezier=0, points=0) -> None:
         self.type = spline_type
-        self.bezier_points = [object() for _ in range(bezier)]
+        self.use_cyclic_u = False
+        self.bezier_points = FakeBezierPoints(FakeBezierPoint() for _ in range(bezier))
         self.points = [object() for _ in range(points)]
+
+
+class FakeSplines(list):
+    def new(self, spline_type: str):
+        spline = FakeSpline(spline_type, bezier=1 if spline_type == "BEZIER" else 0)
+        self.append(spline)
+        return spline
+
+    def remove(self, spline) -> None:
+        self[:] = [item for item in self if item is not spline]
 
 
 class FakeData:
@@ -39,7 +65,7 @@ class FakeData:
         self.fill_mode = "FULL"
         self.use_fill_caps = False
         self.materials = []
-        self.splines = splines or []
+        self.splines = FakeSplines(splines or [])
 
 
 class FakeTextData(FakeData):
@@ -239,7 +265,101 @@ def env(monkeypatch):
 
 def test_router_contains_geometry_curve_tools() -> None:
     names = {spec.name for spec in build_router().specs()}
-    assert {"geometry.report", "geometry.create_curve"} <= names
+    assert {"geometry.report", "geometry.create_curve", "geometry.set_bezier_spline"} <= names
+
+
+def test_set_bezier_spline_replaces_points_and_can_close(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("Cheek", data=FakeData("CheekData", splines=[FakeSpline("BEZIER", bezier=2)])))
+    reg = build_default_registry()
+    out = dispatch_on_main(
+        reg,
+        "geometry.set_bezier_spline",
+        {
+            "object": "Cheek",
+            "closed": True,
+            # Flat [x,y,z, ...] triples -- a real array param, not a JSON-in-a-string.
+            "points": [0, -0.4, 0.7, 0, -0.2, 0.8, 0, -0.2, 1.2, 0, 0.3, 1.2],
+        },
+        ctx,
+    )
+    spline = bpy.data.objects.get("Cheek").data.splines[0]
+    assert spline.use_cyclic_u is True
+    assert len(spline.bezier_points) == 4
+    assert list(spline.bezier_points[0].co) == [0.0, -0.4, 0.7]
+    assert out["splines"][0]["bezier_points"] == 4
+
+
+def test_set_bezier_spline_rejects_a_partial_triple(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("Cheek", data=FakeData("CheekData", splines=[FakeSpline("BEZIER", bezier=2)])))
+    reg = build_default_registry()
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "geometry.set_bezier_spline",
+            {"object": "Cheek", "points": [0, -0.4, 0.7, 0, -0.2]},
+            ctx,
+        )
+    assert exc.value.code == INVALID_PARAMS
+    assert "triples" in exc.value.message
+
+
+def test_set_bezier_spline_handles_one_type_fills_every_point(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("Cheek", data=FakeData("CheekData", splines=[FakeSpline("BEZIER", bezier=1)])))
+    reg = build_default_registry()
+    dispatch_on_main(
+        reg,
+        "geometry.set_bezier_spline",
+        {"object": "Cheek", "points": [0, 0, 0, 1, 0, 0, 1, 1, 0], "handles": "VECTOR"},
+        ctx,
+    )
+    points = bpy.data.objects.get("Cheek").data.splines[0].bezier_points
+    assert [p.handle_left_type for p in points] == ["VECTOR"] * 3
+    assert [p.handle_right_type for p in points] == ["VECTOR"] * 3
+
+
+def test_set_bezier_spline_handles_can_differ_per_point(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("Cheek", data=FakeData("CheekData", splines=[FakeSpline("BEZIER", bezier=1)])))
+    reg = build_default_registry()
+    dispatch_on_main(
+        reg,
+        "geometry.set_bezier_spline",
+        {"object": "Cheek", "points": [0, 0, 0, 1, 0, 0, 1, 1, 0], "handles": "VECTOR,AUTO,VECTOR"},
+        ctx,
+    )
+    points = bpy.data.objects.get("Cheek").data.splines[0].bezier_points
+    assert [p.handle_left_type for p in points] == ["VECTOR", "AUTO", "VECTOR"]
+
+
+def test_set_bezier_spline_rejects_a_handle_count_mismatch(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("Cheek", data=FakeData("CheekData", splines=[FakeSpline("BEZIER", bezier=1)])))
+    reg = build_default_registry()
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "geometry.set_bezier_spline",
+            {"object": "Cheek", "points": [0, 0, 0, 1, 0, 0, 1, 1, 0], "handles": "VECTOR,AUTO"},
+            ctx,
+        )
+    assert exc.value.code == INVALID_PARAMS
+
+
+def test_set_bezier_spline_rejects_an_unknown_handle_type(monkeypatch) -> None:
+    ctx, bpy = env(monkeypatch)
+    bpy.add(FakeObject("Cheek", data=FakeData("CheekData", splines=[FakeSpline("BEZIER", bezier=1)])))
+    reg = build_default_registry()
+    with pytest.raises(BridgeError) as exc:
+        dispatch_on_main(
+            reg,
+            "geometry.set_bezier_spline",
+            {"object": "Cheek", "points": [0, 0, 0], "handles": "SMOOTH"},
+            ctx,
+        )
+    assert exc.value.code == INVALID_PARAMS
 
 
 def test_report_curve_object(monkeypatch) -> None:

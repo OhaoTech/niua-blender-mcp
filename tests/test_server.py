@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from niua_blender_mcp.bridge import BridgeError
 from niua_blender_mcp.kernel.errors import INVALID_PARAMS, NOT_FOUND, PYTHON_DISABLED, UNKNOWN_TOOL
 from niua_blender_mcp.server import create_server
@@ -82,13 +84,59 @@ def test_unknown_tool_returns_error() -> None:
     assert resp["result"]["structuredContent"]["code"] == UNKNOWN_TOOL
 
 
-def test_execute_python_blocked_by_default() -> None:
+def test_execute_python_blocked_when_explicitly_disabled() -> None:
     bridge = RecordingBridge()
     server = create_server(bridge=bridge, allow_python=False)
     resp = server.handle(rpc("tools/call", {"name": "system.execute_python", "arguments": {"code": "1+1"}}))
     assert resp["result"]["isError"] is True
     assert resp["result"]["structuredContent"]["code"] == PYTHON_DISABLED
     assert bridge.calls == []  # never reaches Blender
+
+
+def test_execute_python_is_allowed_by_default(monkeypatch) -> None:
+    """The agent escape hatch is open unless someone closes it deliberately."""
+    monkeypatch.delenv("NIUA_BLENDER_MCP_ALLOW_PYTHON", raising=False)
+    bridge = RecordingBridge()
+    server = create_server(bridge=bridge)
+    resp = server.handle(rpc("tools/call", {"name": "system.execute_python", "arguments": {"code": "1+1"}}))
+    assert resp["result"]["isError"] is False
+    assert bridge.calls and bridge.calls[0][0] == "system.execute_python"
+
+
+def test_execute_python_env_var_can_close_the_gate(monkeypatch) -> None:
+    for value in ("0", "false", "off", "no"):
+        monkeypatch.setenv("NIUA_BLENDER_MCP_ALLOW_PYTHON", value)
+        bridge = RecordingBridge()
+        server = create_server(bridge=bridge)
+        resp = server.handle(rpc("tools/call", {"name": "system.execute_python", "arguments": {"code": "1+1"}}))
+        assert resp["result"]["structuredContent"]["code"] == PYTHON_DISABLED, value
+        assert bridge.calls == [], value
+
+
+def test_health_reports_the_effective_python_gate_not_just_the_bridges(monkeypatch) -> None:
+    """Blender's half saying yes must not read as 'enabled' when the server says no.
+
+    That mismatch is what made the add-on preference look effective while every
+    execute_python call still failed at the server.
+    """
+    monkeypatch.setenv("NIUA_BLENDER_MCP_ALLOW_PYTHON", "0")
+    bridge = RecordingBridge(result={"bridge": "alive", "python_enabled": True})
+    server = create_server(bridge=bridge)
+    resp = server.handle(rpc("tools/call", {"name": "system.health", "arguments": {}}))
+    assert resp["result"]["structuredContent"]["python_enabled"] is False
+
+    monkeypatch.delenv("NIUA_BLENDER_MCP_ALLOW_PYTHON", raising=False)
+    server = create_server(bridge=RecordingBridge(result={"bridge": "alive", "python_enabled": True}))
+    resp = server.handle(rpc("tools/call", {"name": "system.health", "arguments": {}}))
+    assert resp["result"]["structuredContent"]["python_enabled"] is True
+
+
+def test_health_reports_false_when_only_blender_side_refuses(monkeypatch) -> None:
+    monkeypatch.delenv("NIUA_BLENDER_MCP_ALLOW_PYTHON", raising=False)
+    bridge = RecordingBridge(result={"bridge": "alive", "python_enabled": False})
+    server = create_server(bridge=bridge)
+    resp = server.handle(rpc("tools/call", {"name": "system.health", "arguments": {}}))
+    assert resp["result"]["structuredContent"]["python_enabled"] is False
 
 
 def test_feedback_capture_returns_image_content() -> None:
@@ -98,6 +146,24 @@ def test_feedback_capture_returns_image_content() -> None:
     content = resp["result"]["content"]
     images = [c for c in content if c["type"] == "image"]
     assert images and images[0]["data"] == "QkFTRTY0"
+
+
+def test_feedback_capture_does_not_repeat_base64_in_json() -> None:
+    """Images travel as MCP image parts. The JSON/text envelope must not also dump bytes."""
+    payload = "QkFTRTY0" * 40  # long enough that a leak would be obvious
+    bridge = RecordingBridge(result={"available": True, "view": "front", "mimeType": "image/png", "data": payload})
+    server = create_server(bridge=bridge)
+    resp = server.handle(rpc("tools/call", {"name": "feedback.capture", "arguments": {}}))
+    result = resp["result"]
+    text_parts = [c["text"] for c in result["content"] if c.get("type") == "text"]
+    assert all(payload not in text for text in text_parts)
+    structured = result["structuredContent"]
+    assert payload not in str(structured)
+    assert structured.get("data") != payload
+    assert structured["available"] is True
+    assert structured["view"] == "front"
+    images = [c for c in result["content"] if c["type"] == "image"]
+    assert images and images[0]["data"] == payload
 
 
 def test_capture_views_returns_one_image_content_per_image() -> None:
@@ -117,6 +183,38 @@ def test_capture_views_returns_one_image_content_per_image() -> None:
     images = [c for c in content if c["type"] == "image"]
     assert [i["data"] for i in images] == ["Rk9OVA==", "UklHSFQ="]
     assert resp["result"]["isError"] is False
+
+
+def test_critique_bundle_json_omits_image_bytes() -> None:
+    """feedback.critique's 4-view bundle must not dump base64 into the text/structured JSON."""
+    front = "FRONT64" * 30
+    right = "RIGHT64" * 30
+    bridge = RecordingBridge(
+        result={
+            "available": True,
+            "images": [
+                {"view": "front", "mimeType": "image/png", "encoding": "base64", "data": front},
+                {"view": "right", "mimeType": "image/png", "encoding": "base64", "data": right},
+            ],
+            "report": {"object": "chair_wooden", "vertices": 8, "quality": {"quad_ratio": 1.0}},
+            "uv": {"object": "chair_wooden", "has_uvs": True},
+        }
+    )
+    server = create_server(bridge=bridge)
+    resp = server.handle(rpc("tools/call", {"name": "feedback.critique", "arguments": {"object": "chair_wooden"}}))
+    result = resp["result"]
+    blob = json.dumps(result["structuredContent"]) + "".join(
+        c.get("text", "") for c in result["content"] if c.get("type") == "text"
+    )
+    assert front not in blob
+    assert right not in blob
+    structured = result["structuredContent"]
+    assert [img["view"] for img in structured["images"]] == ["front", "right"]
+    assert all("data" not in img or img["data"] != front for img in structured["images"])
+    assert structured["report"]["object"] == "chair_wooden"
+    assert structured["uv"]["has_uvs"] is True
+    images = [c for c in result["content"] if c["type"] == "image"]
+    assert [i["data"] for i in images] == [front, right]
 
 
 def test_bridge_error_surfaces_as_tool_error() -> None:

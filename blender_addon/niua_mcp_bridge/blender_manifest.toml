@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "niua_blender_finisher"
-version = "0.2.1"
+version = "0.2.2"
 name = "Niua Blender Finisher"
 tagline = "Agentic finishing tools for Blender (Niua)"
 maintainer = "FrankYin"

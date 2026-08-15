@@ -88,7 +88,7 @@ def collision_proxy_create(ctx: Ctx, payload: dict) -> dict:
     if not isinstance(name, str) or not name:
         name = f"{getattr(obj, 'name', 'Object')}_COL"
 
-    bounds_state = _bounds_state(obj)
+    bounds_state = _bounds_state(ctx, obj)
     center = bounds_state["center"] or _float_list(getattr(obj, "location", [0.0, 0.0, 0.0]))
     dimensions = bounds_state["dimensions"] or _float_list(getattr(obj, "dimensions", [1.0, 1.0, 1.0]))
     dimensions = [float(dim) + (margin * 2.0) for dim in dimensions]
@@ -111,7 +111,7 @@ def collision_hulls_create(ctx: Ctx, payload: dict) -> dict:
     if margin < 0.0:
         raise BridgeError(INVALID_PARAMS, "margin must be >= 0")
 
-    bounds_state = _bounds_state(obj)
+    bounds_state = _bounds_state(ctx, obj)
     center = bounds_state["center"] or _float_list(getattr(obj, "location", [0.0, 0.0, 0.0]))
     dimensions = bounds_state["dimensions"] or _float_list(getattr(obj, "dimensions", [1.0, 1.0, 1.0]))
     axis = str(payload.get("axis", "LONGEST")).upper()

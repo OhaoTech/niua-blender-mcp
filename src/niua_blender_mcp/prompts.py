@@ -70,11 +70,13 @@ Loop:
    etc.). One change per iteration so you can attribute the result.
 
 3. OBSERVE: call `feedback.critique` with {{{obj_arg}}}. You get back, in one round-trip:
-   - multi-angle images (silhouette / proportion / the anti-blob view), and
+   - multi-angle images as MCP image parts (silhouette / proportion / the anti-blob view) —
+     the JSON does not repeat the PNG bytes, and
    - `report` including a compact `quality` sub-dict (quad_ratio, ngon_ratio, pole_count,
      non_manifold_edges, loose_verts, symmetry, aspect_ratio, transform_applied).
    For the full objective block (topology / symmetry / proportion / scale broken out) call
-   `feedback.quality`.
+   `feedback.quality`. Prefer `feedback.readiness` / `feedback.quality` when you do not
+   need to look.
 
 4. JUDGE against concrete targets, not vibes:
    - Silhouette & proportion: from the images — does the form read correctly from every angle?
@@ -136,7 +138,7 @@ mutations — only gather facts and form a judgment.
 1. SCENE: call `scene.info` to see what exists (objects, the active object, counts).
 
 2. OBSERVE: call `feedback.critique` with {{{obj_arg}}} for the bundle — multi-angle images
-   plus the analytic `report` (with its compact `quality` sub-dict).
+   as MCP image parts (JSON has the analytic `report` / quality sub-dict, not the PNG bytes).
 
 3. MEASURE: call `feedback.quality` with {{{obj_arg}}} for the full objective block:
    - topology (faces, tris, quads, ngons, quad_ratio, ngon_ratio, pole_count,

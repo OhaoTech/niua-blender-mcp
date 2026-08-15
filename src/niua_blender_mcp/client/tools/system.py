@@ -16,10 +16,10 @@ def cancel(_session, *, op_id=None):
 
 
 def execute_python(_session, *, code=None):
-    """Run Python inside Blender (disabled unless explicitly enabled)
+    """Run Python inside Blender; returns captured stdout and a 'result' variable if set
 
     Parameters (omit to use the server default):
-    code: Python source to exec
+    code: Python source to exec; print() is captured, and assigning `result` returns it
     """
     _payload = {"code": code}
     return _session.call("system.execute_python", _drop_none(_payload))

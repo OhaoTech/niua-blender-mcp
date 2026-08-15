@@ -9,6 +9,7 @@ checkpoint -> edit -> critique/quality -> judge -> keep/revert loop, accept an o
 from __future__ import annotations
 
 from niua_blender_mcp.protocol import INVALID_PARAMS as RPC_INVALID_PARAMS
+from niua_blender_mcp.protocol import redact_image_payloads
 from niua_blender_mcp.server import create_server
 
 
@@ -84,3 +85,18 @@ def test_prompts_get_missing_name_errors() -> None:
     server = _server()
     resp = server.handle(rpc("prompts/get", {}))
     assert resp["error"]["code"] == RPC_INVALID_PARAMS
+
+
+def test_redact_image_payloads_strips_bytes_keeps_metadata() -> None:
+    src = {
+        "available": True,
+        "images": [{"view": "front", "mimeType": "image/png", "data": "PIXELS"}],
+        "report": {"object": "Cube", "data": "not-an-image"},
+    }
+    out = redact_image_payloads(src)
+    assert out["images"][0]["view"] == "front"
+    assert "data" not in out["images"][0]
+    assert out["images"][0]["bytes"] == "omitted"
+    assert out["report"]["data"] == "not-an-image"
+    # Original must stay intact so MCP image parts can still be attached.
+    assert src["images"][0]["data"] == "PIXELS"
