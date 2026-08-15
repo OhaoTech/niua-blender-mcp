@@ -169,17 +169,20 @@ def _resolve_socket(sockets: Any, ref: str, *, node_name: str, direction: str) -
         if 0 <= index < len(items):
             return items[index]
         raise BridgeError(INVALID_PARAMS, f"{direction} socket index out of range: {node_name}[{index}]")
-    getter = getattr(sockets, "get", None)
-    socket = getter(ref) if callable(getter) else None
+    # Identifier first: it is unique, unlike the display name.
+    socket = next((c for c in items if getattr(c, "identifier", None) == ref), None)
     if socket is None:
-        socket = next(
-            (
-                candidate
-                for candidate in items
-                if getattr(candidate, "name", None) == ref or getattr(candidate, "identifier", None) == ref
-            ),
-            None,
-        )
+        # Then an ENABLED socket carrying that display name. Nodes with data-type
+        # variants (Map Range, Math, Mix) expose several sockets sharing one name --
+        # Map Range has both a float "From Min" and a vector twin identified as
+        # "From_Min_FLOAT3" -- and disables whichever set does not match the node's
+        # current data_type. `bpy_prop_collection.get(name)` returns whichever comes
+        # first in the collection, so a plain name lookup can land on the inactive twin
+        # and the write is silently a no-op.
+        named = [c for c in items if getattr(c, "name", None) == ref]
+        socket = next((c for c in named if getattr(c, "enabled", True)), None)
+        if socket is None and named:
+            socket = named[0]
     if socket is None:
         raise BridgeError(INVALID_PARAMS, f"{direction} socket not found: {node_name}.{ref}")
     return socket

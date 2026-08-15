@@ -166,6 +166,71 @@ def report(ctx: Ctx, payload: dict) -> dict:
     return _object_report(obj)
 
 
+_HANDLE_TYPES = ("AUTO", "VECTOR", "ALIGNED", "FREE")
+
+
+def _parse_bezier_points(raw: Any) -> list[list[float]]:
+    """Flat [x,y,z, x,y,z, ...] -> [[x,y,z], ...]."""
+    if not isinstance(raw, (list, tuple)) or not raw:
+        raise BridgeError(INVALID_PARAMS, "points must be a non-empty array of numbers")
+    if len(raw) % 3 != 0:
+        raise BridgeError(
+            INVALID_PARAMS,
+            f"points must hold whole [x, y, z] triples; got {len(raw)} numbers",
+        )
+    try:
+        flat = [float(value) for value in raw]
+    except (TypeError, ValueError) as exc:
+        raise BridgeError(INVALID_PARAMS, f"points must be numbers: {exc}") from exc
+    return [flat[i : i + 3] for i in range(0, len(flat), 3)]
+
+
+def _parse_handles(raw: Any, count: int) -> list[str]:
+    """Comma-separated handle types -> one per point (a single value fills all)."""
+    text = "AUTO" if raw is None else str(raw).strip()
+    parts = [part.strip().upper() for part in text.split(",") if part.strip()] or ["AUTO"]
+    for part in parts:
+        if part not in _HANDLE_TYPES:
+            raise BridgeError(
+                INVALID_PARAMS,
+                f"unknown handle type {part!r}; expected one of {', '.join(_HANDLE_TYPES)}",
+            )
+    if len(parts) == 1:
+        return parts * count
+    if len(parts) != count:
+        raise BridgeError(
+            INVALID_PARAMS,
+            f"handles must name 1 type or exactly {count} (one per point); got {len(parts)}",
+        )
+    return parts
+
+
+def set_bezier_spline(ctx: Ctx, payload: dict) -> dict:
+    """Replace spline 0 with a bezier through the given points (the modeling curve)."""
+    obj = _require_curve_like(ctx, payload.get("object"))
+    points = _parse_bezier_points(payload.get("points"))
+    handles = _parse_handles(payload.get("handles"), len(points))
+    closed = bool(payload.get("closed", True))
+    data = obj.data
+    splines = getattr(data, "splines", None)
+    if splines is None:
+        raise BridgeError(PRECONDITION, f"object has no splines: {obj.name}")
+    for existing in list(splines):
+        splines.remove(existing)
+    spline = splines.new("BEZIER")
+    spline.use_cyclic_u = closed
+    bezier = spline.bezier_points
+    extra = len(points) - len(bezier)
+    if extra > 0:
+        bezier.add(extra)
+    for index, co in enumerate(points):
+        bp = bezier[index]
+        bp.handle_left_type = handles[index]
+        bp.handle_right_type = handles[index]
+        bp.co = co
+    return _object_report(obj)
+
+
 def create_curve(ctx: Ctx, payload: dict) -> dict:
     curve_type = str(payload.get("type", "")).upper()
     op_name = _CURVE_OPS.get(curve_type)
@@ -297,6 +362,7 @@ COMMANDS = [
     Command("geometry.create_metaball", create_metaball, mutates=True, feedback="viewport"),
     Command("geometry.create_grease_pencil", create_grease_pencil, mutates=True, feedback="viewport"),
     Command("geometry.set_curve", set_curve, mutates=True, feedback="viewport"),
+    Command("geometry.set_bezier_spline", set_bezier_spline, mutates=True, feedback="viewport"),
     Command("geometry.set_text", set_text, mutates=True, feedback="viewport"),
     Command("geometry.convert_to_mesh", convert_to_mesh, mutates=True, feedback="viewport"),
     Command("geometry.report", report, mutates=False),

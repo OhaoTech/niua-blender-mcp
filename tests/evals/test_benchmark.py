@@ -1,3 +1,5 @@
+from pathlib import PurePath
+
 from niua_blender_mcp.evals.benchmark import list_items, load_item
 
 
@@ -13,7 +15,9 @@ def test_load_item_resolves_rubric_and_asset_path():
     assert item["stages"][0] == "repair"
     # asset-input item: references a generic fixture and the loader resolves it to an absolute path
     assert item["input"]["asset"] == "assets/real_character.glb"
-    assert item["input"]["asset_path"].endswith("assets/real_character.glb")
+    # compare path *parts*, not a substring: the loader returns a native absolute path,
+    # so a literal "assets/..." suffix only ever matched on POSIX.
+    assert PurePath(item["input"]["asset_path"]).parts[-2:] == ("assets", "real_character.glb")
     assert "0-10" in item["rubric_text"]  # the rubric markdown was loaded and inlined
 
 

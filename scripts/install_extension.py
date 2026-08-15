@@ -254,7 +254,9 @@ def main(argv: list[str] | None = None) -> int:
         print("WARN: install finished but verify did not see the module enabled")
         print(f"  Open Blender → Preferences → Extensions → enable '{PRODUCT_NAME}'")
     print("Next:")
-    print("  1. blender --online-mode   (GUI) → N-panel → Niua → Start Finisher :8765")
+    print("  1. blender --online-mode   (GUI) → the bridge autostarts on :8765")
+    print("     (N-panel → Niua shows status; untick 'Start bridge with Blender' to opt out,")
+    print("      or set NIUA_BLENDER_MCP_AUTOSTART=0 / NIUA_BLENDER_MCP_PORT=<port>)")
     print("  2. MCP host: python -m niua_blender_mcp  (Grok: blender-finisher)")
     return 0 if ok else 1
 

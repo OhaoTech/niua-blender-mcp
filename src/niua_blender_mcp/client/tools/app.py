@@ -32,7 +32,7 @@ def addons(_session):
 
 
 def file_new(_session, *, force=None):
-    """Start a new empty file; force is required if current file is dirty
+    """Empty the scene in-place (keeps the live bridge); force is required if dirty
 
     Parameters (omit to use the server default):
     force: Discard unsaved changes; server default: False

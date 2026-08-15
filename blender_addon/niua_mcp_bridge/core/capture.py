@@ -344,7 +344,18 @@ def _render_to_b64(bpy: Any, cam_obj: Any, shading: str, res: int) -> str:
         # view_context=False renders from the SCENE CAMERA (our positioned capture cam),
         # not the active viewport. Without it, render.opengl ignores the camera framing
         # and every "angle" comes out as the same viewport shot (caught in live GUI).
-        bpy.ops.render.opengl(write_still=True, view_context=False)
+        #
+        # But render.opengl is the *Workbench* preview renderer: it draws through
+        # ``scene.display.shading`` and ignores ``render.engine`` entirely. Using it for
+        # MATERIAL/RENDERED silently returned a flat solid-shaded frame -- the engine
+        # _configure_engine just selected never ran, so materials and lights were never
+        # evaluated and a glossy black asset came back looking like grey clay. Those two
+        # modes need the real engine render; SOLID/WIREFRAME stay on the fast OpenGL path
+        # because Workbench *is* what they are asking for.
+        if shading in EEVEE_SHADING:
+            bpy.ops.render.render(write_still=True)
+        else:
+            bpy.ops.render.opengl(write_still=True, view_context=False)
         with open(path, "rb") as handle:
             return base64.b64encode(handle.read()).decode("ascii")
     finally:
@@ -602,7 +613,14 @@ def _render_viewport(
                 if target_obj is not None:
                     bpy.ops.view3d.view_selected()
                 else:
-                    bpy.ops.view3d.view_all()
+                    # Lights/cameras sit far from the model and blow view_all out.
+                    for obj in scene.objects:
+                        if getattr(obj, "type", None) in ("MESH", "CURVE", "SURFACE", "META", "FONT"):
+                            try:
+                                obj.select_set(True)
+                            except Exception:  # noqa: BLE001
+                                continue
+                    bpy.ops.view3d.view_selected()
                 bpy.ops.render.opengl(write_still=True, view_context=True)
             finally:
                 if entered_local:

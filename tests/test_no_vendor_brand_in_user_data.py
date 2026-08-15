@@ -40,12 +40,11 @@ _ALLOWED = {
     # Python module paths. These name our own importable code, never the user's data.
     "niua_blender_mcp",
     "niua_mcp_bridge",
-    # A registered `bpy.types.Scene` property. Blender add-ons conventionally namespace
-    # their Scene props by add-on name, and this one gates `execute_python`, so renaming
-    # it would silently reset a security toggle in every already-saved .blend. Deliberate
-    # exception, not an oversight.
-    "niua_allow_python",
 }
+# There used to be a third entry here: `niua_allow_python`, a `bpy.types.Scene` property
+# gating `execute_python`. Moving that gate to AddonPreferences retired the exception --
+# the flag is now namespaced by the add-on rather than by our brand, and it no longer
+# rides inside the user's .blend at all.
 
 
 def _string_constants(tree: ast.AST) -> list[tuple[int, str]]:

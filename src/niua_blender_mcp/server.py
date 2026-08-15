@@ -3,6 +3,7 @@
 initialize / tools.list / tools.call / ping, plus empty resources & prompts lists.
 Arguments are validated against the ToolSpec before dispatch; results that carry a
 capture image are returned as native MCP image content so the agent can see them.
+The JSON/text envelope never repeats those PNG bytes.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from .protocol import (
     from_mcp_tool_name,
     image_content,
     json_text_content,
+    redact_image_payloads,
     success_response,
     to_mcp_tool_name,
 )
@@ -35,7 +37,7 @@ from .session_log import from_env, summarize_result
 
 SUPPORTED_PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "niua-blender-finisher"
-SERVER_VERSION = "0.2.1"
+SERVER_VERSION = "0.2.2"
 
 #: Tools the server answers itself from the router -- no bridge round-trip, usable with
 #: Blender down. tests/test_parity.py exempts these from the add-on-handler mirror.
@@ -225,7 +227,8 @@ class NiuaBlenderMCP:
         if spec.command == "system.execute_python" and not self.allow_python:
             return self._tool_error(
                 PYTHON_DISABLED,
-                "system.execute_python is disabled. Set NIUA_BLENDER_MCP_ALLOW_PYTHON=1.",
+                "system.execute_python is disabled here by "
+                "NIUA_BLENDER_MCP_ALLOW_PYTHON; unset it (or set 1) to allow.",
             )
 
         timeout = TIMEOUT_SECONDS[spec.timeout_tier]
@@ -242,6 +245,12 @@ class NiuaBlenderMCP:
         except BridgeError as exc:
             self._record_session(spec, clean, started, ok=False, error=exc)
             return self._tool_error(exc.code, exc.message, exc.detail)
+        if spec.command == "system.health" and isinstance(result, dict):
+            # The bridge only knows its own half of the gate. Reporting that alone let
+            # health say python_enabled: true while every execute_python call was
+            # refused here. Report the EFFECTIVE answer -- both sides must allow it.
+            result = dict(result)
+            result["python_enabled"] = bool(result.get("python_enabled", True)) and self.allow_python
         self._record_session(spec, clean, started, ok=True, result=result)
         return self._tool_result(result)
 
@@ -276,7 +285,10 @@ class NiuaBlenderMCP:
         return None
 
     def _tool_result(self, result: JSON) -> JSON:
-        content = [json_text_content(result)]
+        # Pixels go out as MCP image parts only. The JSON/text envelope is the
+        # analytic half — repeating base64 there is what blew a critique to ~25k tokens.
+        public = redact_image_payloads(result)
+        content = [json_text_content(public)]
         # Single-image path: the result itself, or an attached opt-in capture (_feedback).
         image = result if (result.get("available") and result.get("data")) else result.get("_feedback")
         if isinstance(image, dict) and image.get("available") and image.get("data"):
@@ -288,13 +300,31 @@ class NiuaBlenderMCP:
             for img in images:
                 if isinstance(img, dict) and img.get("data"):
                     content.append(image_content(img["data"], img.get("mimeType", "image/png")))
-        return {"content": content, "structuredContent": result, "isError": False}
+        return {"content": content, "structuredContent": public, "isError": False}
 
     def _tool_error(self, code: str, message: str, detail: Any | None = None) -> JSON:
         structured: JSON = {"code": code, "message": message}
         if detail is not None:
             structured["detail"] = detail
         return {"content": [json_text_content(structured)], "structuredContent": structured, "isError": True}
+
+
+def _env_allow_python(default: bool = True) -> bool:
+    """The server-side half of the ``system.execute_python`` gate.
+
+    On by default. There are two gates -- this one and the add-on preference inside
+    Blender -- and while this one required an opt-in env var, turning the add-on
+    preference on appeared to work (``system.health`` even said so) but every call
+    still failed here. An agent needs the escape hatch for the verb nobody wrapped
+    yet, so the default matches the add-on's.
+
+    Set ``NIUA_BLENDER_MCP_ALLOW_PYTHON`` to 0/false/no/off to refuse it here
+    regardless of what Blender's side says.
+    """
+    raw = os.environ.get("NIUA_BLENDER_MCP_ALLOW_PYTHON")
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
 
 
 def create_server(
@@ -304,7 +334,7 @@ def create_server(
     session_log: Any | None = None,
 ) -> NiuaBlenderMCP:
     if allow_python is None:
-        allow_python = os.environ.get("NIUA_BLENDER_MCP_ALLOW_PYTHON") == "1"
+        allow_python = _env_allow_python()
     return NiuaBlenderMCP(
         bridge=bridge or BlenderBridge(),
         router=router or build_router(),

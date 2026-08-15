@@ -152,6 +152,16 @@ def _coerce_value(current: Any, value: Any) -> Any:
             return float(value)
         except ValueError as exc:
             raise BridgeError(INVALID_PARAMS, f"expected a number, got: {value!r}") from exc
+    if isinstance(current, (list, tuple)) or type(current).__name__ in {"Vector", "bpy_prop_array"}:
+        import json
+
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise BridgeError(INVALID_PARAMS, f"expected a JSON array, got: {value!r}") from exc
+        if not isinstance(parsed, (list, tuple)):
+            raise BridgeError(INVALID_PARAMS, f"expected a JSON array, got: {value!r}")
+        return parsed
     return value
 
 

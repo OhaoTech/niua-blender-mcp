@@ -736,3 +736,37 @@ def test_link_nodes_missing_socket_raises_invalid_params(env) -> None:
             ctx,
         )
     assert exc.value.code == INVALID_PARAMS
+
+
+def test_resolve_socket_prefers_the_enabled_datatype_variant() -> None:
+    """Map Range / Math / Mix expose several sockets sharing one display name.
+
+    Only the set matching the node's current ``data_type`` is enabled, and a plain
+    name lookup returns whichever comes first in the collection -- so writing to the
+    inactive twin silently does nothing.
+    """
+    from niua_mcp_bridge.domains.shading import _resolve_socket
+
+    vector_twin = FakeSocket("From Min", [0.0, 0.0, 0.0])
+    vector_twin.identifier = "From_Min_FLOAT3"
+    vector_twin.enabled = False
+    float_socket = FakeSocket("From Min", 0.0)
+    float_socket.identifier = "From Min"
+
+    # Inactive twin listed FIRST -- the ordering that breaks a naive name lookup.
+    found = _resolve_socket([vector_twin, float_socket], "From Min", node_name="MapRange", direction="input")
+    assert found is float_socket
+
+    # An explicit identifier still selects exactly what was asked for.
+    found = _resolve_socket(
+        [vector_twin, float_socket], "From_Min_FLOAT3", node_name="MapRange", direction="input"
+    )
+    assert found is vector_twin
+
+
+def test_resolve_socket_falls_back_when_every_variant_is_disabled() -> None:
+    from niua_mcp_bridge.domains.shading import _resolve_socket
+
+    only = FakeSocket("Steps", 4.0)
+    only.enabled = False
+    assert _resolve_socket([only], "Steps", node_name="MapRange", direction="input") is only

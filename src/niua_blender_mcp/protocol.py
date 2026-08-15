@@ -93,3 +93,42 @@ def json_text_content(value: Any) -> JSON:
 
 def image_content(data: str, mime_type: str = "image/png") -> JSON:
     return {"type": "image", "data": data, "mimeType": mime_type}
+
+
+def _looks_like_image_dict(payload: JSON) -> bool:
+    """True when ``payload`` itself is a single captured PNG (not a bundle around images)."""
+    if payload.get("encoding") == "base64":
+        return True
+    mime = payload.get("mimeType")
+    if isinstance(mime, str) and mime.startswith("image/"):
+        return True
+    return bool(payload.get("available") is True and "data" in payload and "images" not in payload)
+
+
+def redact_image_payloads(value: Any) -> Any:
+    """Copy of a tool result with base64 image bytes removed.
+
+    Hosts put both ``content`` text and ``structuredContent`` in the model context.
+    Pixels already travel as MCP ``image`` parts — repeating them as JSON doubles the
+    token cost (the ~25k-token critique leak).
+    """
+    if not isinstance(value, dict):
+        return value
+    out = dict(value)
+    if _looks_like_image_dict(out) and "data" in out:
+        out.pop("data")
+        out["bytes"] = "omitted"
+    images = out.get("images")
+    if isinstance(images, list):
+        redacted: list[Any] = []
+        for img in images:
+            if isinstance(img, dict) and "data" in img:
+                img = dict(img)
+                img.pop("data")
+                img["bytes"] = "omitted"
+            redacted.append(img)
+        out["images"] = redacted
+    feedback = out.get("_feedback")
+    if isinstance(feedback, dict):
+        out["_feedback"] = redact_image_payloads(feedback)
+    return out

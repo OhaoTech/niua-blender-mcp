@@ -105,6 +105,19 @@ def report(_session, *, object=None):
     return _session.call("geometry.report", _drop_none(_payload))
 
 
+def set_bezier_spline(_session, *, object=None, points=None, handles=None, closed=None):
+    """Replace a curve's spline with bezier control points; the modeling curve
+
+    Parameters (omit to use the server default):
+    object: Curve object to edit
+    points: Flat control points [x,y,z, x,y,z, ...]; length must be a multiple of 3
+    handles: Handle type per point as a comma-separated list (AUTO/VECTOR/ALIGNED/FREE); a single value applies to every point; server default: 'AUTO'
+    closed: Close the spline (filled 2D profile); server default: True
+    """
+    _payload = {"object": object, "points": points, "handles": handles, "closed": closed}
+    return _session.call("geometry.set_bezier_spline", _drop_none(_payload))
+
+
 def set_curve(_session, *, object=None, bevel_depth=None, bevel_resolution=None, extrude=None, resolution_u=None, render_resolution_u=None, dimensions=None, fill_mode=None, use_fill_caps=None):
     """Set curve-like geometry data fields
 

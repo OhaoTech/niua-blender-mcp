@@ -84,6 +84,15 @@ def Vec3(required: bool = False, default: Any = None, summary: str = "", descrip
     return Param("array", required, default, length=3, item="number", summary=summary, description=description)
 
 
+def NumList(required: bool = False, default: Any = None, summary: str = "", description: str = "") -> Param:
+    """A variable-length array of numbers (flat coordinate runs, weights, offsets).
+
+    The typed alternative to smuggling a list through a JSON-encoded string --
+    see rule 2 of the parameter convention in ``tests/test_spec_conventions.py``.
+    """
+    return Param("array", required, default, item="number", summary=summary, description=description)
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str

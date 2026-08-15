@@ -14,7 +14,7 @@ SPECS = [
     ToolSpec(
         name="app.file_new",
         category="app",
-        summary="Start a new empty file; force is required if current file is dirty",
+        summary="Empty the scene in-place (keeps the live bridge); force is required if dirty",
         command="app.file_new",
         params={"force": Bool(default=False, summary="Discard unsaved changes")},
     ),

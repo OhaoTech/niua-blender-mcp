@@ -49,7 +49,23 @@ def _vec(value: Any, default: list[float]) -> list[float]:
     return [float(item) for item in value]
 
 
-def _object_state(obj: Any) -> dict:
+def _sync_depsgraph(ctx: Ctx) -> None:
+    """Re-evaluate the view layer before reading derived transform fields.
+
+    ``matrix_world`` and ``dimensions`` are depsgraph-evaluated, not stored: right
+    after a write to ``location``/``rotation_euler``/``scale`` they still hold the
+    *pre-edit* values. Reporting them stale makes a read-back contradict the edit
+    that just happened, so an agent verifying its own move concludes it failed and
+    applies it twice. Cheap when nothing is tagged dirty.
+    """
+    view_layer = getattr(getattr(ctx.bpy, "context", None), "view_layer", None)
+    update = getattr(view_layer, "update", None)
+    if callable(update):
+        update()
+
+
+def _object_state(ctx: Ctx, obj: Any) -> dict:
+    _sync_depsgraph(ctx)
     parent = getattr(obj, "parent", None)
     return {
         "name": getattr(obj, "name", ""),
@@ -92,7 +108,8 @@ def _rounded_vec(values: list[float]) -> list[float]:
     return [round(float(value), 10) for value in values]
 
 
-def _bounds_state(obj: Any) -> dict:
+def _bounds_state(ctx: Ctx, obj: Any) -> dict:
+    _sync_depsgraph(ctx)
     local = [_float_list(corner) for corner in (getattr(obj, "bound_box", []) or [])]
     matrix = getattr(obj, "matrix_world", None)
     world = [_world_point(matrix, corner) for corner in local]
@@ -202,7 +219,7 @@ def create_object(ctx: Ctx, payload: dict) -> dict:
         obj.name = name
     if otype == "TORUS":
         obj.scale = _vec(payload.get("scale"), [1.0, 1.0, 1.0])
-    return _object_state(obj)
+    return _object_state(ctx, obj)
 
 
 def _parse_objects(ctx: Ctx, raw: Any) -> list[Any]:
@@ -248,7 +265,7 @@ def duplicate(ctx: Ctx, payload: dict) -> dict:
         new_obj.location = [base_location[i] + offset[i] for i in range(3)]
 
     _link_duplicate(ctx, obj, new_obj)
-    return _object_state(new_obj)
+    return _object_state(ctx, new_obj)
 
 
 
@@ -271,7 +288,7 @@ def rename(ctx: Ctx, payload: dict) -> dict:
         raise BridgeError(INVALID_PARAMS, "name is required")
     obj = ctx.get_object(payload.get("object"))
     obj.name = name
-    return _object_state(obj)
+    return _object_state(ctx, obj)
 
 
 def transform_set(ctx: Ctx, payload: dict) -> dict:
@@ -290,7 +307,7 @@ def transform_set(ctx: Ctx, payload: dict) -> dict:
         obj.delta_rotation_euler = _vec(payload.get("delta_rotation"), [0.0, 0.0, 0.0])
     if "delta_scale" in payload:
         obj.delta_scale = _vec(payload.get("delta_scale"), [1.0, 1.0, 1.0])
-    return _object_state(obj)
+    return _object_state(ctx, obj)
 
 
 def transform_apply(ctx: Ctx, payload: dict) -> dict:
@@ -320,12 +337,12 @@ def origin_set(ctx: Ctx, payload: dict) -> dict:
 
 def transform_get(ctx: Ctx, payload: dict) -> dict:
     obj = ctx.get_object(payload.get("object"))
-    return _object_state(obj)
+    return _object_state(ctx, obj)
 
 
 def bounds(ctx: Ctx, payload: dict) -> dict:
     obj = ctx.get_object(payload.get("object"))
-    return _bounds_state(obj)
+    return _bounds_state(ctx, obj)
 
 
 def _bake_target_material(ctx: Ctx, tgt: Any) -> Any:

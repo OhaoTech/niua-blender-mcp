@@ -6,7 +6,12 @@ from ..kernel import Bool, Enum, Float, Int, Str, ToolSpec, Vec3
 
 CAMERA_TYPES = ["PERSP", "ORTHO", "PANO"]
 LIGHT_TYPES = ["POINT", "SUN", "SPOT", "AREA"]
-RENDER_ENGINES = ["BLENDER_WORKBENCH", "BLENDER_EEVEE_NEXT", "CYCLES"]
+#: The EEVEE engine id moved across releases -- ``BLENDER_EEVEE`` through 4.1,
+#: ``BLENDER_EEVEE_NEXT`` in 4.2-4.5, and back to ``BLENDER_EEVEE`` in 5.x. Offering only
+#: one of them makes EEVEE unselectable on half the supported versions (Blender 5.2
+#: reports ``BLENDER_EEVEE``, which this enum used to reject), so both are listed and the
+#: bridge fails with a normal invalid-enum error if the running build lacks the one asked for.
+RENDER_ENGINES = ["BLENDER_WORKBENCH", "BLENDER_EEVEE", "BLENDER_EEVEE_NEXT", "CYCLES"]
 IMAGE_FORMATS = ["PNG", "JPEG", "OPEN_EXR", "TIFF", "BMP", "TARGA"]
 
 SPECS = [

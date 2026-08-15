@@ -19,7 +19,7 @@ from __future__ import annotations
 bl_info = {
     "name": "Niua Blender Finisher",
     "author": "FrankYin",
-    "version": (0, 2, 1),
+    "version": (0, 2, 2),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Niua",
     "description": "Agentic finishing tools for Blender (Niua)",

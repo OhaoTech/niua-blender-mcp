@@ -11,6 +11,20 @@ from niua_mcp_bridge.domains import build_default_registry
 from niua_mcp_bridge.errors import INVALID_PARAMS, NOT_FOUND, PRECONDITION, BridgeError
 
 
+class _ObjColl:
+    def __init__(self, items) -> None:
+        self._items = list(items)
+
+    def __iter__(self):
+        return iter(self._items)
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def remove(self, obj, do_unlink: bool = True) -> None:
+        self._items = [item for item in self._items if item is not obj]
+
+
 class _Op:
     def __init__(self, log: list, name: str, side=None, can_poll: bool = True) -> None:
         self._log = log
@@ -88,7 +102,18 @@ class FakeBpy(types.ModuleType):
                 types.SimpleNamespace(name="Scripting"),
             ]
         )
-        self.data = types.SimpleNamespace(filepath="", is_dirty=False, workspaces=workspaces)
+        self.data = types.SimpleNamespace(
+            filepath="",
+            is_dirty=False,
+            workspaces=workspaces,
+            objects=_ObjColl(
+                [
+                    types.SimpleNamespace(name="Cube"),
+                    types.SimpleNamespace(name="Camera"),
+                    types.SimpleNamespace(name="Light"),
+                ]
+            ),
+        )
         render = types.SimpleNamespace(engine="BLENDER_EEVEE")
         scene = types.SimpleNamespace(name="Scene", render=render)
         preferences = types.SimpleNamespace(
@@ -195,17 +220,17 @@ def test_file_new_requires_force_when_dirty(env):
     assert bpy.op_calls == []
 
 
-def test_file_new_runs_factory_settings_with_force(env):
+def test_file_new_clears_objects_without_factory_reset(env):
+    """Factory reset unloads the add-on and kills the live TCP bridge."""
     ctx, bpy = env
     bpy.data.filepath = "/tmp/dirty.blend"
     bpy.data.is_dirty = True
     reg = build_default_registry()
     out = dispatch_on_main(reg, "app.file_new", {"force": True}, ctx)
-    assert _names(bpy.op_calls) == ["wm.read_factory_settings"]
-    assert bpy.op_calls[0][1] == {"use_empty": True}
-    assert out["filepath"] == ""
-    assert out["is_dirty"] is False
+    assert bpy.op_calls == []
+    assert list(bpy.data.objects) == []
     assert bpy.undo_pushes == []
+    assert "filepath" in out
 
 
 def test_file_open_requires_absolute_path_and_force_when_dirty(env, tmp_path):
